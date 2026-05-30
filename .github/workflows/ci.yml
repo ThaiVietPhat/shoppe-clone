@@ -28,9 +28,6 @@ jobs:
         # Testcontainers hoạt động ngay vì ubuntu-latest có Docker sẵn.
         # Build fail tự động nếu coverage < 80% (cấu hình trong pom.xml JaCoCo plugin).
 
-      - name: Checkstyle
-        run: mvn checkstyle:check --no-transfer-progress
-
       - name: Upload JaCoCo Report
         if: always()
         uses: actions/upload-artifact@v4

@@ -2,7 +2,7 @@ package com.shopee.monolith;
 
 import org.junit.jupiter.api.Test;
 
-class ShopeeMonolithApplicationTests extends BaseIntegrationTest {
+class ShopeeMonolithApplicationIT extends BaseIntegrationTest {
 
     @Test
     void contextLoads() {
