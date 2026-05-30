@@ -1,6 +1,6 @@
 spring:
   # Testcontainers tự inject datasource URL, Redis host/port, ES uri
-  # qua @DynamicPropertySource trong BaseIntegrationTest
+  # qua @ServiceConnection trong BaseIntegrationTest
   jpa:
     show-sql: true                    # Bật SQL log khi test để debug
 
