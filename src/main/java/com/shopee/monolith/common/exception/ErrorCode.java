@@ -56,8 +56,7 @@ public enum ErrorCode {
 
     // ==================== Media ====================
     INVALID_FILE_TYPE(400, "File type is not allowed"),
-    FILE_TOO_LARGE(400, "File size exceeds the maximum allowed limit"),
-    ;
+    FILE_TOO_LARGE(400, "File size exceeds the maximum allowed limit");
 
     private final int httpStatus;
     private final String message;
