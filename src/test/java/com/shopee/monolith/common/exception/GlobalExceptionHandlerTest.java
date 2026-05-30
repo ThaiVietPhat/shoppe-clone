@@ -3,6 +3,8 @@ package com.shopee.monolith.common.exception;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.mock.http.MockHttpInputMessage;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.test.web.servlet.MockMvc;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
@@ -51,6 +54,29 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void shouldHandleConstraintViolationException() throws Exception {
+        mockMvc.perform(get("/dummy/constraint-violation"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+    }
+
+    @Test
+    void shouldHandleHttpMessageNotReadableException() throws Exception {
+        mockMvc.perform(get("/dummy/not-readable"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Invalid request body format"));
+    }
+
+    @Test
+    void shouldHandleHttpRequestMethodNotSupportedException() throws Exception {
+        mockMvc.perform(post("/dummy/app-exception")) // POST to a GET endpoint
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.code").value(405))
+                .andExpect(jsonPath("$.message").value("Method not supported"));
+    }
+
+    @Test
     void shouldHandleAuthenticationException() throws Exception {
         mockMvc.perform(get("/dummy/auth-exception"))
                 .andExpect(status().isUnauthorized())
@@ -84,7 +110,16 @@ class GlobalExceptionHandlerTest {
 
         @PostMapping("/dummy/validation")
         public void throwValidationException(@RequestBody @Valid DummyPayload payload) {
-            // Validation exception should be thrown before executing this line
+        }
+
+        @GetMapping("/dummy/constraint-violation")
+        public void throwConstraintViolationException() {
+            throw new ConstraintViolationException("Invalid parameter", null);
+        }
+
+        @GetMapping("/dummy/not-readable")
+        public void throwNotReadableException() {
+            throw new HttpMessageNotReadableException("JSON parse error", new MockHttpInputMessage(new byte[0]));
         }
 
         @GetMapping("/dummy/auth-exception")
