@@ -32,10 +32,7 @@ public class GlobalExceptionHandler {
                 .collect(Collectors.joining(", "));
         return ResponseEntity
                 .status(400)
-                .body(ApiResponse.<Void>builder()
-                        .code(400)
-                        .message(message)
-                        .build());
+                .body(ApiResponse.error(400, message));
     }
 
     @ExceptionHandler(AuthenticationException.class)
