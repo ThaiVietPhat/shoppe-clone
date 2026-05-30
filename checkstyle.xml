@@ -1,0 +1,90 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+    "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+    "https://checkstyle.org/dtds/configuration_1_3.dtd">
+<module name="Checker">
+    <property name="charset" value="UTF-8"/>
+    <property name="severity" value="error"/>
+    <property name="fileExtensions" value="java"/>
+
+    <!-- File không được dùng tab, chỉ dùng spaces -->
+    <module name="FileTabCharacter"/>
+
+    <!-- File phải kết thúc bằng newline -->
+    <module name="NewlineAtEndOfFile"/>
+
+    <module name="TreeWalker">
+
+        <!-- ==================== Imports ==================== -->
+        <module name="UnusedImports"/>
+        <module name="AvoidStarImport"/>
+        <module name="IllegalImport">
+            <!-- Chặn import sun.*, org.springframework.web.reactive (không dùng reactive trong MVC) -->
+            <property name="illegalPkgs" value="sun, org.springframework.web.reactive"/>
+        </module>
+
+        <!-- ==================== Naming Conventions ==================== -->
+        <module name="TypeName"/>
+        <module name="ConstantName"/>
+        <module name="LocalVariableName"/>
+        <module name="MemberName"/>
+        <module name="MethodName"/>
+        <module name="PackageName">
+            <property name="format" value="^[a-z]+(\.[a-z][a-z0-9]*)*$"/>
+        </module>
+        <module name="ParameterName"/>
+        <module name="StaticVariableName"/>
+
+        <!-- ==================== Blocks & Braces ==================== -->
+        <module name="NeedBraces"/>
+        <module name="LeftCurly"/>
+        <module name="RightCurly"/>
+        <module name="EmptyBlock">
+            <!-- Cho phép empty catch nếu có comment giải thích -->
+            <property name="option" value="text"/>
+            <property name="tokens" value="LITERAL_WHILE, LITERAL_TRY, LITERAL_FINALLY,
+                LITERAL_DO, LITERAL_IF, LITERAL_ELSE, LITERAL_FOR,
+                INSTANCE_INIT, STATIC_INIT, LITERAL_SWITCH, LITERAL_SYNCHRONIZED"/>
+        </module>
+        <module name="EmptyCatchBlock">
+            <!-- Cho phép catch block empty nếu variable tên là 'ignored' hoặc 'expected' -->
+            <property name="exceptionVariableName" value="ignored|expected"/>
+        </module>
+
+        <!-- ==================== Whitespace ==================== -->
+        <module name="NoWhitespaceBefore"/>
+        <module name="GenericWhitespace"/>
+        <module name="WhitespaceAround">
+            <property name="allowEmptyConstructors" value="true"/>
+            <property name="allowEmptyMethods" value="true"/>
+            <property name="allowEmptyLambdas" value="true"/>
+            <property name="allowEmptyTypes" value="true"/>
+        </module>
+
+        <!-- ==================== Code Quality ==================== -->
+        <!-- Dùng L thay vì l cho long literals (dễ nhầm với số 1) -->
+        <module name="UpperEll"/>
+
+        <!-- Modifier phải theo thứ tự: public protected private abstract default static ... -->
+        <module name="ModifierOrder"/>
+
+        <!-- Không khai báo nhiều biến trên 1 dòng -->
+        <module name="MultipleVariableDeclarations"/>
+
+        <!-- Không có khoảng trắng thừa trước dấu ; -->
+        <module name="NoWhitespaceBefore">
+            <property name="tokens" value="SEMI, POST_DEC, POST_INC"/>
+        </module>
+
+        <!-- ==================== Indentation ==================== -->
+        <module name="Indentation">
+            <property name="basicOffset" value="4"/>
+            <property name="braceAdjustment" value="0"/>
+            <property name="caseIndent" value="4"/>
+            <property name="throwsIndent" value="8"/>
+            <property name="lineWrappingIndentation" value="8"/>
+            <property name="arrayInitIndent" value="4"/>
+        </module>
+
+    </module>
+</module>

@@ -4,6 +4,7 @@
 .cursor/
 .aider*
 .copilot/
+AGENTS.md
 
 # ==================== Build Output ====================
 target/

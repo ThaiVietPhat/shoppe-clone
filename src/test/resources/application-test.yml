@@ -1,0 +1,21 @@
+spring:
+  # Testcontainers tự inject datasource URL, Redis host/port, ES uri
+  # qua @DynamicPropertySource trong BaseIntegrationTest
+  jpa:
+    show-sql: true                    # Bật SQL log khi test để debug
+
+  flyway:
+    enabled: true                     # Flyway chạy migration trên DB test
+
+  ai:
+    openai:
+      api-key: sk-test-placeholder    # Sẽ bị mock trong IT tests
+
+jwt:
+  secret: test-secret-key-for-integration-tests-only-32chars
+  expiration: 600000
+  refresh-expiration: 604800000
+
+app:
+  security:
+    blacklist-ttl: 600

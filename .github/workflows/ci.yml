@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  ci:
+    name: Test · Coverage · Checkstyle
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Run Unit & Integration Tests + Enforce JaCoCo 80%
+        run: mvn verify --no-transfer-progress
+        # mvn verify chạy theo thứ tự:
+        #   compile → test (unit/Surefire) → integration-test (IT/Failsafe) → verify (JaCoCo check)
+        # Testcontainers hoạt động ngay vì ubuntu-latest có Docker sẵn.
+        # Build fail tự động nếu coverage < 80% (cấu hình trong pom.xml JaCoCo plugin).
+
+      - name: Checkstyle
+        run: mvn checkstyle:check --no-transfer-progress
+
+      - name: Upload JaCoCo Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: target/site/jacoco/
+          retention-days: 14

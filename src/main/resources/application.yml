@@ -1,0 +1,112 @@
+server:
+  port: 8080
+  shutdown: graceful
+
+spring:
+  application:
+    name: shopee-monolith
+
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:5432/shopee_db
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}       # (vCPU * 2) + 1
+      minimum-idle: 5
+      connection-timeout: 20000                    # 20s — báo lỗi thay vì chờ mãi
+      idle-timeout: 600000                         # 10 phút — đóng connection idle
+      max-lifetime: 1800000                        # 30 phút — buộc rotate, tránh stale connection
+      keepalive-time: 300000                       # 5 phút — ping DB giữ connection sống
+      leak-detection-threshold: 5000              # Cảnh báo nếu connection bị giữ > 5s
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: 6379
+    elasticsearch:
+      uris: ${ELASTICSEARCH_URI:http://localhost:9200}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate                           # Flyway quản lý schema, Hibernate chỉ validate
+    show-sql: false
+    open-in-view: false                            # Tắt OSIV — tránh lazy loading ngoài transaction (N+1 ẩn)
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          batch_size: 30
+          order_inserts: true
+          order_updates: true
+        format_sql: false
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope: email, profile
+          facebook:
+            client-id: ${FACEBOOK_CLIENT_ID}
+            client-secret: ${FACEBOOK_CLIENT_SECRET}
+            scope: email, public_profile
+
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      chat:
+        options:
+          model: gpt-4o-mini
+      embedding:
+        options:
+          model: text-embedding-3-small
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+jwt:
+  secret: ${JWT_SECRET}                            # Không có default — phải set qua env
+  expiration: 600000                               # 10 phút — Access Token
+  refresh-expiration: 604800000                    # 7 ngày — Refresh Token
+
+app:
+  security:
+    blacklist-ttl: 600                             # 10 phút — bằng với Access Token TTL
+  payment:
+    pending-expiry-minutes: 15                     # Scheduled job quét và cancel order quá hạn
+  media:
+    max-file-size-mb: 10
+    allowed-content-types: image/jpeg, image/png, image/webp
