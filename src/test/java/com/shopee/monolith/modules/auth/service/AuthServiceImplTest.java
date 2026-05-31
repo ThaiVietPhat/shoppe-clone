@@ -39,7 +39,7 @@ class AuthServiceImplTest {
 
     private AuthServiceImpl authService;
 
-    private static final String DUMMY_HASH = "$2a$12$6yGZ/X4sF.FhPUp1p.2KFeZpG.0u4hW1.c.4zY5P6q7r8s9t0u1v2";
+    private static final String DUMMY_HASH = AuthServiceImpl.DUMMY_HASH;
 
     @BeforeEach
     void setUp() {
@@ -247,5 +247,19 @@ class AuthServiceImplTest {
         assertEquals(ErrorCode.ACCOUNT_NOT_ACTIVE, exception.getErrorCode());
 
         verifyNoInteractions(refreshTokenService);
+    }
+
+    @Test
+    void dummyHashShouldBeValidBCryptFormat() {
+        assertNotNull(AuthServiceImpl.DUMMY_HASH);
+        assertEquals(60, AuthServiceImpl.DUMMY_HASH.length());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                AuthServiceImpl.DUMMY_HASH.startsWith("$2a$12$") ||
+                AuthServiceImpl.DUMMY_HASH.startsWith("$2b$12$") ||
+                AuthServiceImpl.DUMMY_HASH.startsWith("$2y$12$")
+        );
+        org.junit.jupiter.api.Assertions.assertTrue(
+                java.util.regex.Pattern.matches("^\\$2[abyd]\\$\\d{2}\\$[./A-Za-z0-9]{53}$", AuthServiceImpl.DUMMY_HASH)
+        );
     }
 }

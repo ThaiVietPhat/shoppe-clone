@@ -98,8 +98,8 @@ management:
 
 jwt:
   secret: ${JWT_SECRET}                            # Không có default — phải set qua env
-  expiration: 600000                               # 10 phút — Access Token
-  refresh-expiration: 604800000                    # 7 ngày — Refresh Token
+  expiration: 10m                                  # 10 phút — Access Token
+  refresh-expiration: 7d                           # 7 ngày — Refresh Token
 
 app:
   security:
