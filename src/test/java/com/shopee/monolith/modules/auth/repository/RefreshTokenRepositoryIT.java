@@ -472,9 +472,13 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
         // 6. Cleanup DB state to prevent pollution
         txTemplate.executeWithoutResult(status -> {
             refreshTokenRepository.deleteByUserId(userId);
+            refreshTokenRepository.deleteByUserId(testUserId);
             entityManager.flush();
             entityManager.createQuery("delete from User u where u.id = :id")
                     .setParameter("id", userId)
+                    .executeUpdate();
+            entityManager.createQuery("delete from User u where u.id = :id")
+                    .setParameter("id", testUserId)
                     .executeUpdate();
         });
     }
