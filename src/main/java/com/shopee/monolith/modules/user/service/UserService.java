@@ -15,6 +15,8 @@ public interface UserService {
 
     Optional<UserAuthenticationData> findAuthenticationDataByEmail(String email);
 
+    Optional<UserAuthenticationData> findAuthenticationDataById(UUID id);
+
     UserResponse registerUser(RegisterUserCommand command);
 
     void activateUser(UUID userId);

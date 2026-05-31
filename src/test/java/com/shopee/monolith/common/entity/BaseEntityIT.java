@@ -1,6 +1,6 @@
 package com.shopee.monolith.common.entity;
 
-import com.shopee.monolith.BaseIntegrationTest;
+import com.shopee.monolith.BasePostgresRedisIntegrationTest;
 import com.shopee.monolith.modules.user.entity.User;
 import com.shopee.monolith.modules.user.model.Role;
 import org.junit.jupiter.api.Test;
@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @Transactional
-class BaseEntityIT extends BaseIntegrationTest {
+class BaseEntityIT extends BasePostgresRedisIntegrationTest {
 
     @Autowired
     private jakarta.persistence.EntityManager entityManager;

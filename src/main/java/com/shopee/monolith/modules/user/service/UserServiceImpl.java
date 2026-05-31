@@ -53,6 +53,15 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    public Optional<UserAuthenticationData> findAuthenticationDataById(UUID id) {
+        if (id == null) {
+            return Optional.empty();
+        }
+        return userRepository.findById(id)
+                .map(userMapper::toAuthenticationData);
+    }
+
+    @Override
     @Transactional
     public UserResponse registerUser(RegisterUserCommand command) {
         String normalizedEmail = normalizeEmail(command.email());

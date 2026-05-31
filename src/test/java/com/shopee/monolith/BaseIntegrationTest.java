@@ -35,7 +35,8 @@ public abstract class BaseIntegrationTest {
     static final ElasticsearchContainer ELASTICSEARCH = new ElasticsearchContainer(
             DockerImageName.parse("docker.elastic.co/elasticsearch/elasticsearch:8.13.0"))
             .withEnv("discovery.type", "single-node")
-            .withEnv("xpack.security.enabled", "false");
+            .withEnv("xpack.security.enabled", "false")
+            .withStartupTimeout(java.time.Duration.ofMinutes(3));
 
     static {
         POSTGRES.start();

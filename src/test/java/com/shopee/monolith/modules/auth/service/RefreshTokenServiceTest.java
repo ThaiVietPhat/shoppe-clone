@@ -8,8 +8,9 @@ import com.shopee.monolith.modules.auth.entity.RefreshToken;
 import com.shopee.monolith.modules.auth.repository.RefreshTokenRepository;
 import com.shopee.monolith.modules.auth.security.JwtTokenProvider;
 import com.shopee.monolith.modules.auth.security.RefreshTokenGenerator;
-import com.shopee.monolith.modules.user.dto.response.UserResponse;
+import com.shopee.monolith.modules.user.dto.internal.UserAuthenticationData;
 import com.shopee.monolith.modules.user.model.Role;
+import com.shopee.monolith.modules.user.model.UserStatus;
 import com.shopee.monolith.modules.user.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -67,12 +68,21 @@ class RefreshTokenServiceTest {
 
         clock = Clock.fixed(fixedInstant, ZoneId.of("UTC"));
 
+        RefreshTokenRotationWorker worker = new RefreshTokenRotationWorker(
+                refreshTokenRepository,
+                refreshTokenGenerator,
+                jwtProperties,
+                userService,
+                jwtTokenProvider,
+                clock
+        );
+
         refreshTokenService = new RefreshTokenService(
                 refreshTokenRepository,
                 jwtTokenProvider,
                 refreshTokenGenerator,
                 jwtProperties,
-                userService,
+                worker,
                 clock
         );
     }
@@ -125,9 +135,14 @@ class RefreshTokenServiceTest {
         when(refreshTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(oldToken));
         when(refreshTokenGenerator.generate()).thenReturn(rawNewToken);
         when(refreshTokenGenerator.hash(rawNewToken)).thenReturn(newHash);
-        when(userService.getUserById(userId)).thenReturn(
-                UserResponse.builder().id(userId).email("user@test.com").role(Role.BUYER).build()
-        );
+        when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(
+                UserAuthenticationData.builder()
+                        .id(userId)
+                        .email("user@test.com")
+                        .role(Role.BUYER)
+                        .status(UserStatus.ACTIVE)
+                        .build()
+        ));
         when(jwtTokenProvider.generateAccessToken(userId, Role.BUYER)).thenReturn(mockAccessToken);
 
         IssuedTokenPair result = refreshTokenService.rotate(rawToken);
@@ -179,6 +194,29 @@ class RefreshTokenServiceTest {
                 .tokenHash(tokenHash)
                 .familyId(familyId)
                 .expiresAt(fixedInstant.minus(Duration.ofSeconds(1))) // expired
+                .build();
+
+        when(refreshTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
+        when(refreshTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(expiredToken));
+
+        AppException ex = assertThrows(AppException.class, () -> refreshTokenService.rotate(rawToken));
+        assertEquals(ErrorCode.INVALID_TOKEN, ex.getErrorCode());
+
+        verify(refreshTokenRepository, never()).save(any());
+    }
+
+    @Test
+    void rotateWhenTokenExpiredExactlyAtNowShouldThrowInvalidToken() {
+        UUID userId = UUID.randomUUID();
+        UUID familyId = UUID.randomUUID();
+        String rawToken = "rawToken123";
+        String tokenHash = "tokenHash123";
+
+        RefreshToken expiredToken = RefreshToken.builder()
+                .userId(userId)
+                .tokenHash(tokenHash)
+                .familyId(familyId)
+                .expiresAt(fixedInstant) // expired exactly now
                 .build();
 
         when(refreshTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
@@ -284,9 +322,14 @@ class RefreshTokenServiceTest {
         when(refreshTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(oldToken));
         when(refreshTokenGenerator.generate()).thenReturn(rawNewToken);
         when(refreshTokenGenerator.hash(rawNewToken)).thenReturn(newHash);
-        when(userService.getUserById(userId)).thenReturn(
-                UserResponse.builder().id(userId).email("user@test.com").role(Role.BUYER).build()
-        );
+        when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(
+                UserAuthenticationData.builder()
+                        .id(userId)
+                        .email("user@test.com")
+                        .role(Role.BUYER)
+                        .status(UserStatus.ACTIVE)
+                        .build()
+        ));
         when(jwtTokenProvider.generateAccessToken(userId, Role.BUYER)).thenReturn("newAccessToken");
 
         refreshTokenService.rotate(rawToken);
@@ -318,9 +361,14 @@ class RefreshTokenServiceTest {
         when(refreshTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(oldToken));
         when(refreshTokenGenerator.generate()).thenReturn(rawNewToken);
         when(refreshTokenGenerator.hash(rawNewToken)).thenReturn(newHash);
-        when(userService.getUserById(userId)).thenReturn(
-                UserResponse.builder().id(userId).email("user@test.com").role(Role.BUYER).build()
-        );
+        when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(
+                UserAuthenticationData.builder()
+                        .id(userId)
+                        .email("user@test.com")
+                        .role(Role.BUYER)
+                        .status(UserStatus.ACTIVE)
+                        .build()
+        ));
         when(jwtTokenProvider.generateAccessToken(userId, Role.BUYER)).thenReturn("newAccessToken");
 
         IssuedTokenPair result = refreshTokenService.rotate(rawToken);
@@ -332,5 +380,135 @@ class RefreshTokenServiceTest {
 
         RefreshToken savedNewToken = captor.getAllValues().get(1);
         assertEquals(newHash, savedNewToken.getTokenHash());
+    }
+
+    @Test
+    void rotateWhenRawTokenNullOrBlankShouldThrowInvalidToken() {
+        AppException exNull = assertThrows(AppException.class, () -> refreshTokenService.rotate(null));
+        assertEquals(ErrorCode.INVALID_TOKEN, exNull.getErrorCode());
+
+        AppException exBlank = assertThrows(AppException.class, () -> refreshTokenService.rotate("   "));
+        assertEquals(ErrorCode.INVALID_TOKEN, exBlank.getErrorCode());
+    }
+
+    @Test
+    void rotateWhenUserPendingVerificationShouldThrowEmailNotVerified() {
+        UUID userId = UUID.randomUUID();
+        UUID familyId = UUID.randomUUID();
+        String rawToken = "rawToken123";
+        String tokenHash = "tokenHash123";
+
+        RefreshToken oldToken = RefreshToken.builder()
+                .userId(userId)
+                .tokenHash(tokenHash)
+                .familyId(familyId)
+                .expiresAt(fixedInstant.plus(Duration.ofMinutes(5)))
+                .build();
+
+        when(refreshTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
+        when(refreshTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(oldToken));
+        when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(
+                UserAuthenticationData.builder()
+                        .id(userId)
+                        .email("user@test.com")
+                        .role(Role.BUYER)
+                        .status(UserStatus.PENDING_VERIFICATION)
+                        .build()
+        ));
+
+        AppException ex = assertThrows(AppException.class, () -> refreshTokenService.rotate(rawToken));
+        assertEquals(ErrorCode.EMAIL_NOT_VERIFIED, ex.getErrorCode());
+
+        // Verify no mutation is saved in database due to failure rollback
+        verify(refreshTokenRepository, never()).save(any());
+    }
+
+    @Test
+    void rotateWhenUserInactiveOrLockedShouldThrowAccountNotActive() {
+        UUID userId = UUID.randomUUID();
+        UUID familyId = UUID.randomUUID();
+        String rawToken = "rawToken123";
+        String tokenHash = "tokenHash123";
+
+        RefreshToken oldToken = RefreshToken.builder()
+                .userId(userId)
+                .tokenHash(tokenHash)
+                .familyId(familyId)
+                .expiresAt(fixedInstant.plus(Duration.ofMinutes(5)))
+                .build();
+
+        when(refreshTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
+        when(refreshTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(oldToken));
+        when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(
+                UserAuthenticationData.builder()
+                        .id(userId)
+                        .email("user@test.com")
+                        .role(Role.BUYER)
+                        .status(UserStatus.INACTIVE)
+                        .build()
+        ));
+
+        AppException ex = assertThrows(AppException.class, () -> refreshTokenService.rotate(rawToken));
+        assertEquals(ErrorCode.ACCOUNT_NOT_ACTIVE, ex.getErrorCode());
+
+        // Verify no mutation is saved in database due to failure rollback
+        verify(refreshTokenRepository, never()).save(any());
+    }
+
+    @Test
+    void rotateWhenUserLockedShouldThrowAccountNotActive() {
+        UUID userId = UUID.randomUUID();
+        UUID familyId = UUID.randomUUID();
+        String rawToken = "rawToken123";
+        String tokenHash = "tokenHash123";
+
+        RefreshToken oldToken = RefreshToken.builder()
+                .userId(userId)
+                .tokenHash(tokenHash)
+                .familyId(familyId)
+                .expiresAt(fixedInstant.plus(Duration.ofMinutes(5)))
+                .build();
+
+        when(refreshTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
+        when(refreshTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(oldToken));
+        when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(
+                UserAuthenticationData.builder()
+                        .id(userId)
+                        .email("user@test.com")
+                        .role(Role.BUYER)
+                        .status(UserStatus.LOCKED)
+                        .build()
+        ));
+
+        AppException ex = assertThrows(AppException.class, () -> refreshTokenService.rotate(rawToken));
+        assertEquals(ErrorCode.ACCOUNT_NOT_ACTIVE, ex.getErrorCode());
+
+        // Verify no mutation is saved in database due to failure rollback
+        verify(refreshTokenRepository, never()).save(any());
+    }
+
+    @Test
+    void rotateWhenUserNotFoundShouldThrowUserNotFound() {
+        UUID userId = UUID.randomUUID();
+        UUID familyId = UUID.randomUUID();
+        String rawToken = "rawToken123";
+        String tokenHash = "tokenHash123";
+
+        RefreshToken oldToken = RefreshToken.builder()
+                .userId(userId)
+                .tokenHash(tokenHash)
+                .familyId(familyId)
+                .expiresAt(fixedInstant.plus(Duration.ofMinutes(5)))
+                .build();
+
+        when(refreshTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
+        when(refreshTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(oldToken));
+        when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.empty());
+
+        AppException ex = assertThrows(AppException.class, () -> refreshTokenService.rotate(rawToken));
+        assertEquals(ErrorCode.USER_NOT_FOUND, ex.getErrorCode());
+
+        // Verify no mutation is saved in database due to failure rollback
+        verify(refreshTokenRepository, never()).save(any());
     }
 }

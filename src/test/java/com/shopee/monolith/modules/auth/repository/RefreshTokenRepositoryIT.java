@@ -1,6 +1,6 @@
 package com.shopee.monolith.modules.auth.repository;
 
-import com.shopee.monolith.BaseIntegrationTest;
+import com.shopee.monolith.BasePostgresRedisIntegrationTest;
 import com.shopee.monolith.modules.auth.entity.RefreshToken;
 import com.shopee.monolith.modules.user.entity.User;
 import jakarta.persistence.EntityManager;
@@ -12,16 +12,25 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.shopee.monolith.common.exception.AppException;
+import com.shopee.monolith.common.exception.ErrorCode;
+import com.shopee.monolith.modules.auth.dto.internal.IssuedTokenPair;
+import com.shopee.monolith.modules.auth.security.RefreshTokenGenerator;
+import com.shopee.monolith.modules.auth.service.RefreshTokenService;
+import com.shopee.monolith.modules.user.model.Role;
+
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @Transactional
-class RefreshTokenRepositoryIT extends BaseIntegrationTest {
+class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
 
     @Autowired
     private RefreshTokenRepository refreshTokenRepository;
@@ -32,17 +41,27 @@ class RefreshTokenRepositoryIT extends BaseIntegrationTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
+    @Autowired
+    private RefreshTokenService refreshTokenService;
+
+    @Autowired
+    private RefreshTokenGenerator refreshTokenGenerator;
+
     private User testUser;
     private UUID testUserId;
 
     @BeforeEach
     void setUp() {
-        testUser = User.builder()
-                .email("refresh." + UUID.randomUUID() + "@example.com")
-                .passwordHash("hash")
-                .build();
-        entityManager.persist(testUser);
-        entityManager.flush();
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        testUser = txTemplate.execute(status -> {
+            User user = User.builder()
+                    .email("refresh." + UUID.randomUUID() + "@example.com")
+                    .passwordHash("hash")
+                    .build();
+            entityManager.persist(user);
+            entityManager.flush();
+            return user;
+        });
         testUserId = testUser.getId();
     }
 
@@ -373,10 +392,10 @@ class RefreshTokenRepositoryIT extends BaseIntegrationTest {
 
     @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    void findByTokenHashForUpdateWhenTwoTransactionsCompeteShouldSerializeRotation() throws Exception {
+    void rotateWhenTwoTransactionsCompeteShouldSerializeRotationAndNotRollbackRevocation() throws Exception {
         TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
 
-        // 1. Setup user and base token, committing them before parallel threads execute
+        // 1. Setup user and commit to DB
         UUID userId = txTemplate.execute(status -> {
             User user = User.builder()
                     .email("compete." + UUID.randomUUID() + "@example.com")
@@ -386,44 +405,35 @@ class RefreshTokenRepositoryIT extends BaseIntegrationTest {
             return user.getId();
         });
 
-        String tokenHash = "compete_token_hash_" + UUID.randomUUID();
-        UUID familyId = UUID.randomUUID();
-
-        txTemplate.executeWithoutResult(status -> {
-            RefreshToken token = RefreshToken.builder()
-                    .userId(userId)
-                    .tokenHash(tokenHash)
-                    .familyId(familyId)
-                    .expiresAt(Instant.now().plusSeconds(300))
-                    .build();
-            entityManager.persist(token);
+        // 2. Setup initial active refresh token RT1
+        IssuedTokenPair rt1Pair = txTemplate.execute(status -> {
+            User user = entityManager.find(User.class, userId);
+            user.activate();
+            entityManager.persist(user);
+            return refreshTokenService.issueTokenPair(userId, Role.BUYER);
         });
 
-        // 2. Co-ordinate competing transactions in parallel threads
+        String rawRt1Value = rt1Pair.refreshToken();
+
+        // 3. Concurrently call rotate(rawRt1Value) from two threads
         java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(2);
         java.util.concurrent.atomic.AtomicInteger successCount = new java.util.concurrent.atomic.AtomicInteger(0);
         java.util.concurrent.atomic.AtomicInteger reuseCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicReference<String> rt2ValueRef = new java.util.concurrent.atomic.AtomicReference<>();
 
         java.util.concurrent.Callable<Void> task = () -> {
             barrier.await();
-            txTemplate.executeWithoutResult(status -> {
-                Optional<RefreshToken> opt = refreshTokenRepository.findByTokenHashForUpdate(tokenHash);
-                if (opt.isPresent()) {
-                    RefreshToken rt = opt.get();
-                    if (rt.getRevokedAt() == null) {
-                        try {
-                            Thread.sleep(150);
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                        }
-                        rt.revoke(Instant.now(), "replacement_hash");
-                        refreshTokenRepository.save(rt);
-                        successCount.incrementAndGet();
-                    } else {
-                        reuseCount.incrementAndGet();
-                    }
+            try {
+                IssuedTokenPair resultPair = refreshTokenService.rotate(rawRt1Value);
+                rt2ValueRef.set(resultPair.refreshToken());
+                successCount.incrementAndGet();
+            } catch (AppException e) {
+                if (e.getErrorCode() == ErrorCode.TOKEN_REUSE_DETECTED) {
+                    reuseCount.incrementAndGet();
+                } else {
+                    throw e;
                 }
-            });
+            }
             return null;
         };
 
@@ -439,13 +449,30 @@ class RefreshTokenRepositoryIT extends BaseIntegrationTest {
             executor.shutdown();
         }
 
-        // 3. Verify exactly one transaction completed rotation; the other was forced to reuse detection
+        // 4. Verify exactly one thread succeeded in rotating (producing RT2)
         assertEquals(1, successCount.get());
+        // Exactly one thread got TOKEN_REUSE_DETECTED
         assertEquals(1, reuseCount.get());
 
-        // 4. Cleanup DB state to prevent pollution
+        // 5. Verify database state: both RT1 and RT2 must be revoked because reuse was committed successfully
         txTemplate.executeWithoutResult(status -> {
-            refreshTokenRepository.deleteByFamilyId(familyId);
+            String rt1Hash = refreshTokenGenerator.hash(rawRt1Value);
+            RefreshToken rt1InDb = refreshTokenRepository.findByTokenHash(rt1Hash)
+                    .orElseThrow(() -> new AssertionError("RT1 not found"));
+            assertNotNull(rt1InDb.getRevokedAt());
+
+            String rt2Raw = rt2ValueRef.get();
+            assertNotNull(rt2Raw);
+            String rt2Hash = refreshTokenGenerator.hash(rt2Raw);
+            RefreshToken rt2InDb = refreshTokenRepository.findByTokenHash(rt2Hash)
+                    .orElseThrow(() -> new AssertionError("RT2 not found"));
+            assertNotNull(rt2InDb.getRevokedAt(), "RT2 revocation was rolled back!");
+        });
+
+        // 6. Cleanup DB state to prevent pollution
+        txTemplate.executeWithoutResult(status -> {
+            refreshTokenRepository.deleteByUserId(userId);
+            entityManager.flush();
             entityManager.createQuery("delete from User u where u.id = :id")
                     .setParameter("id", userId)
                     .executeUpdate();
