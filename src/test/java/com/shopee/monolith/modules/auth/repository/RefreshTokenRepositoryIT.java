@@ -182,4 +182,67 @@ class RefreshTokenRepositoryIT extends BaseIntegrationTest {
         assertFalse(refreshTokenRepository.findByTokenHash("token_hash_7").isPresent());
         assertTrue(refreshTokenRepository.findByTokenHash("token_hash_8").isPresent());
     }
+
+    @Test
+    void existsByFamilyIdAndRevokedAtIsNullWhenActiveExistsShouldReturnTrueAndFalseWhenOnlyRevokedExists() {
+        UUID familyId = UUID.randomUUID();
+
+        // 1. Initially, only a revoked token exists in the family
+        RefreshToken revokedToken = RefreshToken.builder()
+                .userId(testUserId)
+                .tokenHash("token_hash_revoked")
+                .familyId(familyId)
+                .expiresAt(Instant.now().plusSeconds(300))
+                .revokedAt(Instant.now())
+                .replacedByTokenHash("token_hash_replacement")
+                .build();
+        entityManager.persist(revokedToken);
+        entityManager.flush();
+        entityManager.clear();
+
+        // should return false since the only token is revoked
+        assertFalse(refreshTokenRepository.existsByFamilyIdAndRevokedAtIsNull(familyId));
+
+        // 2. Persist an active token in the same family
+        RefreshToken activeToken = RefreshToken.builder()
+                .userId(testUserId)
+                .tokenHash("token_hash_active")
+                .familyId(familyId)
+                .expiresAt(Instant.now().plusSeconds(300))
+                .build();
+        entityManager.persist(activeToken);
+        entityManager.flush();
+        entityManager.clear();
+
+        // should now return true
+        assertTrue(refreshTokenRepository.existsByFamilyIdAndRevokedAtIsNull(familyId));
+    }
+
+    @Test
+    void findByTokenHashWhenTokenWasRevokedShouldReturnRevocationHistory() {
+        String tokenHash = "old_token_hash";
+        String replacementHash = "new_token_hash";
+        RefreshToken token = RefreshToken.builder()
+                .userId(testUserId)
+                .tokenHash(tokenHash)
+                .familyId(UUID.randomUUID())
+                .expiresAt(Instant.now().plusSeconds(300))
+                .build();
+        entityManager.persist(token);
+        entityManager.flush();
+
+        Instant now = Instant.now();
+        token.revoke(now, replacementHash);
+        entityManager.persist(token);
+        entityManager.flush();
+        entityManager.clear();
+
+        Optional<RefreshToken> found = refreshTokenRepository.findByTokenHash(tokenHash);
+
+        assertTrue(found.isPresent());
+        assertEquals(tokenHash, found.get().getTokenHash());
+        org.junit.jupiter.api.Assertions.assertNotNull(found.get().getRevokedAt());
+        assertEquals(now.toEpochMilli(), found.get().getRevokedAt().toEpochMilli());
+        assertEquals(replacementHash, found.get().getReplacedByTokenHash());
+    }
 }
