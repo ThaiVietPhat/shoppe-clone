@@ -1,1 +1,0 @@
--- Flyway migration files for modular monolith tables will be placed here.
