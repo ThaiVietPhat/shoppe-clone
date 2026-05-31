@@ -5,8 +5,6 @@ server:
 spring:
   application:
     name: shopee-monolith
-  profiles:
-    active: local
 
   lifecycle:
     timeout-per-shutdown-phase: 30s
@@ -34,8 +32,8 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: 6379
-    elasticsearch:
-      uris: ${ELASTICSEARCH_URI:http://localhost:9200}
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URI:http://localhost:9200}
 
   jpa:
     hibernate:
@@ -44,7 +42,6 @@ spring:
     open-in-view: false                            # Tắt OSIV — tránh lazy loading ngoài transaction (N+1 ẩn)
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
         jdbc:
           batch_size: 30
           order_inserts: true
@@ -93,10 +90,10 @@ management:
         include: health, info, metrics, prometheus
   endpoint:
     health:
-      show-details: always
-  metrics:
-    export:
-      prometheus:
+      show-details: when-authorized
+  prometheus:
+    metrics:
+      export:
         enabled: true
 
 jwt:
