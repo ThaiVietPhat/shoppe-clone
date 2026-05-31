@@ -1,7 +1,10 @@
 package com.shopee.monolith.modules.user.service;
 
+import com.shopee.monolith.modules.user.dto.command.RegisterUserCommand;
+import com.shopee.monolith.modules.user.dto.internal.UserAuthenticationData;
 import com.shopee.monolith.modules.user.dto.response.UserResponse;
 
+import java.util.Optional;
 import java.util.UUID;
 
 public interface UserService {
@@ -10,5 +13,10 @@ public interface UserService {
     
     UserResponse getUserByEmail(String email);
 
-    com.shopee.monolith.modules.user.dto.internal.UserAuthenticationData getAuthenticationDataByEmail(String email);
+    Optional<UserAuthenticationData> findAuthenticationDataByEmail(String email);
+
+    UserResponse registerUser(RegisterUserCommand command);
+
+    void activateUser(UUID userId);
 }
+

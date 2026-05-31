@@ -2,6 +2,7 @@ package com.shopee.monolith.modules.user.entity;
 
 import com.shopee.monolith.common.entity.BaseEntity;
 import com.shopee.monolith.modules.user.model.Role;
+import com.shopee.monolith.modules.user.model.UserStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -35,5 +36,10 @@ public class User extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
     @lombok.Builder.Default
-    private com.shopee.monolith.modules.user.model.UserStatus status = com.shopee.monolith.modules.user.model.UserStatus.PENDING_VERIFICATION;
+    private UserStatus status = UserStatus.PENDING_VERIFICATION;
+
+    public void activate() {
+        this.status = UserStatus.ACTIVE;
+    }
 }
+
