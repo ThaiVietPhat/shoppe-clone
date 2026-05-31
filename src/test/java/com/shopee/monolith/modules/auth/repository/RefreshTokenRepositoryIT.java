@@ -7,7 +7,10 @@ import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -25,6 +28,9 @@ class RefreshTokenRepositoryIT extends BaseIntegrationTest {
 
     @Autowired
     private EntityManager entityManager;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     private User testUser;
     private UUID testUserId;
@@ -363,5 +369,86 @@ class RefreshTokenRepositoryIT extends BaseIntegrationTest {
         java.util.List<RefreshToken> tokens = refreshTokenRepository.findAllByFamilyIdForUpdate(familyId);
 
         assertEquals(2, tokens.size());
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void findByTokenHashForUpdateWhenTwoTransactionsCompeteShouldSerializeRotation() throws Exception {
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+
+        // 1. Setup user and base token, committing them before parallel threads execute
+        UUID userId = txTemplate.execute(status -> {
+            User user = User.builder()
+                    .email("compete." + UUID.randomUUID() + "@example.com")
+                    .passwordHash("hash")
+                    .build();
+            entityManager.persist(user);
+            return user.getId();
+        });
+
+        String tokenHash = "compete_token_hash_" + UUID.randomUUID();
+        UUID familyId = UUID.randomUUID();
+
+        txTemplate.executeWithoutResult(status -> {
+            RefreshToken token = RefreshToken.builder()
+                    .userId(userId)
+                    .tokenHash(tokenHash)
+                    .familyId(familyId)
+                    .expiresAt(Instant.now().plusSeconds(300))
+                    .build();
+            entityManager.persist(token);
+        });
+
+        // 2. Co-ordinate competing transactions in parallel threads
+        java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(2);
+        java.util.concurrent.atomic.AtomicInteger successCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicInteger reuseCount = new java.util.concurrent.atomic.AtomicInteger(0);
+
+        java.util.concurrent.Callable<Void> task = () -> {
+            barrier.await();
+            txTemplate.executeWithoutResult(status -> {
+                Optional<RefreshToken> opt = refreshTokenRepository.findByTokenHashForUpdate(tokenHash);
+                if (opt.isPresent()) {
+                    RefreshToken rt = opt.get();
+                    if (rt.getRevokedAt() == null) {
+                        try {
+                            Thread.sleep(150);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                        rt.revoke(Instant.now(), "replacement_hash");
+                        refreshTokenRepository.save(rt);
+                        successCount.incrementAndGet();
+                    } else {
+                        reuseCount.incrementAndGet();
+                    }
+                }
+            });
+            return null;
+        };
+
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            java.util.List<java.util.concurrent.Future<Void>> futures = executor.invokeAll(
+                    java.util.Arrays.asList(task, task)
+            );
+            for (java.util.concurrent.Future<Void> future : futures) {
+                future.get();
+            }
+        } finally {
+            executor.shutdown();
+        }
+
+        // 3. Verify exactly one transaction completed rotation; the other was forced to reuse detection
+        assertEquals(1, successCount.get());
+        assertEquals(1, reuseCount.get());
+
+        // 4. Cleanup DB state to prevent pollution
+        txTemplate.executeWithoutResult(status -> {
+            refreshTokenRepository.deleteByFamilyId(familyId);
+            entityManager.createQuery("delete from User u where u.id = :id")
+                    .setParameter("id", userId)
+                    .executeUpdate();
+        });
     }
 }
