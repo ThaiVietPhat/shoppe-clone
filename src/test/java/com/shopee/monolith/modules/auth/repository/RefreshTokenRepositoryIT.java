@@ -264,4 +264,58 @@ class RefreshTokenRepositoryIT extends BaseIntegrationTest {
         assertEquals(now.toEpochMilli(), found.get().getRevokedAt().toEpochMilli());
         assertEquals(replacementHash, found.get().getReplacedByTokenHash());
     }
+
+    @Test
+    void findAllByFamilyIdAndRevokeFamilyWithoutDeletingHistory() {
+        UUID familyId = UUID.randomUUID();
+
+        // 1. Persist an active token and a previously revoked token (history) in the same family
+        RefreshToken activeToken = RefreshToken.builder()
+                .userId(testUserId)
+                .tokenHash("token_active_in_fam")
+                .familyId(familyId)
+                .expiresAt(Instant.now().plusSeconds(300))
+                .build();
+
+        RefreshToken revokedToken = RefreshToken.builder()
+                .userId(testUserId)
+                .tokenHash("token_revoked_in_fam")
+                .familyId(familyId)
+                .expiresAt(Instant.now().plusSeconds(300))
+                .revokedAt(Instant.now().minusSeconds(10))
+                .replacedByTokenHash("token_active_in_fam")
+                .build();
+
+        entityManager.persist(activeToken);
+        entityManager.persist(revokedToken);
+        entityManager.flush();
+        entityManager.clear();
+
+        // 2. Query family tokens
+        java.util.List<RefreshToken> familyTokens = refreshTokenRepository.findAllByFamilyId(familyId);
+        assertEquals(2, familyTokens.size());
+
+        // 3. Perform rotation/theft revocation (revoke all active ones)
+        Instant now = Instant.now();
+        for (RefreshToken token : familyTokens) {
+            if (token.getRevokedAt() == null) {
+                token.revoke(now, "revoked_due_to_theft");
+                refreshTokenRepository.save(token);
+            }
+        }
+        entityManager.flush();
+        entityManager.clear();
+
+        // 4. Verify that both records still exist in the database (history is kept)
+        java.util.List<RefreshToken> afterRevocation = refreshTokenRepository.findAllByFamilyId(familyId);
+        assertEquals(2, afterRevocation.size());
+
+        // Both must now have revokedAt set
+        for (RefreshToken token : afterRevocation) {
+            org.junit.jupiter.api.Assertions.assertNotNull(token.getRevokedAt());
+            if (token.getTokenHash().equals("token_active_in_fam")) {
+                assertEquals("revoked_due_to_theft", token.getReplacedByTokenHash());
+            }
+        }
+    }
 }
