@@ -318,4 +318,50 @@ class RefreshTokenRepositoryIT extends BaseIntegrationTest {
             }
         }
     }
+
+    @Test
+    void findByTokenHashForUpdateShouldReturnTokenWithPessimisticWriteLock() {
+        String tokenHash = "lock_token_hash_1";
+        RefreshToken token = RefreshToken.builder()
+                .userId(testUserId)
+                .tokenHash(tokenHash)
+                .familyId(UUID.randomUUID())
+                .expiresAt(Instant.now().plusSeconds(300))
+                .build();
+        entityManager.persist(token);
+        entityManager.flush();
+        entityManager.clear();
+
+        Optional<RefreshToken> found = refreshTokenRepository.findByTokenHashForUpdate(tokenHash);
+
+        assertTrue(found.isPresent());
+        assertEquals(tokenHash, found.get().getTokenHash());
+    }
+
+    @Test
+    void findAllByFamilyIdForUpdateShouldReturnTokensWithPessimisticWriteLock() {
+        UUID familyId = UUID.randomUUID();
+        RefreshToken token1 = RefreshToken.builder()
+                .userId(testUserId)
+                .tokenHash("lock_token_hash_2")
+                .familyId(familyId)
+                .expiresAt(Instant.now().plusSeconds(300))
+                .build();
+
+        RefreshToken token2 = RefreshToken.builder()
+                .userId(testUserId)
+                .tokenHash("lock_token_hash_3")
+                .familyId(familyId)
+                .expiresAt(Instant.now().plusSeconds(300))
+                .build();
+
+        entityManager.persist(token1);
+        entityManager.persist(token2);
+        entityManager.flush();
+        entityManager.clear();
+
+        java.util.List<RefreshToken> tokens = refreshTokenRepository.findAllByFamilyIdForUpdate(familyId);
+
+        assertEquals(2, tokens.size());
+    }
 }
