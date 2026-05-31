@@ -184,7 +184,7 @@ class RefreshTokenRepositoryIT extends BaseIntegrationTest {
     }
 
     @Test
-    void existsByFamilyIdAndRevokedAtIsNullWhenActiveExistsShouldReturnTrueAndFalseWhenOnlyRevokedExists() {
+    void existsByFamilyIdAndRevokedAtIsNullAndExpiresAtAfterWhenActiveExistsShouldReturnTrueAndFalseWhenOnlyRevokedExists() {
         UUID familyId = UUID.randomUUID();
 
         // 1. Initially, only a revoked token exists in the family
@@ -201,7 +201,7 @@ class RefreshTokenRepositoryIT extends BaseIntegrationTest {
         entityManager.clear();
 
         // should return false since the only token is revoked
-        assertFalse(refreshTokenRepository.existsByFamilyIdAndRevokedAtIsNull(familyId));
+        assertFalse(refreshTokenRepository.existsByFamilyIdAndRevokedAtIsNullAndExpiresAtAfter(familyId, Instant.now()));
 
         // 2. Persist an active token in the same family
         RefreshToken activeToken = RefreshToken.builder()
@@ -215,7 +215,26 @@ class RefreshTokenRepositoryIT extends BaseIntegrationTest {
         entityManager.clear();
 
         // should now return true
-        assertTrue(refreshTokenRepository.existsByFamilyIdAndRevokedAtIsNull(familyId));
+        assertTrue(refreshTokenRepository.existsByFamilyIdAndRevokedAtIsNullAndExpiresAtAfter(familyId, Instant.now()));
+    }
+
+    @Test
+    void existsByFamilyIdAndRevokedAtIsNullAndExpiresAtAfterWhenExpiredExistsShouldReturnFalse() {
+        UUID familyId = UUID.randomUUID();
+
+        // Persist an expired (non-revoked) token in the family
+        RefreshToken expiredToken = RefreshToken.builder()
+                .userId(testUserId)
+                .tokenHash("token_hash_expired_in_family")
+                .familyId(familyId)
+                .expiresAt(Instant.now().minusSeconds(10)) // expired in the past
+                .build();
+        entityManager.persist(expiredToken);
+        entityManager.flush();
+        entityManager.clear();
+
+        // should return false because the token is expired
+        assertFalse(refreshTokenRepository.existsByFamilyIdAndRevokedAtIsNullAndExpiresAtAfter(familyId, Instant.now()));
     }
 
     @Test
