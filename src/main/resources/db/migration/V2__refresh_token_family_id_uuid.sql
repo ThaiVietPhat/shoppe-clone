@@ -4,4 +4,3 @@
 ALTER TABLE refresh_tokens
     ALTER COLUMN family_id TYPE UUID
     USING family_id::UUID;
-

@@ -299,7 +299,7 @@ class RefreshTokenRepositoryIT extends BaseIntegrationTest {
         Instant now = Instant.now();
         for (RefreshToken token : familyTokens) {
             if (token.getRevokedAt() == null) {
-                token.revoke(now, "revoked_due_to_theft");
+                token.revoke(now);
                 refreshTokenRepository.save(token);
             }
         }
@@ -314,7 +314,7 @@ class RefreshTokenRepositoryIT extends BaseIntegrationTest {
         for (RefreshToken token : afterRevocation) {
             org.junit.jupiter.api.Assertions.assertNotNull(token.getRevokedAt());
             if (token.getTokenHash().equals("token_active_in_fam")) {
-                assertEquals("revoked_due_to_theft", token.getReplacedByTokenHash());
+                org.junit.jupiter.api.Assertions.assertNull(token.getReplacedByTokenHash());
             }
         }
     }

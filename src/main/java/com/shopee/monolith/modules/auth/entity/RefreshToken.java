@@ -43,4 +43,8 @@ public class RefreshToken extends BaseEntity {
         this.revokedAt = revokedAt;
         this.replacedByTokenHash = replacedByTokenHash;
     }
+
+    public void revoke(Instant revokedAt) {
+        revoke(revokedAt, null);
+    }
 }
