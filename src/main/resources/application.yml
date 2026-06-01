@@ -102,8 +102,6 @@ jwt:
   refresh-expiration: 7d                           # 7 ngày — Refresh Token
 
 app:
-  security:
-    blacklist-ttl: 600                             # 10 phút — bằng với Access Token TTL
   payment:
     pending-expiry-minutes: 15                     # Scheduled job quét và cancel order quá hạn
   media:

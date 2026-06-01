@@ -19,6 +19,7 @@ public enum ErrorCode {
     FORBIDDEN(403, "Access denied"),
     NOT_FOUND(404, "Resource not found"),
     CONFLICT(409, "Resource already exists"),
+    SERVICE_UNAVAILABLE(503, "Service temporarily unavailable"),
 
     // ==================== Auth ====================
     INVALID_CREDENTIALS(401, "Invalid email or password"),

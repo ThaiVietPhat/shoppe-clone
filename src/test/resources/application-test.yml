@@ -15,7 +15,3 @@ jwt:
   secret: test-secret-key-for-integration-tests-only-32chars
   expiration: 600000
   refresh-expiration: 604800000
-
-app:
-  security:
-    blacklist-ttl: 600
