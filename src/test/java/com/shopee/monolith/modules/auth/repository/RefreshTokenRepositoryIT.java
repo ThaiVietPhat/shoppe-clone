@@ -482,4 +482,171 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
                     .executeUpdate();
         });
     }
+
+    @Test
+    void findAllByUserIdForUpdateShouldOrderStably() {
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        txTemplate.executeWithoutResult(status -> {
+            // Create 3 tokens out of order
+            RefreshToken token2 = RefreshToken.builder()
+                    .userId(testUserId)
+                    .tokenHash("hash-b")
+                    .familyId(UUID.randomUUID())
+                    .expiresAt(Instant.now().plusSeconds(300))
+                    .build();
+            RefreshToken token1 = RefreshToken.builder()
+                    .userId(testUserId)
+                    .tokenHash("hash-a")
+                    .familyId(UUID.randomUUID())
+                    .expiresAt(Instant.now().plusSeconds(300))
+                    .build();
+            RefreshToken token3 = RefreshToken.builder()
+                    .userId(testUserId)
+                    .tokenHash("hash-c")
+                    .familyId(UUID.randomUUID())
+                    .expiresAt(Instant.now().plusSeconds(300))
+                    .build();
+            entityManager.persist(token2);
+            entityManager.persist(token1);
+            entityManager.persist(token3);
+            entityManager.flush();
+        });
+
+        TransactionTemplate txTemplate2 = new TransactionTemplate(transactionManager);
+        txTemplate2.executeWithoutResult(status -> {
+            java.util.List<RefreshToken> tokens = refreshTokenRepository.findAllByUserIdForUpdate(testUserId);
+            assertEquals(3, tokens.size());
+            // Verify sorted by UUID ID order ascending
+            UUID firstId = tokens.get(0).getId();
+            UUID secondId = tokens.get(1).getId();
+            UUID thirdId = tokens.get(2).getId();
+            assertTrue(firstId.compareTo(secondId) < 0);
+            assertTrue(secondId.compareTo(thirdId) < 0);
+        });
+
+        // Cleanup
+        txTemplate.executeWithoutResult(status -> {
+            refreshTokenRepository.deleteByUserId(testUserId);
+        });
+    }
+
+    @Test
+    void deleteExpiredTokensBatchShouldDeleteOnlyExpiredUpToLimit() {
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        txTemplate.executeWithoutResult(status -> {
+            Instant past = Instant.now().minusSeconds(60);
+            Instant future = Instant.now().plusSeconds(300);
+
+            // Create 3 expired tokens
+            for (int i = 0; i < 3; i++) {
+                entityManager.persist(RefreshToken.builder()
+                        .userId(testUserId)
+                        .tokenHash("expired-hash-" + i)
+                        .familyId(UUID.randomUUID())
+                        .expiresAt(past)
+                        .build());
+            }
+            // Create 1 active token
+            entityManager.persist(RefreshToken.builder()
+                    .userId(testUserId)
+                    .tokenHash("active-hash")
+                    .familyId(UUID.randomUUID())
+                    .expiresAt(future)
+                    .build());
+            entityManager.flush();
+        });
+
+        // Delete with batch limit of 2
+        TransactionTemplate txTemplate2 = new TransactionTemplate(transactionManager);
+        int deleted = txTemplate2.execute(status -> {
+            return refreshTokenRepository.deleteExpiredTokensBatch(Instant.now(), 2);
+        });
+        assertEquals(2, deleted);
+
+        // Verify remaining expired token and active token are still in DB
+        txTemplate2.executeWithoutResult(status -> {
+            java.util.List<RefreshToken> remaining = refreshTokenRepository.findAll();
+            long expiredCount = remaining.stream().filter(t -> t.getExpiresAt().isBefore(Instant.now())).count();
+            long activeCount = remaining.stream().filter(t -> t.getExpiresAt().isAfter(Instant.now())).count();
+            assertEquals(1, expiredCount);
+            assertEquals(1, activeCount);
+        });
+
+        // Cleanup
+        txTemplate.executeWithoutResult(status -> {
+            refreshTokenRepository.deleteByUserId(testUserId);
+        });
+    }
+
+    @Test
+    void deleteExpiredTokensBatchShouldSkipLocked() throws Exception {
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        txTemplate.setPropagationBehavior(TransactionTemplate.PROPAGATION_REQUIRES_NEW);
+
+        // 1. Persist 2 expired tokens
+        UUID tokenId1 = txTemplate.execute(status -> {
+            RefreshToken t1 = RefreshToken.builder()
+                    .userId(testUserId)
+                    .tokenHash("lock-hash-1")
+                    .familyId(UUID.randomUUID())
+                    .expiresAt(Instant.now().minusSeconds(10))
+                    .build();
+            RefreshToken t2 = RefreshToken.builder()
+                    .userId(testUserId)
+                    .tokenHash("lock-hash-2")
+                    .familyId(UUID.randomUUID())
+                    .expiresAt(Instant.now().minusSeconds(10))
+                    .build();
+            entityManager.persist(t1);
+            entityManager.persist(t2);
+            entityManager.flush();
+            return t1.getId();
+        });
+
+        java.util.concurrent.CountDownLatch lockAcquiredLatch = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch deleteCompletedLatch = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicInteger deletedCount = new java.util.concurrent.atomic.AtomicInteger(-1);
+
+        // 2. Thread 1: Acquire lock on tokenId1 and hold it
+        Thread thread = new Thread(() -> {
+            txTemplate.execute(status -> {
+                entityManager.createQuery("select r from RefreshToken r where r.id = :id")
+                        .setParameter("id", tokenId1)
+                        .setLockMode(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+                        .getSingleResult();
+
+                lockAcquiredLatch.countDown();
+                try {
+                    deleteCompletedLatch.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return null;
+            });
+        });
+        thread.start();
+
+        try {
+            // Wait until Thread 1 holds the lock
+            lockAcquiredLatch.await();
+
+            // 3. Thread 2 (Main Thread): Try to clean up expired tokens batch
+            txTemplate.executeWithoutResult(status -> {
+                int deleted = refreshTokenRepository.deleteExpiredTokensBatch(Instant.now(), 10);
+                deletedCount.set(deleted);
+            });
+        } finally {
+            // Release lock
+            deleteCompletedLatch.countDown();
+            thread.join();
+
+            // Cleanup DB state to prevent pollution
+            txTemplate.executeWithoutResult(status -> {
+                refreshTokenRepository.deleteByUserId(testUserId);
+            });
+        }
+
+        // 4. Verify only 1 token was deleted because tokenId1 was locked and skipped
+        assertEquals(1, deletedCount.get());
+    }
 }

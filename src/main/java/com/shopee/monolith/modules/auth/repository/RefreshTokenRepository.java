@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import jakarta.persistence.LockModeType;
@@ -61,4 +62,20 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
     long deleteByUserId(UUID userId);
 
     long deleteByExpiresAtBefore(Instant now);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select token from RefreshToken token where token.userId = :userId order by token.id asc")
+    List<RefreshToken> findAllByUserIdForUpdate(@Param("userId") UUID userId);
+
+    @Modifying
+    @Query(value = "DELETE FROM refresh_tokens " +
+                   "WHERE id IN (" +
+                   "    SELECT id " +
+                   "    FROM refresh_tokens " +
+                   "    WHERE expires_at < :now " +
+                   "    ORDER BY expires_at, id " +
+                   "    LIMIT :batchSize " +
+                   "    FOR UPDATE SKIP LOCKED" +
+                   ")", nativeQuery = true)
+    int deleteExpiredTokensBatch(@Param("now") Instant now, @Param("batchSize") int batchSize);
 }

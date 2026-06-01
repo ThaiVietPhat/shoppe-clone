@@ -107,3 +107,7 @@ app:
   media:
     max-file-size-mb: 10
     allowed-content-types: image/jpeg, image/png, image/webp
+  security:
+    refresh-token-cleanup:
+      batch-size: 500
+      fixed-delay: 1h

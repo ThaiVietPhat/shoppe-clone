@@ -67,4 +67,9 @@ public class RefreshTokenService {
                 .build();
         refreshTokenRepository.save(refreshToken);
     }
+
+    @Transactional
+    public int deleteExpiredTokensBatch(Instant now, int batchSize) {
+        return refreshTokenRepository.deleteExpiredTokensBatch(now, batchSize);
+    }
 }
