@@ -26,7 +26,7 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
     List<RefreshToken> findAllByFamilyId(UUID familyId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select token from RefreshToken token where token.familyId = :familyId")
+    @Query("select token from RefreshToken token where token.familyId = :familyId order by token.id asc")
     List<RefreshToken> findAllByFamilyIdForUpdate(@Param("familyId") UUID familyId);
 
     /**

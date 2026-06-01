@@ -471,14 +471,13 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
 
         // 6. Cleanup DB state to prevent pollution
         txTemplate.executeWithoutResult(status -> {
-            refreshTokenRepository.deleteByUserId(userId);
-            refreshTokenRepository.deleteByUserId(testUserId);
-            entityManager.flush();
-            entityManager.createQuery("delete from User u where u.id = :id")
-                    .setParameter("id", userId)
+            entityManager.createQuery("delete from RefreshToken t where t.userId in (:userId, :testUserId)")
+                    .setParameter("userId", userId)
+                    .setParameter("testUserId", testUserId)
                     .executeUpdate();
-            entityManager.createQuery("delete from User u where u.id = :id")
-                    .setParameter("id", testUserId)
+            entityManager.createQuery("delete from User u where u.id in (:userId, :testUserId)")
+                    .setParameter("userId", userId)
+                    .setParameter("testUserId", testUserId)
                     .executeUpdate();
         });
     }
@@ -517,9 +516,9 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
             java.util.List<RefreshToken> tokens = refreshTokenRepository.findAllByUserIdForUpdate(testUserId);
             assertEquals(3, tokens.size());
             // Verify sorted by UUID ID order ascending
-            UUID firstId = tokens.get(0).getId();
-            UUID secondId = tokens.get(1).getId();
-            UUID thirdId = tokens.get(2).getId();
+            String firstId = tokens.get(0).getId().toString();
+            String secondId = tokens.get(1).getId().toString();
+            String thirdId = tokens.get(2).getId().toString();
             assertTrue(firstId.compareTo(secondId) < 0);
             assertTrue(secondId.compareTo(thirdId) < 0);
         });
@@ -583,16 +582,27 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
         TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
         txTemplate.setPropagationBehavior(TransactionTemplate.PROPAGATION_REQUIRES_NEW);
 
+        // Create committed user specifically for this test to avoid FK violation in REQUIRES_NEW
+        UUID committedUserId = txTemplate.execute(status -> {
+            User user = User.builder()
+                    .email("concur-cleanup." + UUID.randomUUID() + "@example.com")
+                    .passwordHash("hash")
+                    .build();
+            entityManager.persist(user);
+            entityManager.flush();
+            return user.getId();
+        });
+
         // 1. Persist 2 expired tokens
         UUID tokenId1 = txTemplate.execute(status -> {
             RefreshToken t1 = RefreshToken.builder()
-                    .userId(testUserId)
+                    .userId(committedUserId)
                     .tokenHash("lock-hash-1")
                     .familyId(UUID.randomUUID())
                     .expiresAt(Instant.now().minusSeconds(10))
                     .build();
             RefreshToken t2 = RefreshToken.builder()
-                    .userId(testUserId)
+                    .userId(committedUserId)
                     .tokenHash("lock-hash-2")
                     .familyId(UUID.randomUUID())
                     .expiresAt(Instant.now().minusSeconds(10))
@@ -642,7 +652,12 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
 
             // Cleanup DB state to prevent pollution
             txTemplate.executeWithoutResult(status -> {
-                refreshTokenRepository.deleteByUserId(testUserId);
+                entityManager.createQuery("delete from RefreshToken t where t.userId = :userId")
+                        .setParameter("userId", committedUserId)
+                        .executeUpdate();
+                entityManager.createQuery("delete from User u where u.id = :id")
+                        .setParameter("id", committedUserId)
+                        .executeUpdate();
             });
         }
 

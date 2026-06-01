@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -45,6 +46,9 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
     private RefreshTokenGenerator refreshTokenGenerator;
 
     @Autowired
+    private RefreshTokenService refreshTokenService;
+
+    @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
     @Autowired
@@ -60,19 +64,13 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
     void setUp() {
         TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
         txTemplate.executeWithoutResult(status -> {
-            // Clean up existing tokens/users
-            refreshTokenRepository.deleteAllInBatch();
-            entityManager.createQuery("delete from User").executeUpdate();
-
-            // Create 2 test users
+            // Create 2 test users with unique emails and without self-generating IDs
             User u1 = User.builder()
-                    .id(UUID.randomUUID())
-                    .email("user1@example.com")
+                    .email("user1." + UUID.randomUUID() + "@example.com")
                     .passwordHash("hash1")
                     .build();
             User u2 = User.builder()
-                    .id(UUID.randomUUID())
-                    .email("user2@example.com")
+                    .email("user2." + UUID.randomUUID() + "@example.com")
                     .passwordHash("hash2")
                     .build();
             entityManager.persist(u1);
@@ -81,6 +79,30 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
 
             userId1 = u1.getId();
             userId2 = u2.getId();
+        });
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void tearDown() {
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        txTemplate.executeWithoutResult(status -> {
+            if (userId1 != null) {
+                entityManager.createQuery("delete from RefreshToken t where t.userId = :userId")
+                        .setParameter("userId", userId1)
+                        .executeUpdate();
+                entityManager.createQuery("delete from User u where u.id = :id")
+                        .setParameter("id", userId1)
+                        .executeUpdate();
+            }
+            if (userId2 != null) {
+                entityManager.createQuery("delete from RefreshToken t where t.userId = :userId")
+                        .setParameter("userId", userId2)
+                        .executeUpdate();
+                entityManager.createQuery("delete from User u where u.id = :id")
+                        .setParameter("id", userId2)
+                        .executeUpdate();
+            }
+            entityManager.flush();
         });
     }
 
@@ -248,5 +270,67 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
                 connectionFactory.destroy();
             }
         }
+    }
+
+    @Test
+    void logoutVsRotateConcurrencyShouldNotLeaveActiveToken() throws Exception {
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        txTemplate.setPropagationBehavior(TransactionTemplate.PROPAGATION_REQUIRES_NEW);
+
+        String rawRt1 = "concur-rt-1";
+        String rt1Hash = refreshTokenGenerator.hash(rawRt1);
+        UUID familyId = UUID.randomUUID();
+
+        // 1. Persist initial token
+        txTemplate.executeWithoutResult(status -> {
+            entityManager.persist(RefreshToken.builder()
+                    .userId(userId1)
+                    .tokenHash(rt1Hash)
+                    .familyId(familyId)
+                    .expiresAt(Instant.now().plusSeconds(300))
+                    .build());
+            entityManager.flush();
+        });
+
+        java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(2);
+        java.util.concurrent.atomic.AtomicReference<Exception> rotateError = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<Exception> logoutError = new java.util.concurrent.atomic.AtomicReference<>();
+
+        // Thread 1: Concurrent rotate
+        Thread tRotate = new Thread(() -> {
+            try {
+                barrier.await();
+                txTemplate.execute(status -> {
+                    refreshTokenService.rotate(rawRt1);
+                    return null;
+                });
+            } catch (Exception e) {
+                rotateError.set(e);
+            }
+        });
+
+        // Thread 2: Concurrent logout
+        Thread tLogout = new Thread(() -> {
+            try {
+                barrier.await();
+                sessionRevocationService.logout(rawRt1, null);
+            } catch (Exception e) {
+                logoutError.set(e);
+            }
+        });
+
+        tRotate.start();
+        tLogout.start();
+
+        tRotate.join();
+        tLogout.join();
+
+        // 2. Verify: No matter who wins or if one fails, there must be NO active refresh token left in the database.
+        txTemplate.executeWithoutResult(status -> {
+            List<RefreshToken> tokens = refreshTokenRepository.findAllByFamilyId(familyId);
+            boolean hasActiveToken = tokens.stream()
+                    .anyMatch(t -> t.getRevokedAt() == null && t.getExpiresAt().isAfter(Instant.now()));
+            assertFalse(hasActiveToken, "There should be no active refresh token left in the family!");
+        });
     }
 }

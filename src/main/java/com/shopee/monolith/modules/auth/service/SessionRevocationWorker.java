@@ -23,9 +23,13 @@ public class SessionRevocationWorker {
             return;
         }
         String tokenHash = refreshTokenGenerator.hash(rawRefreshToken);
-        // Lock the token specifically using FOR UPDATE
-        refreshTokenRepository.findByTokenHashForUpdate(tokenHash).ifPresent(token -> {
-            refreshTokenRepository.deleteByFamilyId(token.getFamilyId());
+        // Find the token to get familyId
+        refreshTokenRepository.findByTokenHash(tokenHash).ifPresent(token -> {
+            // Lock the entire family stably to avoid race conditions with concurrent rotation
+            List<RefreshToken> familyTokens = refreshTokenRepository.findAllByFamilyIdForUpdate(token.getFamilyId());
+            if (!familyTokens.isEmpty()) {
+                refreshTokenRepository.deleteByFamilyId(token.getFamilyId());
+            }
         });
     }
 
