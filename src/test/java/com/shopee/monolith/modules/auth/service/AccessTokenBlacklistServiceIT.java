@@ -104,27 +104,32 @@ class AccessTokenBlacklistServiceIT extends BasePostgresRedisIntegrationTest {
             closedPort = socket.getLocalPort();
         }
 
-        // Instantiate a disconnected ConnectionFactory pointing to an unused port
-        LettuceConnectionFactory connectionFactory = new LettuceConnectionFactory("localhost", closedPort);
-        connectionFactory.afterPropertiesSet();
+        LettuceConnectionFactory connectionFactory = null;
+        try {
+            // Instantiate a disconnected ConnectionFactory pointing to an unused port
+            connectionFactory = new LettuceConnectionFactory("localhost", closedPort);
+            connectionFactory.afterPropertiesSet();
 
-        StringRedisTemplate disconnectedTemplate = new StringRedisTemplate(connectionFactory);
-        AccessTokenBlacklistService brokenService = new AccessTokenBlacklistServiceImpl(disconnectedTemplate, testClock);
+            StringRedisTemplate disconnectedTemplate = new StringRedisTemplate(connectionFactory);
+            AccessTokenBlacklistService brokenService = new AccessTokenBlacklistServiceImpl(disconnectedTemplate, testClock);
 
-        AccessTokenClaims claims = AccessTokenClaims.builder()
-                .jti("jti-fails")
-                .expiresAt(now.plusSeconds(300))
-                .build();
+            AccessTokenClaims claims = AccessTokenClaims.builder()
+                    .jti("jti-fails")
+                    .expiresAt(now.plusSeconds(300))
+                    .build();
 
-        // 1. Verify blacklist writes fail with SERVICE_UNAVAILABLE
-        AppException writeEx = assertThrows(AppException.class, () -> brokenService.blacklist(claims));
-        assertEquals(ErrorCode.SERVICE_UNAVAILABLE, writeEx.getErrorCode());
+            // 1. Verify blacklist writes fail with SERVICE_UNAVAILABLE
+            AppException writeEx = assertThrows(AppException.class, () -> brokenService.blacklist(claims));
+            assertEquals(ErrorCode.SERVICE_UNAVAILABLE, writeEx.getErrorCode());
 
-        // 2. Verify blacklist checks fail with SERVICE_UNAVAILABLE
-        AppException readEx = assertThrows(AppException.class, () -> brokenService.isBlacklisted("jti-fails"));
-        assertEquals(ErrorCode.SERVICE_UNAVAILABLE, readEx.getErrorCode());
-
-        // Clean up connection factory to release resources
-        connectionFactory.destroy();
+            // 2. Verify blacklist checks fail with SERVICE_UNAVAILABLE
+            AppException readEx = assertThrows(AppException.class, () -> brokenService.isBlacklisted("jti-fails"));
+            assertEquals(ErrorCode.SERVICE_UNAVAILABLE, readEx.getErrorCode());
+        } finally {
+            if (connectionFactory != null) {
+                // Clean up connection factory to release resources
+                connectionFactory.destroy();
+            }
+        }
     }
 }
