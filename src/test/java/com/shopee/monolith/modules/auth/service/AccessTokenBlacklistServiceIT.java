@@ -98,9 +98,14 @@ class AccessTokenBlacklistServiceIT extends BasePostgresRedisIntegrationTest {
     }
 
     @Test
-    void whenRedisUnavailableShouldThrowServiceUnavailable() {
+    void whenRedisUnavailableShouldThrowServiceUnavailable() throws java.io.IOException {
+        int closedPort;
+        try (java.net.ServerSocket socket = new java.net.ServerSocket(0)) {
+            closedPort = socket.getLocalPort();
+        }
+
         // Instantiate a disconnected ConnectionFactory pointing to an unused port
-        LettuceConnectionFactory connectionFactory = new LettuceConnectionFactory("localhost", 12345);
+        LettuceConnectionFactory connectionFactory = new LettuceConnectionFactory("localhost", closedPort);
         connectionFactory.afterPropertiesSet();
 
         StringRedisTemplate disconnectedTemplate = new StringRedisTemplate(connectionFactory);

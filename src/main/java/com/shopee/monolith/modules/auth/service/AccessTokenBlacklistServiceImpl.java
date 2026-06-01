@@ -51,7 +51,13 @@ public class AccessTokenBlacklistServiceImpl implements AccessTokenBlacklistServ
 
         try {
             String key = BLACKLIST_KEY_PREFIX + jti;
-            return Boolean.TRUE.equals(stringRedisTemplate.hasKey(key));
+            Boolean exists = stringRedisTemplate.hasKey(key);
+            if (exists == null) {
+                throw new AppException(ErrorCode.SERVICE_UNAVAILABLE);
+            }
+            return exists;
+        } catch (AppException e) {
+            throw e;
         } catch (Exception e) {
             throw new AppException(ErrorCode.SERVICE_UNAVAILABLE);
         }

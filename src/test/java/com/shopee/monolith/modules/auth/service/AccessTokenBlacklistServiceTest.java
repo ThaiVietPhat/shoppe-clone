@@ -182,4 +182,14 @@ class AccessTokenBlacklistServiceTest {
         AppException ex2 = assertThrows(AppException.class, () -> blacklistService.isBlacklisted("   "));
         assertEquals(ErrorCode.INVALID_TOKEN, ex2.getErrorCode());
     }
+
+    @Test
+    void isBlacklistedWhenRedisReturnsNullShouldThrowServiceUnavailable() {
+        // Given
+        when(stringRedisTemplate.hasKey("security:blacklist:null-jti")).thenReturn(null);
+
+        // When & Then
+        AppException ex = assertThrows(AppException.class, () -> blacklistService.isBlacklisted("null-jti"));
+        assertEquals(ErrorCode.SERVICE_UNAVAILABLE, ex.getErrorCode());
+    }
 }
