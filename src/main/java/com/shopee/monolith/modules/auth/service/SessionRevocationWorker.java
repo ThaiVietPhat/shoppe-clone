@@ -23,12 +23,12 @@ public class SessionRevocationWorker {
             return;
         }
         String tokenHash = refreshTokenGenerator.hash(rawRefreshToken);
-        // Find the token to get familyId
-        refreshTokenRepository.findByTokenHash(tokenHash).ifPresent(token -> {
+        // Find familyId using projection to avoid loading outdated token into persistence context
+        refreshTokenRepository.findFamilyIdByTokenHash(tokenHash).ifPresent(familyId -> {
             // Lock the entire family stably to avoid race conditions with concurrent rotation
-            List<RefreshToken> familyTokens = refreshTokenRepository.findAllByFamilyIdForUpdate(token.getFamilyId());
+            List<RefreshToken> familyTokens = refreshTokenRepository.findAllByFamilyIdForUpdate(familyId);
             if (!familyTokens.isEmpty()) {
-                refreshTokenRepository.deleteByFamilyId(token.getFamilyId());
+                refreshTokenRepository.deleteByFamilyId(familyId);
             }
         });
     }

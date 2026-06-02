@@ -19,6 +19,9 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
 
     Optional<RefreshToken> findByTokenHash(String tokenHash);
 
+    @Query("select token.familyId from RefreshToken token where token.tokenHash = :tokenHash")
+    Optional<UUID> findFamilyIdByTokenHash(@Param("tokenHash") String tokenHash);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select token from RefreshToken token where token.tokenHash = :tokenHash")
     Optional<RefreshToken> findByTokenHashForUpdate(@Param("tokenHash") String tokenHash);
@@ -78,4 +81,9 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
                    "    FOR UPDATE SKIP LOCKED" +
                    ")", nativeQuery = true)
     int deleteExpiredTokensBatch(@Param("now") Instant now, @Param("batchSize") int batchSize);
+
+    @Modifying
+    @Query("update RefreshToken token set token.revokedAt = :now " +
+            "where token.familyId = :familyId and token.revokedAt is null")
+    int revokeActiveTokensInFamily(@Param("familyId") UUID familyId, @Param("now") Instant now);
 }

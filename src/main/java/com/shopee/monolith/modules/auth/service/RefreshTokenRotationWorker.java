@@ -34,21 +34,30 @@ public class RefreshTokenRotationWorker {
     @Transactional
     public RotationResult execute(String rawRefreshToken) {
         String tokenHash = refreshTokenGenerator.hash(rawRefreshToken);
-        RefreshToken currentToken = refreshTokenRepository.findByTokenHashForUpdate(tokenHash)
+        UUID familyId = refreshTokenRepository.findFamilyIdByTokenHash(tokenHash)
+                .orElseThrow(() -> new AppException(ErrorCode.INVALID_TOKEN));
+
+        // Lock the entire family stably in order of token.id asc to unify locking protocol and prevent deadlocks
+        java.util.List<RefreshToken> familyTokens = refreshTokenRepository.findAllByFamilyIdForUpdate(familyId);
+
+        // Find the fresh/updated state of currentToken from the locked list
+        RefreshToken lockedCurrentToken = familyTokens.stream()
+                .filter(t -> t.getTokenHash().equals(tokenHash))
+                .findFirst()
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_TOKEN));
 
         Instant now = clock.instant();
 
-        if (currentToken.getRevokedAt() != null) {
-            revokeActiveFamilyTokens(currentToken.getFamilyId(), now);
+        if (lockedCurrentToken.getRevokedAt() != null) {
+            refreshTokenRepository.revokeActiveTokensInFamily(familyId, now);
             return new RotationResult.ReuseDetected();
         }
 
-        if (!currentToken.getExpiresAt().isAfter(now)) {
+        if (!lockedCurrentToken.getExpiresAt().isAfter(now)) {
             throw new AppException(ErrorCode.INVALID_TOKEN);
         }
 
-        UUID userId = currentToken.getUserId();
+        UUID userId = lockedCurrentToken.getUserId();
         UserAuthenticationData userData = userService.findAuthenticationDataById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
@@ -60,11 +69,11 @@ public class RefreshTokenRotationWorker {
 
         String accessToken = jwtTokenProvider.generateAccessToken(userId, userData.role());
 
-        currentToken.revoke(now, newRefreshTokenHash);
-        refreshTokenRepository.save(currentToken);
+        lockedCurrentToken.revoke(now, newRefreshTokenHash);
+        refreshTokenRepository.save(lockedCurrentToken);
 
         saveRefreshToken(userId, newRefreshTokenHash,
-                currentToken.getFamilyId(), newRefreshTokenExpiresAt);
+                lockedCurrentToken.getFamilyId(), newRefreshTokenExpiresAt);
 
         IssuedTokenPair tokenPair = IssuedTokenPair.builder()
                 .accessToken(accessToken)
@@ -80,16 +89,6 @@ public class RefreshTokenRotationWorker {
         }
         if (status != UserStatus.ACTIVE) {
             throw new AppException(ErrorCode.ACCOUNT_NOT_ACTIVE);
-        }
-    }
-
-    private void revokeActiveFamilyTokens(UUID familyId, Instant now) {
-        java.util.List<RefreshToken> familyTokens = refreshTokenRepository.findAllByFamilyIdForUpdate(familyId);
-        for (RefreshToken token : familyTokens) {
-            if (token.getRevokedAt() == null) {
-                token.revoke(now);
-                refreshTokenRepository.save(token);
-            }
         }
     }
 

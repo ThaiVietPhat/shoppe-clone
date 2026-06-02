@@ -73,6 +73,8 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
                     .email("user2." + UUID.randomUUID() + "@example.com")
                     .passwordHash("hash2")
                     .build();
+            u1.activate();
+            u2.activate();
             entityManager.persist(u1);
             entityManager.persist(u2);
             entityManager.flush();
@@ -325,7 +327,101 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
         tRotate.join();
         tLogout.join();
 
+        // Verify no deadlock exceptions or unexpected errors occurred
+        if (logoutError.get() != null) {
+            throw logoutError.get();
+        }
+        if (rotateError.get() != null) {
+            Exception e = rotateError.get();
+            if (!(e instanceof AppException && ((AppException) e).getErrorCode() == ErrorCode.INVALID_TOKEN)) {
+                throw e;
+            }
+        }
+
         // 2. Verify: No matter who wins or if one fails, there must be NO active refresh token left in the database.
+        txTemplate.executeWithoutResult(status -> {
+            List<RefreshToken> tokens = refreshTokenRepository.findAllByFamilyId(familyId);
+            boolean hasActiveToken = tokens.stream()
+                    .anyMatch(t -> t.getRevokedAt() == null && t.getExpiresAt().isAfter(Instant.now()));
+            assertFalse(hasActiveToken, "There should be no active refresh token left in the family!");
+        });
+    }
+
+    @Test
+    void logoutTombstoneVsRotateActiveConcurrencyShouldNotLeaveActiveToken() throws Exception {
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        txTemplate.setPropagationBehavior(TransactionTemplate.PROPAGATION_REQUIRES_NEW);
+
+        String rawRt1 = "tombstone-rt-1";
+        String rt1Hash = refreshTokenGenerator.hash(rawRt1);
+        String rawRt2 = "active-rt-2";
+        String rt2Hash = refreshTokenGenerator.hash(rawRt2);
+        UUID familyId = UUID.randomUUID();
+
+        // 1. Setup family state: T1 (tombstone) replaced by T2 (active)
+        txTemplate.executeWithoutResult(status -> {
+            entityManager.persist(RefreshToken.builder()
+                    .userId(userId1)
+                    .tokenHash(rt1Hash)
+                    .familyId(familyId)
+                    .expiresAt(Instant.now().plusSeconds(300))
+                    .revokedAt(Instant.now())
+                    .replacedByTokenHash(rt2Hash)
+                    .build());
+            entityManager.persist(RefreshToken.builder()
+                    .userId(userId1)
+                    .tokenHash(rt2Hash)
+                    .familyId(familyId)
+                    .expiresAt(Instant.now().plusSeconds(300))
+                    .build());
+            entityManager.flush();
+        });
+
+        java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(2);
+        java.util.concurrent.atomic.AtomicReference<Exception> rotateError = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<Exception> logoutError = new java.util.concurrent.atomic.AtomicReference<>();
+
+        // Thread 1: Concurrent rotate on active token T2
+        Thread tRotate = new Thread(() -> {
+            try {
+                barrier.await();
+                txTemplate.execute(status -> {
+                    refreshTokenService.rotate(rawRt2);
+                    return null;
+                });
+            } catch (Exception e) {
+                rotateError.set(e);
+            }
+        });
+
+        // Thread 2: Concurrent logout on tombstone token T1
+        Thread tLogout = new Thread(() -> {
+            try {
+                barrier.await();
+                sessionRevocationService.logout(rawRt1, null);
+            } catch (Exception e) {
+                logoutError.set(e);
+            }
+        });
+
+        tRotate.start();
+        tLogout.start();
+
+        tRotate.join();
+        tLogout.join();
+
+        // Verify no deadlock exceptions or unexpected errors occurred
+        if (logoutError.get() != null) {
+            throw logoutError.get();
+        }
+        if (rotateError.get() != null) {
+            Exception e = rotateError.get();
+            if (!(e instanceof AppException && ((AppException) e).getErrorCode() == ErrorCode.INVALID_TOKEN)) {
+                throw e;
+            }
+        }
+
+        // Verify there is no active token left in the database for this family
         txTemplate.executeWithoutResult(status -> {
             List<RefreshToken> tokens = refreshTokenRepository.findAllByFamilyId(familyId);
             boolean hasActiveToken = tokens.stream()

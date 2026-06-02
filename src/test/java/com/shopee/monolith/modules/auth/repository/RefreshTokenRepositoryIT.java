@@ -439,47 +439,49 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
 
         java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(2);
         try {
-            java.util.List<java.util.concurrent.Future<Void>> futures = executor.invokeAll(
-                    java.util.Arrays.asList(task, task)
-            );
-            for (java.util.concurrent.Future<Void> future : futures) {
-                future.get();
+            try {
+                java.util.List<java.util.concurrent.Future<Void>> futures = executor.invokeAll(
+                        java.util.Arrays.asList(task, task)
+                );
+                for (java.util.concurrent.Future<Void> future : futures) {
+                    future.get();
+                }
+
+                // 4. Verify exactly one thread succeeded in rotating (producing RT2)
+                assertEquals(1, successCount.get());
+                // Exactly one thread got TOKEN_REUSE_DETECTED
+                assertEquals(1, reuseCount.get());
+
+                // 5. Verify database state: both RT1 and RT2 must be revoked because reuse was committed successfully
+                txTemplate.executeWithoutResult(status -> {
+                    String rt1Hash = refreshTokenGenerator.hash(rawRt1Value);
+                    RefreshToken rt1InDb = refreshTokenRepository.findByTokenHash(rt1Hash)
+                            .orElseThrow(() -> new AssertionError("RT1 not found"));
+                    assertNotNull(rt1InDb.getRevokedAt());
+
+                    String rt2Raw = rt2ValueRef.get();
+                    assertNotNull(rt2Raw);
+                    String rt2Hash = refreshTokenGenerator.hash(rt2Raw);
+                    RefreshToken rt2InDb = refreshTokenRepository.findByTokenHash(rt2Hash)
+                            .orElseThrow(() -> new AssertionError("RT2 not found"));
+                    assertNotNull(rt2InDb.getRevokedAt(), "RT2 revocation was rolled back!");
+                });
+            } finally {
+                // 6. Cleanup DB state to prevent pollution
+                txTemplate.executeWithoutResult(status -> {
+                    entityManager.createQuery("delete from RefreshToken t where t.userId in (:userId, :testUserId)")
+                            .setParameter("userId", userId)
+                            .setParameter("testUserId", testUserId)
+                            .executeUpdate();
+                    entityManager.createQuery("delete from User u where u.id in (:userId, :testUserId)")
+                            .setParameter("userId", userId)
+                            .setParameter("testUserId", testUserId)
+                            .executeUpdate();
+                });
             }
         } finally {
             executor.shutdown();
         }
-
-        // 4. Verify exactly one thread succeeded in rotating (producing RT2)
-        assertEquals(1, successCount.get());
-        // Exactly one thread got TOKEN_REUSE_DETECTED
-        assertEquals(1, reuseCount.get());
-
-        // 5. Verify database state: both RT1 and RT2 must be revoked because reuse was committed successfully
-        txTemplate.executeWithoutResult(status -> {
-            String rt1Hash = refreshTokenGenerator.hash(rawRt1Value);
-            RefreshToken rt1InDb = refreshTokenRepository.findByTokenHash(rt1Hash)
-                    .orElseThrow(() -> new AssertionError("RT1 not found"));
-            assertNotNull(rt1InDb.getRevokedAt());
-
-            String rt2Raw = rt2ValueRef.get();
-            assertNotNull(rt2Raw);
-            String rt2Hash = refreshTokenGenerator.hash(rt2Raw);
-            RefreshToken rt2InDb = refreshTokenRepository.findByTokenHash(rt2Hash)
-                    .orElseThrow(() -> new AssertionError("RT2 not found"));
-            assertNotNull(rt2InDb.getRevokedAt(), "RT2 revocation was rolled back!");
-        });
-
-        // 6. Cleanup DB state to prevent pollution
-        txTemplate.executeWithoutResult(status -> {
-            entityManager.createQuery("delete from RefreshToken t where t.userId in (:userId, :testUserId)")
-                    .setParameter("userId", userId)
-                    .setParameter("testUserId", testUserId)
-                    .executeUpdate();
-            entityManager.createQuery("delete from User u where u.id in (:userId, :testUserId)")
-                    .setParameter("userId", userId)
-                    .setParameter("testUserId", testUserId)
-                    .executeUpdate();
-        });
     }
 
     @Test

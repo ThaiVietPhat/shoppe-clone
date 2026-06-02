@@ -23,7 +23,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.UUID;
@@ -132,7 +131,8 @@ class RefreshTokenServiceTest {
                 .build();
 
         when(refreshTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
-        when(refreshTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(oldToken));
+        when(refreshTokenRepository.findFamilyIdByTokenHash(tokenHash)).thenReturn(Optional.of(familyId));
+        when(refreshTokenRepository.findAllByFamilyIdForUpdate(familyId)).thenReturn(Collections.singletonList(oldToken));
         when(refreshTokenGenerator.generate()).thenReturn(rawNewToken);
         when(refreshTokenGenerator.hash(rawNewToken)).thenReturn(newHash);
         when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(
@@ -174,7 +174,7 @@ class RefreshTokenServiceTest {
         String tokenHash = "tokenHash123";
 
         when(refreshTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
-        when(refreshTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.empty());
+        when(refreshTokenRepository.findFamilyIdByTokenHash(tokenHash)).thenReturn(Optional.empty());
 
         AppException ex = assertThrows(AppException.class, () -> refreshTokenService.rotate(rawToken));
         assertEquals(ErrorCode.INVALID_TOKEN, ex.getErrorCode());
@@ -197,7 +197,8 @@ class RefreshTokenServiceTest {
                 .build();
 
         when(refreshTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
-        when(refreshTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(expiredToken));
+        when(refreshTokenRepository.findFamilyIdByTokenHash(tokenHash)).thenReturn(Optional.of(familyId));
+        when(refreshTokenRepository.findAllByFamilyIdForUpdate(familyId)).thenReturn(Collections.singletonList(expiredToken));
 
         AppException ex = assertThrows(AppException.class, () -> refreshTokenService.rotate(rawToken));
         assertEquals(ErrorCode.INVALID_TOKEN, ex.getErrorCode());
@@ -220,7 +221,8 @@ class RefreshTokenServiceTest {
                 .build();
 
         when(refreshTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
-        when(refreshTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(expiredToken));
+        when(refreshTokenRepository.findFamilyIdByTokenHash(tokenHash)).thenReturn(Optional.of(familyId));
+        when(refreshTokenRepository.findAllByFamilyIdForUpdate(familyId)).thenReturn(Collections.singletonList(expiredToken));
 
         AppException ex = assertThrows(AppException.class, () -> refreshTokenService.rotate(rawToken));
         assertEquals(ErrorCode.INVALID_TOKEN, ex.getErrorCode());
@@ -244,29 +246,17 @@ class RefreshTokenServiceTest {
                 .replacedByTokenHash("anotherHash")
                 .build();
 
-        RefreshToken activeToken = RefreshToken.builder()
-                .userId(userId)
-                .tokenHash("activeHash")
-                .familyId(familyId)
-                .expiresAt(fixedInstant.plus(Duration.ofMinutes(10)))
-                .build();
-
         when(refreshTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
-        when(refreshTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(revokedToken));
+        when(refreshTokenRepository.findFamilyIdByTokenHash(tokenHash)).thenReturn(Optional.of(familyId));
         when(refreshTokenRepository.findAllByFamilyIdForUpdate(familyId)).thenReturn(
-                Arrays.asList(revokedToken, activeToken)
+                Collections.singletonList(revokedToken)
         );
 
         AppException ex = assertThrows(AppException.class, () -> refreshTokenService.rotate(rawToken));
         assertEquals(ErrorCode.TOKEN_REUSE_DETECTED, ex.getErrorCode());
 
-        // Verify active token is now revoked
-        assertEquals(fixedInstant, activeToken.getRevokedAt());
-        verify(refreshTokenRepository).save(activeToken);
-
-        // Verify the original revoked token is not saved again inside reuse handling
-        // Since revokedToken.getRevokedAt() != null, it was skipped.
-        verify(refreshTokenRepository, never()).save(revokedToken);
+        // Verify active family tokens are revoked via bulk update
+        verify(refreshTokenRepository).revokeActiveTokensInFamily(familyId, fixedInstant);
     }
 
     @Test
@@ -288,7 +278,7 @@ class RefreshTokenServiceTest {
                 .build();
 
         when(refreshTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
-        when(refreshTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(revokedToken));
+        when(refreshTokenRepository.findFamilyIdByTokenHash(tokenHash)).thenReturn(Optional.of(familyId));
         when(refreshTokenRepository.findAllByFamilyIdForUpdate(familyId)).thenReturn(
                 Collections.singletonList(revokedToken)
         );
@@ -296,10 +286,11 @@ class RefreshTokenServiceTest {
         AppException ex = assertThrows(AppException.class, () -> refreshTokenService.rotate(rawToken));
         assertEquals(ErrorCode.TOKEN_REUSE_DETECTED, ex.getErrorCode());
 
-        // Tombstone properties should remain exactly the same
+        // Tombstone properties should remain exactly the same in-memory
         assertEquals(originalRevokedAt, revokedToken.getRevokedAt());
         assertEquals(originalReplacedHash, revokedToken.getReplacedByTokenHash());
         verify(refreshTokenRepository, never()).save(revokedToken);
+        verify(refreshTokenRepository).revokeActiveTokensInFamily(familyId, fixedInstant);
     }
 
     @Test
@@ -319,7 +310,8 @@ class RefreshTokenServiceTest {
                 .build();
 
         when(refreshTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
-        when(refreshTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(oldToken));
+        when(refreshTokenRepository.findFamilyIdByTokenHash(tokenHash)).thenReturn(Optional.of(familyId));
+        when(refreshTokenRepository.findAllByFamilyIdForUpdate(familyId)).thenReturn(Collections.singletonList(oldToken));
         when(refreshTokenGenerator.generate()).thenReturn(rawNewToken);
         when(refreshTokenGenerator.hash(rawNewToken)).thenReturn(newHash);
         when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(
@@ -358,7 +350,8 @@ class RefreshTokenServiceTest {
                 .build();
 
         when(refreshTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
-        when(refreshTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(oldToken));
+        when(refreshTokenRepository.findFamilyIdByTokenHash(tokenHash)).thenReturn(Optional.of(familyId));
+        when(refreshTokenRepository.findAllByFamilyIdForUpdate(familyId)).thenReturn(Collections.singletonList(oldToken));
         when(refreshTokenGenerator.generate()).thenReturn(rawNewToken);
         when(refreshTokenGenerator.hash(rawNewToken)).thenReturn(newHash);
         when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(
@@ -406,7 +399,8 @@ class RefreshTokenServiceTest {
                 .build();
 
         when(refreshTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
-        when(refreshTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(oldToken));
+        when(refreshTokenRepository.findFamilyIdByTokenHash(tokenHash)).thenReturn(Optional.of(familyId));
+        when(refreshTokenRepository.findAllByFamilyIdForUpdate(familyId)).thenReturn(Collections.singletonList(oldToken));
         when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(
                 UserAuthenticationData.builder()
                         .id(userId)
@@ -438,7 +432,8 @@ class RefreshTokenServiceTest {
                 .build();
 
         when(refreshTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
-        when(refreshTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(oldToken));
+        when(refreshTokenRepository.findFamilyIdByTokenHash(tokenHash)).thenReturn(Optional.of(familyId));
+        when(refreshTokenRepository.findAllByFamilyIdForUpdate(familyId)).thenReturn(Collections.singletonList(oldToken));
         when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(
                 UserAuthenticationData.builder()
                         .id(userId)
@@ -470,7 +465,8 @@ class RefreshTokenServiceTest {
                 .build();
 
         when(refreshTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
-        when(refreshTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(oldToken));
+        when(refreshTokenRepository.findFamilyIdByTokenHash(tokenHash)).thenReturn(Optional.of(familyId));
+        when(refreshTokenRepository.findAllByFamilyIdForUpdate(familyId)).thenReturn(Collections.singletonList(oldToken));
         when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(
                 UserAuthenticationData.builder()
                         .id(userId)
@@ -502,7 +498,8 @@ class RefreshTokenServiceTest {
                 .build();
 
         when(refreshTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
-        when(refreshTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(oldToken));
+        when(refreshTokenRepository.findFamilyIdByTokenHash(tokenHash)).thenReturn(Optional.of(familyId));
+        when(refreshTokenRepository.findAllByFamilyIdForUpdate(familyId)).thenReturn(Collections.singletonList(oldToken));
         when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.empty());
 
         AppException ex = assertThrows(AppException.class, () -> refreshTokenService.rotate(rawToken));
