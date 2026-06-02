@@ -122,7 +122,7 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
 
         txTemplate.executeWithoutResult(status -> {
             // User 1 family 1 tokens (current active + tombstone)
-            entityManager.persist(RefreshToken.builder()
+            persistRefreshToken(RefreshToken.builder()
                     .userId(userId1)
                     .tokenHash("old-tombstone-hash")
                     .familyId(family1)
@@ -130,15 +130,15 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
                     .revokedAt(Instant.now())
                     .replacedByTokenHash(rt1Hash)
                     .build());
-            entityManager.persist(RefreshToken.builder()
+            persistRefreshToken(RefreshToken.builder()
                     .userId(userId1)
                     .tokenHash(rt1Hash)
                     .familyId(family1)
                     .expiresAt(Instant.now().plusSeconds(300))
                     .build());
-
+ 
             // User 1 family 2 token
-            entityManager.persist(RefreshToken.builder()
+            persistRefreshToken(RefreshToken.builder()
                     .userId(userId1)
                     .tokenHash(rt2Hash)
                     .familyId(family2)
@@ -157,12 +157,16 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
         // Perform logout
         sessionRevocationService.logout(rawRt1, claims);
 
-        // Verify family 1 deleted, family 2 stays
+        // Verify family 1 tokens are revoked, family 2 stays active
         List<RefreshToken> family1Tokens = refreshTokenRepository.findAllByFamilyId(family1);
-        assertTrue(family1Tokens.isEmpty());
-
+        assertFalse(family1Tokens.isEmpty());
+        for (RefreshToken token : family1Tokens) {
+            org.junit.jupiter.api.Assertions.assertNotNull(token.getRevokedAt());
+        }
+ 
         List<RefreshToken> family2Tokens = refreshTokenRepository.findAllByFamilyId(family2);
         assertEquals(1, family2Tokens.size());
+        org.junit.jupiter.api.Assertions.assertNull(family2Tokens.get(0).getRevokedAt());
 
         // Verify Redis blacklist has the jti
         assertTrue(blacklistService.isBlacklisted(jti));
@@ -177,21 +181,21 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
 
         txTemplate.executeWithoutResult(status -> {
             // User 1 tokens (different families)
-            entityManager.persist(RefreshToken.builder()
+            persistRefreshToken(RefreshToken.builder()
                     .userId(userId1)
                     .tokenHash("u1-hash-1")
                     .familyId(UUID.randomUUID())
                     .expiresAt(Instant.now().plusSeconds(300))
                     .build());
-            entityManager.persist(RefreshToken.builder()
+            persistRefreshToken(RefreshToken.builder()
                     .userId(userId1)
                     .tokenHash("u1-hash-2")
                     .familyId(UUID.randomUUID())
                     .expiresAt(Instant.now().plusSeconds(300))
                     .build());
-
+ 
             // User 2 token
-            entityManager.persist(RefreshToken.builder()
+            persistRefreshToken(RefreshToken.builder()
                     .userId(userId2)
                     .tokenHash("u2-hash-1")
                     .familyId(UUID.randomUUID())
@@ -203,17 +207,21 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
         // Perform logoutAll for user 1
         sessionRevocationService.logoutAll(userId1);
 
-        // User 1 tokens should be deleted
+        // User 1 tokens should be revoked
         List<RefreshToken> u1Tokens = refreshTokenRepository.findAll().stream()
                 .filter(t -> t.getUserId().equals(userId1))
                 .toList();
-        assertTrue(u1Tokens.isEmpty());
-
-        // User 2 token should remain
+        assertFalse(u1Tokens.isEmpty());
+        for (RefreshToken token : u1Tokens) {
+            org.junit.jupiter.api.Assertions.assertNotNull(token.getRevokedAt());
+        }
+ 
+        // User 2 token should remain active
         List<RefreshToken> u2Tokens = refreshTokenRepository.findAll().stream()
                 .filter(t -> t.getUserId().equals(userId2))
                 .toList();
         assertEquals(1, u2Tokens.size());
+        org.junit.jupiter.api.Assertions.assertNull(u2Tokens.get(0).getRevokedAt());
     }
 
     @Test
@@ -225,7 +233,7 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
         UUID familyId = UUID.randomUUID();
 
         txTemplate.executeWithoutResult(status -> {
-            entityManager.persist(RefreshToken.builder()
+            persistRefreshToken(RefreshToken.builder()
                     .userId(userId1)
                     .tokenHash(rtHash)
                     .familyId(familyId)
@@ -258,9 +266,12 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
             AppException ex = assertThrows(AppException.class, () -> brokenService.logout(rawRt, claims));
             assertEquals(ErrorCode.SERVICE_UNAVAILABLE, ex.getErrorCode());
 
-            // Verify Postgres changes committed (tokens deleted)
+            // Verify Postgres changes committed (tokens revoked)
             List<RefreshToken> tokens = refreshTokenRepository.findAllByFamilyId(familyId);
-            assertTrue(tokens.isEmpty());
+            assertFalse(tokens.isEmpty());
+            for (RefreshToken token : tokens) {
+                org.junit.jupiter.api.Assertions.assertNotNull(token.getRevokedAt());
+            }
 
             // Now retry with working service (simulate retry of client)
             // Postgres deletion should be idempotent (no-op), and Redis blacklist should succeed
@@ -285,7 +296,7 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
 
         // 1. Persist initial token
         txTemplate.executeWithoutResult(status -> {
-            entityManager.persist(RefreshToken.builder()
+            persistRefreshToken(RefreshToken.builder()
                     .userId(userId1)
                     .tokenHash(rt1Hash)
                     .familyId(familyId)
@@ -361,7 +372,7 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
 
         // 1. Setup family state: T1 (tombstone) replaced by T2 (active)
         txTemplate.executeWithoutResult(status -> {
-            entityManager.persist(RefreshToken.builder()
+            persistRefreshToken(RefreshToken.builder()
                     .userId(userId1)
                     .tokenHash(rt1Hash)
                     .familyId(familyId)
@@ -369,7 +380,7 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
                     .revokedAt(Instant.now())
                     .replacedByTokenHash(rt2Hash)
                     .build());
-            entityManager.persist(RefreshToken.builder()
+            persistRefreshToken(RefreshToken.builder()
                     .userId(userId1)
                     .tokenHash(rt2Hash)
                     .familyId(familyId)
@@ -448,5 +459,16 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
         for (Thread thread : threads) {
             assertFalse(thread.isAlive(), thread.getName() + " thread did not finish within timeout");
         }
+    }
+
+    private void persistRefreshToken(RefreshToken token) {
+        entityManager.createNativeQuery(
+                "INSERT INTO refresh_token_families (id, user_id, created_at, updated_at) " +
+                "VALUES (:id, :userId, NOW(), NOW()) " +
+                "ON CONFLICT (id) DO NOTHING")
+                .setParameter("id", token.getFamilyId())
+                .setParameter("userId", token.getUserId())
+                .executeUpdate();
+        entityManager.persist(token);
     }
 }

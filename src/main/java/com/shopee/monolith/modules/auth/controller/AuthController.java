@@ -58,7 +58,10 @@ public class AuthController {
 
     @PostMapping("/refresh")
     public ApiResponse<LoginResponse> refresh(HttpServletRequest request, HttpServletResponse response) {
-        String rawToken = getRefreshTokenFromCookies(request);
+        String rawToken = getRefreshTokenFromCookiesOrNull(request);
+        if (rawToken == null) {
+            throw new AppException(ErrorCode.INVALID_TOKEN);
+        }
         IssuedTokenPair tokenPair = refreshTokenService.rotate(rawToken);
         setRefreshTokenCookie(response, tokenPair.refreshToken(), jwtProperties.getRefreshExpiration());
         return ApiResponse.success(new LoginResponse(tokenPair.accessToken()));
@@ -66,12 +69,14 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ApiResponse<Void> logout(HttpServletRequest request, HttpServletResponse response) {
-        String rawToken = getRefreshTokenFromCookies(request);
-        var auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.getPrincipal() instanceof AccessTokenClaims claims) {
-            revocationService.logout(rawToken, claims);
-        } else {
-            revocationService.logout(rawToken, null);
+        String rawToken = getRefreshTokenFromCookiesOrNull(request);
+        if (rawToken != null) {
+            var auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.getPrincipal() instanceof AccessTokenClaims claims) {
+                revocationService.logout(rawToken, claims);
+            } else {
+                revocationService.logout(rawToken, null);
+            }
         }
         clearRefreshTokenCookie(response);
         return ApiResponse.success();
@@ -113,7 +118,7 @@ public class AuthController {
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
     }
 
-    private String getRefreshTokenFromCookies(HttpServletRequest request) {
+    private String getRefreshTokenFromCookiesOrNull(HttpServletRequest request) {
         var cookieProperties = properties.getAuthCookie();
         Cookie[] cookies = request.getCookies();
         if (cookies != null) {
@@ -123,6 +128,6 @@ public class AuthController {
                 }
             }
         }
-        throw new AppException(ErrorCode.INVALID_TOKEN);
+        return null;
     }
 }

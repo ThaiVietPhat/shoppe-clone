@@ -1,12 +1,16 @@
 package com.shopee.monolith.modules.auth.service;
 
-import com.shopee.monolith.modules.auth.entity.RefreshToken;
+import com.shopee.monolith.modules.auth.entity.RefreshTokenFamily;
+import com.shopee.monolith.modules.auth.repository.RefreshTokenFamilyRepository;
 import com.shopee.monolith.modules.auth.repository.RefreshTokenRepository;
 import com.shopee.monolith.modules.auth.security.RefreshTokenGenerator;
+import com.shopee.monolith.modules.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -14,8 +18,11 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class SessionRevocationWorker {
 
+    private final RefreshTokenFamilyRepository familyRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final RefreshTokenGenerator refreshTokenGenerator;
+    private final UserService userService;
+    private final Clock clock;
 
     @Transactional
     public void revokeFamily(String rawRefreshToken) {
@@ -23,13 +30,14 @@ public class SessionRevocationWorker {
             return;
         }
         String tokenHash = refreshTokenGenerator.hash(rawRefreshToken);
-        // Find familyId using projection to avoid loading outdated token into persistence context
         refreshTokenRepository.findFamilyIdByTokenHash(tokenHash).ifPresent(familyId -> {
-            // Lock the entire family stably to avoid race conditions with concurrent rotation
-            List<RefreshToken> familyTokens = refreshTokenRepository.findAllByFamilyIdForUpdate(familyId);
-            if (!familyTokens.isEmpty()) {
-                refreshTokenRepository.deleteByFamilyId(familyId);
-            }
+            // Lock the parent family aggregate
+            familyRepository.findByIdForUpdate(familyId).ifPresent(family -> {
+                Instant now = clock.instant();
+                family.revoke(now);
+                familyRepository.save(family);
+                refreshTokenRepository.revokeActiveTokensInFamily(familyId, now);
+            });
         });
     }
 
@@ -38,10 +46,18 @@ public class SessionRevocationWorker {
         if (userId == null) {
             return;
         }
-        // Lock user token rows stably in alphabetical/UUID ID order to avoid deadlocks
-        List<RefreshToken> tokens = refreshTokenRepository.findAllByUserIdForUpdate(userId);
-        if (!tokens.isEmpty()) {
-            refreshTokenRepository.deleteByUserId(userId);
+        // 1. Lock user row first to prevent deadlock
+        userService.lockUser(userId);
+
+        // 2. Lock families in order of family.id ASC
+        List<RefreshTokenFamily> families = familyRepository.findAllByUserIdForUpdate(userId);
+        if (!families.isEmpty()) {
+            Instant now = clock.instant();
+            for (RefreshTokenFamily family : families) {
+                family.revoke(now);
+                familyRepository.save(family);
+                refreshTokenRepository.revokeActiveTokensInFamily(family.getId(), now);
+            }
         }
     }
 }

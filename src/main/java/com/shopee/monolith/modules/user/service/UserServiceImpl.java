@@ -90,6 +90,13 @@ public class UserServiceImpl implements UserService {
         user.activate();
     }
 
+    @Override
+    @Transactional
+    public void lockUser(UUID userId) {
+        userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+    }
+
     private String normalizeEmail(String email) {
         if (email == null) {
             return "";

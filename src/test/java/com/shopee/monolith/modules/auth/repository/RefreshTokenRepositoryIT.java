@@ -74,7 +74,7 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
                 .familyId(UUID.randomUUID())
                 .expiresAt(Instant.now().plusSeconds(300))
                 .build();
-        entityManager.persist(token);
+        persistRefreshToken(token);
         entityManager.flush();
         entityManager.clear();
 
@@ -94,7 +94,7 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
                 .familyId(familyId)
                 .expiresAt(Instant.now().plusSeconds(300))
                 .build();
-        entityManager.persist(token);
+        persistRefreshToken(token);
         entityManager.flush();
         entityManager.clear();
 
@@ -123,8 +123,8 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
                 .expiresAt(Instant.now().plusSeconds(300))
                 .build();
 
-        entityManager.persist(token1);
-        entityManager.persist(token2);
+        persistRefreshToken(token1);
+        persistRefreshToken(token2);
         entityManager.flush();
         entityManager.clear();
 
@@ -160,8 +160,8 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
                 .expiresAt(Instant.now().plusSeconds(300))
                 .build();
 
-        entityManager.persist(userToken);
-        entityManager.persist(otherToken);
+        persistRefreshToken(userToken);
+        persistRefreshToken(otherToken);
         entityManager.flush();
         entityManager.clear();
 
@@ -194,8 +194,8 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
                 .expiresAt(futureTime)
                 .build();
 
-        entityManager.persist(expiredToken);
-        entityManager.persist(validToken);
+        persistRefreshToken(expiredToken);
+        persistRefreshToken(validToken);
         entityManager.flush();
         entityManager.clear();
 
@@ -221,7 +221,7 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
                 .revokedAt(Instant.now())
                 .replacedByTokenHash("token_hash_replacement")
                 .build();
-        entityManager.persist(revokedToken);
+        persistRefreshToken(revokedToken);
         entityManager.flush();
         entityManager.clear();
 
@@ -235,7 +235,7 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
                 .familyId(familyId)
                 .expiresAt(Instant.now().plusSeconds(300))
                 .build();
-        entityManager.persist(activeToken);
+        persistRefreshToken(activeToken);
         entityManager.flush();
         entityManager.clear();
 
@@ -254,7 +254,7 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
                 .familyId(familyId)
                 .expiresAt(Instant.now().minusSeconds(10)) // expired in the past
                 .build();
-        entityManager.persist(expiredToken);
+        persistRefreshToken(expiredToken);
         entityManager.flush();
         entityManager.clear();
 
@@ -272,12 +272,12 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
                 .familyId(UUID.randomUUID())
                 .expiresAt(Instant.now().plusSeconds(300))
                 .build();
-        entityManager.persist(token);
+        persistRefreshToken(token);
         entityManager.flush();
 
         Instant now = Instant.now();
         token.revoke(now, replacementHash);
-        entityManager.persist(token);
+        persistRefreshToken(token);
         entityManager.flush();
         entityManager.clear();
 
@@ -311,8 +311,8 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
                 .replacedByTokenHash("token_active_in_fam")
                 .build();
 
-        entityManager.persist(activeToken);
-        entityManager.persist(revokedToken);
+        persistRefreshToken(activeToken);
+        persistRefreshToken(revokedToken);
         entityManager.flush();
         entityManager.clear();
 
@@ -353,7 +353,7 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
                 .familyId(UUID.randomUUID())
                 .expiresAt(Instant.now().plusSeconds(300))
                 .build();
-        entityManager.persist(token);
+        persistRefreshToken(token);
         entityManager.flush();
         entityManager.clear();
 
@@ -380,8 +380,8 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
                 .expiresAt(Instant.now().plusSeconds(300))
                 .build();
 
-        entityManager.persist(token1);
-        entityManager.persist(token2);
+        persistRefreshToken(token1);
+        persistRefreshToken(token2);
         entityManager.flush();
         entityManager.clear();
 
@@ -507,9 +507,9 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
                     .familyId(UUID.randomUUID())
                     .expiresAt(Instant.now().plusSeconds(300))
                     .build();
-            entityManager.persist(token2);
-            entityManager.persist(token1);
-            entityManager.persist(token3);
+            persistRefreshToken(token2);
+            persistRefreshToken(token1);
+            persistRefreshToken(token3);
             entityManager.flush();
         });
 
@@ -537,10 +537,10 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
         txTemplate.executeWithoutResult(status -> {
             Instant past = Instant.now().minusSeconds(60);
             Instant future = Instant.now().plusSeconds(300);
-
+ 
             // Create 3 expired tokens
             for (int i = 0; i < 3; i++) {
-                entityManager.persist(RefreshToken.builder()
+                persistRefreshToken(RefreshToken.builder()
                         .userId(testUserId)
                         .tokenHash("expired-hash-" + i)
                         .familyId(UUID.randomUUID())
@@ -548,7 +548,7 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
                         .build());
             }
             // Create 1 active token
-            entityManager.persist(RefreshToken.builder()
+            persistRefreshToken(RefreshToken.builder()
                     .userId(testUserId)
                     .tokenHash("active-hash")
                     .familyId(UUID.randomUUID())
@@ -609,8 +609,8 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
                     .familyId(UUID.randomUUID())
                     .expiresAt(Instant.now().minusSeconds(10))
                     .build();
-            entityManager.persist(t1);
-            entityManager.persist(t2);
+            persistRefreshToken(t1);
+            persistRefreshToken(t2);
             entityManager.flush();
             return t1.getId();
         });
@@ -665,5 +665,16 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
 
         // 4. Verify only 1 token was deleted because tokenId1 was locked and skipped
         assertEquals(1, deletedCount.get());
+    }
+
+    private void persistRefreshToken(RefreshToken token) {
+        entityManager.createNativeQuery(
+                "INSERT INTO refresh_token_families (id, user_id, created_at, updated_at) " +
+                "VALUES (:id, :userId, NOW(), NOW()) " +
+                "ON CONFLICT (id) DO NOTHING")
+                .setParameter("id", token.getFamilyId())
+                .setParameter("userId", token.getUserId())
+                .executeUpdate();
+        entityManager.persist(token);
     }
 }

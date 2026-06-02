@@ -6,6 +6,8 @@ import com.shopee.monolith.modules.auth.config.JwtProperties;
 import com.shopee.monolith.modules.auth.dto.internal.IssuedTokenPair;
 import com.shopee.monolith.modules.auth.dto.internal.RotationResult;
 import com.shopee.monolith.modules.auth.entity.RefreshToken;
+import com.shopee.monolith.modules.auth.entity.RefreshTokenFamily;
+import com.shopee.monolith.modules.auth.repository.RefreshTokenFamilyRepository;
 import com.shopee.monolith.modules.auth.repository.RefreshTokenRepository;
 import com.shopee.monolith.modules.auth.security.JwtTokenProvider;
 import com.shopee.monolith.modules.auth.security.RefreshTokenGenerator;
@@ -25,6 +27,7 @@ import java.util.UUID;
 public class RefreshTokenRotationWorker {
 
     private final RefreshTokenRepository refreshTokenRepository;
+    private final RefreshTokenFamilyRepository familyRepository;
     private final RefreshTokenGenerator refreshTokenGenerator;
     private final JwtProperties jwtProperties;
     private final UserService userService;
@@ -37,7 +40,15 @@ public class RefreshTokenRotationWorker {
         UUID familyId = refreshTokenRepository.findFamilyIdByTokenHash(tokenHash)
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_TOKEN));
 
-        // Lock the entire family stably in order of token.id asc to unify locking protocol and prevent deadlocks
+        // 1. Lock parent family aggregate row first to prevent deadlocks and phantom inserts
+        RefreshTokenFamily family = familyRepository.findByIdForUpdate(familyId)
+                .orElseThrow(() -> new AppException(ErrorCode.INVALID_TOKEN));
+
+        if (family.getRevokedAt() != null) {
+            throw new AppException(ErrorCode.INVALID_TOKEN);
+        }
+
+        // 2. Load family tokens within locked scope
         java.util.List<RefreshToken> familyTokens = refreshTokenRepository.findAllByFamilyIdForUpdate(familyId);
 
         // Find the fresh/updated state of currentToken from the locked list
@@ -49,6 +60,9 @@ public class RefreshTokenRotationWorker {
         Instant now = clock.instant();
 
         if (lockedCurrentToken.getRevokedAt() != null) {
+            // Token theft/reuse detected! Revoke parent family row and all active child tokens
+            family.revoke(now);
+            familyRepository.save(family);
             refreshTokenRepository.revokeActiveTokensInFamily(familyId, now);
             return new RotationResult.ReuseDetected();
         }

@@ -12,6 +12,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -28,7 +29,12 @@ class JwtTokenProviderTest {
     @BeforeEach
     void setUp() {
         jwtProperties = new JwtProperties();
-        jwtProperties.setSecret(VALID_SECRET);
+        jwtProperties.setIssuer("shoppe-monolith");
+        jwtProperties.setAudience("shoppe-web-client");
+        JwtProperties.KeyRingProperties keyRing = new JwtProperties.KeyRingProperties();
+        keyRing.setActiveKeyId("key-v1");
+        keyRing.setKeys(Map.of("key-v1", VALID_SECRET));
+        jwtProperties.setKeyRing(keyRing);
         jwtProperties.setExpiration(Duration.ofMinutes(10));
         jwtProperties.setRefreshExpiration(Duration.ofDays(7));
 
@@ -69,7 +75,10 @@ class JwtTokenProviderTest {
     void parseTokenWithBlankJtiShouldThrowInvalidTokenException() {
         UUID userId = UUID.randomUUID();
         String tokenWithBlankJti = io.jsonwebtoken.Jwts.builder()
+                .header().keyId("key-v1").and()
                 .subject(userId.toString())
+                .issuer("shoppe-monolith")
+                .audience().add("shoppe-web-client").and()
                 .claim("role", Role.BUYER.name())
                 .id("   ")
                 .issuedAt(java.util.Date.from(clock.instant()))
@@ -123,18 +132,28 @@ class JwtTokenProviderTest {
     @Test
     void secretTooShortShouldBeRejectedOnInstantiation() {
         JwtProperties shortSecretProps = new JwtProperties();
-        shortSecretProps.setSecret("too-short");
+        shortSecretProps.setIssuer("shoppe-monolith");
+        shortSecretProps.setAudience("shoppe-web-client");
+        JwtProperties.KeyRingProperties keyRing = new JwtProperties.KeyRingProperties();
+        keyRing.setActiveKeyId("key-v1");
+        keyRing.setKeys(Map.of("key-v1", "too-short"));
+        shortSecretProps.setKeyRing(keyRing);
         shortSecretProps.setExpiration(Duration.ofMinutes(10));
         shortSecretProps.setRefreshExpiration(Duration.ofDays(7));
 
-        assertThrows(IllegalArgumentException.class, () -> new JwtTokenProvider(shortSecretProps, clock));
+        assertThrows(io.jsonwebtoken.security.WeakKeyException.class, () -> new JwtTokenProvider(shortSecretProps, clock));
     }
 
     @Test
     void generateWithLongSecretShouldEnforceHs256() {
         String longSecret = "very-long-secret-key-that-exceeds-sixty-four-bytes-to-make-sure-jjwt-does-not-auto-choose-hs512-or-hs384-by-default";
         JwtProperties longSecretProps = new JwtProperties();
-        longSecretProps.setSecret(longSecret);
+        longSecretProps.setIssuer("shoppe-monolith");
+        longSecretProps.setAudience("shoppe-web-client");
+        JwtProperties.KeyRingProperties keyRing = new JwtProperties.KeyRingProperties();
+        keyRing.setActiveKeyId("key-v1");
+        keyRing.setKeys(Map.of("key-v1", longSecret));
+        longSecretProps.setKeyRing(keyRing);
         longSecretProps.setExpiration(Duration.ofMinutes(10));
         longSecretProps.setRefreshExpiration(Duration.ofDays(7));
         JwtTokenProvider providerWithLongSecret = new JwtTokenProvider(longSecretProps, clock);
@@ -143,7 +162,7 @@ class JwtTokenProviderTest {
         assertNotNull(token);
 
         io.jsonwebtoken.Jws<io.jsonwebtoken.Claims> jws = io.jsonwebtoken.Jwts.parser()
-                .verifyWith(io.jsonwebtoken.security.Keys.hmacShaKeyFor(longSecret.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                .keyLocator(header -> io.jsonwebtoken.security.Keys.hmacShaKeyFor(longSecret.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
                 .clock(() -> java.util.Date.from(clock.instant()))
                 .build()
                 .parseSignedClaims(token);
@@ -154,7 +173,10 @@ class JwtTokenProviderTest {
     void parseTokenWithUnsupportedAlgorithmShouldThrowInvalidTokenException() {
         UUID userId = UUID.randomUUID();
         String tokenSignedWithHs512 = io.jsonwebtoken.Jwts.builder()
+                .header().keyId("key-v1").and()
                 .subject(userId.toString())
+                .issuer("shoppe-monolith")
+                .audience().add("shoppe-web-client").and()
                 .claim("role", Role.BUYER.name())
                 .id(UUID.randomUUID().toString())
                 .issuedAt(java.util.Date.from(clock.instant()))

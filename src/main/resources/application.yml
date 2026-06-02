@@ -42,10 +42,10 @@ spring:
     open-in-view: false                            # Tắt OSIV — tránh lazy loading ngoài transaction (N+1 ẩn)
     properties:
       hibernate:
+        order_inserts: true
+        order_updates: true
         jdbc:
           batch_size: 30
-          order_inserts: true
-          order_updates: true
         format_sql: false
 
   security:
@@ -97,9 +97,14 @@ management:
         enabled: true
 
 jwt:
-  secret: ${JWT_SECRET}                            # Không có default — phải set qua env
+  issuer: ${JWT_ISSUER:shoppe-monolith}
+  audience: ${JWT_AUDIENCE:shoppe-web-client}
   expiration: 10m                                  # 10 phút — Access Token
   refresh-expiration: 7d                           # 7 ngày — Refresh Token
+  key-ring:
+    active-key-id: key-v1
+    keys:
+      key-v1: ${JWT_SECRET:this-is-a-very-secure-secret-key-minimum-32-bytes-v1}
 
 app:
   payment:

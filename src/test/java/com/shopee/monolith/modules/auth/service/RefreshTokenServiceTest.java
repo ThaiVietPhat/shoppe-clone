@@ -5,6 +5,8 @@ import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.modules.auth.config.JwtProperties;
 import com.shopee.monolith.modules.auth.dto.internal.IssuedTokenPair;
 import com.shopee.monolith.modules.auth.entity.RefreshToken;
+import com.shopee.monolith.modules.auth.entity.RefreshTokenFamily;
+import com.shopee.monolith.modules.auth.repository.RefreshTokenFamilyRepository;
 import com.shopee.monolith.modules.auth.repository.RefreshTokenRepository;
 import com.shopee.monolith.modules.auth.security.JwtTokenProvider;
 import com.shopee.monolith.modules.auth.security.RefreshTokenGenerator;
@@ -52,6 +54,9 @@ class RefreshTokenServiceTest {
     @Mock
     private UserService userService;
 
+    @Mock
+    private RefreshTokenFamilyRepository familyRepository;
+
     private JwtProperties jwtProperties;
     private Clock clock;
     private RefreshTokenService refreshTokenService;
@@ -61,14 +66,28 @@ class RefreshTokenServiceTest {
     @BeforeEach
     void setUp() {
         jwtProperties = new JwtProperties();
-        jwtProperties.setSecret("super-secret-key-that-is-at-least-64-bytes-long-for-testing-all-algorithms");
+        jwtProperties.setIssuer("shoppe-monolith");
+        jwtProperties.setAudience("shoppe-web-client");
+        JwtProperties.KeyRingProperties keyRing = new JwtProperties.KeyRingProperties();
+        keyRing.setActiveKeyId("key-v1");
+        keyRing.setKeys(java.util.Map.of("key-v1", "super-secret-key-that-is-at-least-64-bytes-long-for-testing-all-algorithms"));
+        jwtProperties.setKeyRing(keyRing);
         jwtProperties.setExpiration(Duration.ofMinutes(10));
         jwtProperties.setRefreshExpiration(Duration.ofDays(7));
 
         clock = Clock.fixed(fixedInstant, ZoneId.of("UTC"));
 
+        org.mockito.Mockito.lenient().when(familyRepository.findByIdForUpdate(any(UUID.class))).thenAnswer(invocation -> {
+            UUID id = invocation.getArgument(0);
+            return Optional.of(RefreshTokenFamily.builder()
+                    .id(id)
+                    .userId(UUID.randomUUID())
+                    .build());
+        });
+
         RefreshTokenRotationWorker worker = new RefreshTokenRotationWorker(
                 refreshTokenRepository,
+                familyRepository,
                 refreshTokenGenerator,
                 jwtProperties,
                 userService,
@@ -78,6 +97,8 @@ class RefreshTokenServiceTest {
 
         refreshTokenService = new RefreshTokenService(
                 refreshTokenRepository,
+                familyRepository,
+                userService,
                 jwtTokenProvider,
                 refreshTokenGenerator,
                 jwtProperties,
@@ -96,6 +117,13 @@ class RefreshTokenServiceTest {
         when(jwtTokenProvider.generateAccessToken(userId, Role.BUYER)).thenReturn(mockAccessToken);
         when(refreshTokenGenerator.generate()).thenReturn(mockRawRefreshToken);
         when(refreshTokenGenerator.hash(mockRawRefreshToken)).thenReturn(mockHashedRefreshToken);
+        when(familyRepository.save(any(RefreshTokenFamily.class))).thenAnswer(invocation -> {
+            RefreshTokenFamily f = invocation.getArgument(0);
+            return RefreshTokenFamily.builder()
+                    .id(UUID.randomUUID())
+                    .userId(f.getUserId())
+                    .build();
+        });
 
         IssuedTokenPair tokenPair = refreshTokenService.issueTokenPair(userId, Role.BUYER);
 

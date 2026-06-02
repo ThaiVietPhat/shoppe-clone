@@ -20,5 +20,7 @@ public interface UserService {
     UserResponse registerUser(RegisterUserCommand command);
 
     void activateUser(UUID userId);
+
+    void lockUser(UUID userId);
 }
 

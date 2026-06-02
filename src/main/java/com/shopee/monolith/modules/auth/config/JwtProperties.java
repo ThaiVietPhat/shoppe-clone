@@ -2,6 +2,7 @@ package com.shopee.monolith.modules.auth.config;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -11,6 +12,7 @@ import org.springframework.validation.annotation.Validated;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Map;
 
 @Configuration
 @ConfigurationProperties(prefix = "jwt")
@@ -20,7 +22,10 @@ import java.time.Duration;
 public class JwtProperties {
 
     @NotBlank
-    private String secret;
+    private String issuer;
+
+    @NotBlank
+    private String audience;
 
     @NotNull
     private Duration expiration;
@@ -28,16 +33,34 @@ public class JwtProperties {
     @NotNull
     private Duration refreshExpiration;
 
+    @NotNull
+    private KeyRingProperties keyRing = new KeyRingProperties();
+
+    @Getter
+    @Setter
+    public static class KeyRingProperties {
+        @NotBlank
+        private String activeKeyId;
+        @NotEmpty
+        private Map<String, String> keys;
+    }
+
     @PostConstruct
     public void validateProperties() {
-        if (secret != null && secret.getBytes(StandardCharsets.UTF_8).length < 32) {
-            throw new IllegalStateException("JWT secret must be at least 32 bytes (256 bits) for HS256");
-        }
         if (expiration == null || expiration.isNegative() || expiration.isZero()) {
             throw new IllegalStateException("JWT expiration must be greater than zero");
         }
         if (refreshExpiration == null || refreshExpiration.isNegative() || refreshExpiration.isZero()) {
             throw new IllegalStateException("JWT refresh expiration must be greater than zero");
+        }
+        String activeKey = keyRing.getKeys().get(keyRing.getActiveKeyId());
+        if (activeKey == null || activeKey.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalStateException("Active key value must exist and be at least 32 bytes");
+        }
+        for (Map.Entry<String, String> entry : keyRing.getKeys().entrySet()) {
+            if (entry.getValue() != null && entry.getValue().getBytes(StandardCharsets.UTF_8).length < 32) {
+                throw new IllegalStateException("Key " + entry.getKey() + " must be at least 32 bytes");
+            }
         }
     }
 }

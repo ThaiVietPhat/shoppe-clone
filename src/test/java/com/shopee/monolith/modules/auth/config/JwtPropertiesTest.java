@@ -16,7 +16,12 @@ class JwtPropertiesTest {
     @BeforeEach
     void setUp() {
         jwtProperties = new JwtProperties();
-        jwtProperties.setSecret("super-secret-key-that-is-at-least-32-bytes-long");
+        jwtProperties.setIssuer("shoppe-monolith");
+        jwtProperties.setAudience("shoppe-web-client");
+        JwtProperties.KeyRingProperties keyRing = new JwtProperties.KeyRingProperties();
+        keyRing.setActiveKeyId("key-v1");
+        keyRing.setKeys(new java.util.HashMap<>(java.util.Map.of("key-v1", "super-secret-key-that-is-at-least-32-bytes-long")));
+        jwtProperties.setKeyRing(keyRing);
         jwtProperties.setExpiration(Duration.ofMinutes(10));
         jwtProperties.setRefreshExpiration(Duration.ofDays(7));
     }
@@ -28,10 +33,10 @@ class JwtPropertiesTest {
 
     @Test
     void validatePropertiesShouldThrowIfSecretIsTooShort() {
-        jwtProperties.setSecret("too-short");
+        jwtProperties.getKeyRing().getKeys().put("key-v1", "too-short");
         IllegalStateException exception = assertThrows(IllegalStateException.class,
                 () -> jwtProperties.validateProperties());
-        assertEquals("JWT secret must be at least 32 bytes (256 bits) for HS256", exception.getMessage());
+        assertEquals("Active key value must exist and be at least 32 bytes", exception.getMessage());
     }
 
     @Test

@@ -37,18 +37,28 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .csrf(csrf -> csrf
-                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-                        .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
-                        .ignoringRequestMatchers(request -> !request.getRequestURI().startsWith("/api/auth"))
-                )
+                .csrf(csrf -> {
+                    CookieCsrfTokenRepository tokenRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+                    tokenRepository.setCookieName(properties.getCsrf().getCookieName());
+                    tokenRepository.setHeaderName(properties.getCsrf().getHeaderName());
+                    csrf
+                            .csrfTokenRepository(tokenRepository)
+                            .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
+                            .ignoringRequestMatchers(request -> !request.getRequestURI().startsWith("/api/auth"));
+                })
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
                 .logout(logout -> logout.disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/actuator/health", "/actuator/health/liveness", "/actuator/health/readiness").permitAll()
+                        .requestMatchers(
+                                "/actuator/health",
+                                "/actuator/health/liveness",
+                                "/actuator/health/readiness",
+                                "/actuator/prometheus"
+                        ).permitAll()
+                        .requestMatchers("/actuator/**").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exceptions -> exceptions

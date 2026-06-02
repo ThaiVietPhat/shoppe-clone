@@ -37,14 +37,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
-        if (authHeader.length() <= BEARER_PREFIX.length() || !authHeader.startsWith(BEARER_PREFIX)) {
-            securityErrorWriter.writeError(response, ErrorCode.INVALID_TOKEN);
+        if (authHeader.length() <= BEARER_PREFIX.length()
+                || !authHeader.regionMatches(true, 0, BEARER_PREFIX, 0, BEARER_PREFIX.length())) {
+            if (isPublicAuthEndpoint(request)) {
+                filterChain.doFilter(request, response);
+            } else {
+                securityErrorWriter.writeError(response, ErrorCode.INVALID_TOKEN);
+            }
             return;
         }
 
         String token = authHeader.substring(BEARER_PREFIX.length()).trim();
         if (token.isEmpty()) {
-            securityErrorWriter.writeError(response, ErrorCode.INVALID_TOKEN);
+            if (isPublicAuthEndpoint(request)) {
+                filterChain.doFilter(request, response);
+            } else {
+                securityErrorWriter.writeError(response, ErrorCode.INVALID_TOKEN);
+            }
             return;
         }
 
@@ -58,7 +67,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             SecurityContextHolder.getContext().setAuthentication(authentication);
             filterChain.doFilter(request, response);
         } catch (AppException e) {
-            securityErrorWriter.writeError(response, e.getErrorCode());
+            if (isPublicAuthEndpoint(request)) {
+                filterChain.doFilter(request, response);
+            } else {
+                securityErrorWriter.writeError(response, e.getErrorCode());
+            }
         }
+    }
+
+    private boolean isPublicAuthEndpoint(HttpServletRequest request) {
+        String path = request.getServletPath();
+        if (path == null) {
+            path = request.getRequestURI();
+        }
+        return path != null && path.startsWith("/api/auth/") && !path.equals("/api/auth/logout-all");
     }
 }

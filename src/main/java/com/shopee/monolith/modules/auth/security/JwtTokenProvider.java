@@ -19,6 +19,8 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -27,24 +29,27 @@ public class JwtTokenProvider {
 
     private final JwtProperties jwtProperties;
     private final Clock clock;
-    private final SecretKey key;
+    private final Map<String, SecretKey> keys = new HashMap<>();
 
     public JwtTokenProvider(JwtProperties jwtProperties, Clock clock) {
         this.jwtProperties = jwtProperties;
         this.clock = clock;
-        byte[] secretBytes = jwtProperties.getSecret().getBytes(StandardCharsets.UTF_8);
-        if (secretBytes.length < 32) {
-            throw new IllegalArgumentException("JWT secret must be at least 32 bytes long for HS256");
+        for (Map.Entry<String, String> entry : jwtProperties.getKeyRing().getKeys().entrySet()) {
+            this.keys.put(entry.getKey(), Keys.hmacShaKeyFor(entry.getValue().getBytes(StandardCharsets.UTF_8)));
         }
-        this.key = Keys.hmacShaKeyFor(secretBytes);
     }
 
     public String generateAccessToken(UUID userId, Role role) {
         Instant now = clock.instant();
         Instant exp = now.plus(jwtProperties.getExpiration());
+        String activeKeyId = jwtProperties.getKeyRing().getActiveKeyId();
+        SecretKey key = keys.get(activeKeyId);
 
         return Jwts.builder()
+                .header().keyId(activeKeyId).and()
                 .subject(userId.toString())
+                .issuer(jwtProperties.getIssuer())
+                .audience().add(jwtProperties.getAudience()).and()
                 .claim("role", role.name())
                 .id(UUID.randomUUID().toString())
                 .issuedAt(Date.from(now))
@@ -59,14 +64,19 @@ public class JwtTokenProvider {
         }
         try {
             Jws<Claims> jws = Jwts.parser()
-                    .verifyWith(key)
+                    .keyLocator(header -> {
+                        String kid = (String) header.get("kid");
+                        if (kid == null) {
+                            return null;
+                        }
+                        return keys.get(kid);
+                    })
                     .clock(() -> Date.from(clock.instant()))
                     .build()
                     .parseSignedClaims(token);
 
             String alg = jws.getHeader().getAlgorithm();
             if (!"HS256".equals(alg)) {
-                log.debug("Rejected token signed with unsupported algorithm: {}", alg);
                 throw new AppException(ErrorCode.INVALID_TOKEN);
             }
 
@@ -77,28 +87,17 @@ public class JwtTokenProvider {
             String jti = claims.getId();
             Date iat = claims.getIssuedAt();
             Date exp = claims.getExpiration();
+            String iss = claims.getIssuer();
+            var auds = claims.getAudience();
 
-            if (sub == null || roleStr == null || jti == null || jti.isBlank() || iat == null || exp == null) {
-                log.debug("Token is missing or has blank required claims: sub={}, role={}, jti={}, iat={}, exp={}",
-                        sub, roleStr, jti, iat, exp);
+            if (sub == null || roleStr == null || jti == null || jti.isBlank() || iat == null || exp == null
+                    || !jwtProperties.getIssuer().equals(iss)
+                    || auds == null || !auds.contains(jwtProperties.getAudience())) {
                 throw new AppException(ErrorCode.INVALID_TOKEN);
             }
 
-            UUID userId;
-            try {
-                userId = UUID.fromString(sub);
-            } catch (IllegalArgumentException e) {
-                log.debug("Token sub claim is not a valid UUID: {}", sub);
-                throw new AppException(ErrorCode.INVALID_TOKEN);
-            }
-
-            Role role;
-            try {
-                role = Role.valueOf(roleStr);
-            } catch (IllegalArgumentException e) {
-                log.debug("Token role claim is not a valid Role: {}", roleStr);
-                throw new AppException(ErrorCode.INVALID_TOKEN);
-            }
+            UUID userId = UUID.fromString(sub);
+            Role role = Role.valueOf(roleStr);
 
             return AccessTokenClaims.builder()
                     .userId(userId)
@@ -109,7 +108,7 @@ public class JwtTokenProvider {
                     .build();
 
         } catch (JwtException | IllegalArgumentException e) {
-            log.debug("Failed to parse access token: {}", e.getMessage());
+            // Refrain from logging keys or client stack traces
             throw new AppException(ErrorCode.INVALID_TOKEN);
         }
     }
