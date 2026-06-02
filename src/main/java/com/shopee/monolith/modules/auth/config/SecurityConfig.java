@@ -51,12 +51,18 @@ public class SecurityConfig {
                 .httpBasic(basic -> basic.disable())
                 .logout(logout -> logout.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers(
+                                "/api/auth/login",
+                                "/api/auth/refresh",
+                                "/api/auth/logout",
+                                "/api/auth/logout-all",
+                                "/api/auth/csrf",
+                                "/api/auth/test-public"
+                        ).permitAll()
                         .requestMatchers(
                                 "/actuator/health",
                                 "/actuator/health/liveness",
-                                "/actuator/health/readiness",
-                                "/actuator/prometheus"
+                                "/actuator/health/readiness"
                         ).permitAll()
                         .requestMatchers("/actuator/**").hasRole("ADMIN")
                         .anyRequest().authenticated()

@@ -36,6 +36,9 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
     private RefreshTokenRepository refreshTokenRepository;
 
     @Autowired
+    private RefreshTokenFamilyRepository refreshTokenFamilyRepository;
+
+    @Autowired
     private EntityManager entityManager;
 
     @Autowired
@@ -676,5 +679,202 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
                 .setParameter("userId", token.getUserId())
                 .executeUpdate();
         entityManager.persist(token);
+    }
+
+    @Test
+    void deleteExpiredFamiliesBatchShouldDeleteOnlyExpiredFamiliesAndCaptureEmptyFamilies() {
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        txTemplate.setPropagationBehavior(TransactionTemplate.PROPAGATION_REQUIRES_NEW);
+
+        // 1. Create a clean user specifically for this test
+        UUID committedUserId = txTemplate.execute(status -> {
+            User user = User.builder()
+                    .email("family-cleanup." + UUID.randomUUID() + "@example.com")
+                    .passwordHash("hash")
+                    .build();
+            entityManager.persist(user);
+            entityManager.flush();
+            return user.getId();
+        });
+
+        UUID expFamilyIdWithTokens = UUID.randomUUID();
+        UUID expFamilyIdNoTokens = UUID.randomUUID();
+        UUID activeFamilyIdWithTokens = UUID.randomUUID();
+        UUID activeFamilyIdNoTokens = UUID.randomUUID();
+
+        Instant past = Instant.now().minusSeconds(300);
+        Instant future = Instant.now().plusSeconds(300);
+
+        txTemplate.executeWithoutResult(status -> {
+            // A. Family with expired tokens: created in the past, token expired in the past
+            entityManager.createNativeQuery(
+                    "INSERT INTO refresh_token_families (id, user_id, created_at, updated_at) " +
+                    "VALUES (:id, :userId, :createdAt, :createdAt)")
+                    .setParameter("id", expFamilyIdWithTokens)
+                    .setParameter("userId", committedUserId)
+                    .setParameter("createdAt", java.sql.Timestamp.from(past))
+                    .executeUpdate();
+
+            RefreshToken tokenExp = RefreshToken.builder()
+                    .userId(committedUserId)
+                    .tokenHash("exp-token-hash-1")
+                    .familyId(expFamilyIdWithTokens)
+                    .expiresAt(past.plusSeconds(60))
+                    .build();
+            entityManager.persist(tokenExp);
+
+            // B. Family with no tokens: created in the past, expired
+            entityManager.createNativeQuery(
+                    "INSERT INTO refresh_token_families (id, user_id, created_at, updated_at) " +
+                    "VALUES (:id, :userId, :createdAt, :createdAt)")
+                    .setParameter("id", expFamilyIdNoTokens)
+                    .setParameter("userId", committedUserId)
+                    .setParameter("createdAt", java.sql.Timestamp.from(past))
+                    .executeUpdate();
+
+            // C. Family with active tokens: created in the past, but has active token
+            entityManager.createNativeQuery(
+                    "INSERT INTO refresh_token_families (id, user_id, created_at, updated_at) " +
+                    "VALUES (:id, :userId, :createdAt, :createdAt)")
+                    .setParameter("id", activeFamilyIdWithTokens)
+                    .setParameter("userId", committedUserId)
+                    .setParameter("createdAt", java.sql.Timestamp.from(past))
+                    .executeUpdate();
+
+            RefreshToken tokenActive = RefreshToken.builder()
+                    .userId(committedUserId)
+                    .tokenHash("active-token-hash-1")
+                    .familyId(activeFamilyIdWithTokens)
+                    .expiresAt(future)
+                    .build();
+            entityManager.persist(tokenActive);
+
+            // D. Family with no tokens: created recently, NOT expired
+            entityManager.createNativeQuery(
+                    "INSERT INTO refresh_token_families (id, user_id, created_at, updated_at) " +
+                    "VALUES (:id, :userId, :createdAt, :createdAt)")
+                    .setParameter("id", activeFamilyIdNoTokens)
+                    .setParameter("userId", committedUserId)
+                    .setParameter("createdAt", java.sql.Timestamp.from(future))
+                    .executeUpdate();
+
+            entityManager.flush();
+        });
+
+        // 2. Perform cleanup with batchSize of 10
+        int deleted = txTemplate.execute(status -> {
+            return refreshTokenFamilyRepository.deleteExpiredFamiliesBatch(Instant.now(), 10);
+        });
+
+        // We expect A and B to be deleted. So deleted count should be 2.
+        assertEquals(2, deleted);
+
+        // Verify state
+        txTemplate.executeWithoutResult(status -> {
+            assertFalse(refreshTokenFamilyRepository.findById(expFamilyIdWithTokens).isPresent());
+            assertFalse(refreshTokenFamilyRepository.findById(expFamilyIdNoTokens).isPresent());
+            assertTrue(refreshTokenFamilyRepository.findById(activeFamilyIdWithTokens).isPresent());
+            assertTrue(refreshTokenFamilyRepository.findById(activeFamilyIdNoTokens).isPresent());
+        });
+
+        // Cleanup DB
+        txTemplate.executeWithoutResult(status -> {
+            entityManager.createQuery("delete from RefreshToken t where t.userId = :userId")
+                    .setParameter("userId", committedUserId)
+                    .executeUpdate();
+            entityManager.createQuery("delete from RefreshTokenFamily f where f.userId = :userId")
+                    .setParameter("userId", committedUserId)
+                    .executeUpdate();
+            entityManager.createQuery("delete from User u where u.id = :id")
+                    .setParameter("id", committedUserId)
+                    .executeUpdate();
+        });
+    }
+
+    @Test
+    void deleteExpiredFamiliesBatchShouldSkipLocked() throws Exception {
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        txTemplate.setPropagationBehavior(TransactionTemplate.PROPAGATION_REQUIRES_NEW);
+
+        UUID committedUserId = txTemplate.execute(status -> {
+            User user = User.builder()
+                    .email("family-skip." + UUID.randomUUID() + "@example.com")
+                    .passwordHash("hash")
+                    .build();
+            entityManager.persist(user);
+            entityManager.flush();
+            return user.getId();
+        });
+
+        UUID expFamilyId1 = UUID.randomUUID();
+        UUID expFamilyId2 = UUID.randomUUID();
+        Instant past = Instant.now().minusSeconds(300);
+
+        txTemplate.executeWithoutResult(status -> {
+            // Expired family 1
+            entityManager.createNativeQuery(
+                    "INSERT INTO refresh_token_families (id, user_id, created_at, updated_at) " +
+                    "VALUES (:id, :userId, :createdAt, :createdAt)")
+                    .setParameter("id", expFamilyId1)
+                    .setParameter("userId", committedUserId)
+                    .setParameter("createdAt", java.sql.Timestamp.from(past))
+                    .executeUpdate();
+
+            // Expired family 2
+            entityManager.createNativeQuery(
+                    "INSERT INTO refresh_token_families (id, user_id, created_at, updated_at) " +
+                    "VALUES (:id, :userId, :createdAt, :createdAt)")
+                    .setParameter("id", expFamilyId2)
+                    .setParameter("userId", committedUserId)
+                    .setParameter("createdAt", java.sql.Timestamp.from(past))
+                    .executeUpdate();
+
+            entityManager.flush();
+        });
+
+        java.util.concurrent.CountDownLatch lockAcquiredLatch = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch deleteCompletedLatch = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicInteger deletedCount = new java.util.concurrent.atomic.AtomicInteger(-1);
+
+        // Thread 1: Acquire pessimistic write lock on expFamilyId1 and hold it
+        Thread thread = new Thread(() -> {
+            txTemplate.execute(status -> {
+                refreshTokenFamilyRepository.findByIdForUpdate(expFamilyId1);
+                lockAcquiredLatch.countDown();
+                try {
+                    deleteCompletedLatch.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return null;
+            });
+        });
+        thread.start();
+
+        try {
+            lockAcquiredLatch.await();
+
+            // Main Thread: Try to clean up expired families
+            txTemplate.executeWithoutResult(status -> {
+                int deleted = refreshTokenFamilyRepository.deleteExpiredFamiliesBatch(Instant.now(), 10);
+                deletedCount.set(deleted);
+            });
+        } finally {
+            deleteCompletedLatch.countDown();
+            thread.join();
+
+            // Cleanup DB
+            txTemplate.executeWithoutResult(status -> {
+                entityManager.createQuery("delete from RefreshTokenFamily f where f.userId = :userId")
+                        .setParameter("userId", committedUserId)
+                        .executeUpdate();
+                entityManager.createQuery("delete from User u where u.id = :id")
+                        .setParameter("id", committedUserId)
+                        .executeUpdate();
+            });
+        }
+
+        // We expect expFamilyId1 (locked) was skipped, while expFamilyId2 was successfully deleted.
+        assertEquals(1, deletedCount.get());
     }
 }

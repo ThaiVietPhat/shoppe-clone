@@ -104,7 +104,7 @@ jwt:
   key-ring:
     active-key-id: key-v1
     keys:
-      key-v1: ${JWT_SECRET:this-is-a-very-secure-secret-key-minimum-32-bytes-v1}
+      key-v1: ${JWT_SECRET}
 
 app:
   payment:

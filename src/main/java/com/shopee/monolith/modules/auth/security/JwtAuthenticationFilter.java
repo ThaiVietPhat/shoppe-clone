@@ -80,6 +80,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (path == null) {
             path = request.getRequestURI();
         }
-        return path != null && path.startsWith("/api/auth/") && !path.equals("/api/auth/logout-all");
+        if (path == null) {
+            return false;
+        }
+        return path.equals("/api/auth/login")
+                || path.equals("/api/auth/refresh")
+                || path.equals("/api/auth/logout")
+                || path.equals("/api/auth/logout-all")
+                || path.equals("/api/auth/csrf")
+                || path.equals("/api/auth/test-public");
     }
 }

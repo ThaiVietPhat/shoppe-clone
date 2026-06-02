@@ -21,11 +21,18 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
+import com.shopee.monolith.modules.auth.entity.RefreshToken;
+import com.shopee.monolith.modules.auth.repository.RefreshTokenRepository;
+import java.time.Instant;
+
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 @AutoConfigureMockMvc
 @Import(SecurityIntegrationTest.TestSecurityController.class)
@@ -39,6 +46,18 @@ class SecurityIntegrationTest extends BasePostgresRedisIntegrationTest {
 
     @MockitoSpyBean
     private AccessTokenBlacklistService blacklistService;
+
+    @Autowired
+    private RefreshTokenRepository refreshTokenRepository;
+
+    @Autowired
+    private RefreshTokenGenerator refreshTokenGenerator;
+
+    @Autowired
+    private org.springframework.transaction.PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private jakarta.persistence.EntityManager entityManager;
 
     @AfterEach
     void tearDown() {
@@ -133,6 +152,94 @@ class SecurityIntegrationTest extends BasePostgresRedisIntegrationTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(403))
                 .andExpect(jsonPath("$.message").value(ErrorCode.FORBIDDEN.getMessage()));
+    }
+
+    @Test
+    void logoutWhenRedisUnavailableShouldNotBeBlockedByBlacklistFilterButRevokeDBAndReturn503() throws Exception {
+        org.springframework.transaction.support.TransactionTemplate txTemplate =
+                new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+
+        UUID userId = txTemplate.execute(status -> {
+            com.shopee.monolith.modules.user.entity.User user = com.shopee.monolith.modules.user.entity.User.builder()
+                    .email("redis-down-logout." + UUID.randomUUID() + "@example.com")
+                    .passwordHash("hash")
+                    .build();
+            entityManager.persist(user);
+            entityManager.flush();
+            return user.getId();
+        });
+
+        String rawRt = "redis-down-rt-1";
+        String rtHash = refreshTokenGenerator.hash(rawRt);
+        UUID familyId = UUID.randomUUID();
+
+        txTemplate.executeWithoutResult(status -> {
+            // Insert family and token
+            entityManager.createNativeQuery(
+                    "INSERT INTO refresh_token_families (id, user_id, created_at, updated_at) " +
+                    "VALUES (:id, :userId, NOW(), NOW())")
+                    .setParameter("id", familyId)
+                    .setParameter("userId", userId)
+                    .executeUpdate();
+
+            RefreshToken token = RefreshToken.builder()
+                    .userId(userId)
+                    .tokenHash(rtHash)
+                    .familyId(familyId)
+                    .expiresAt(Instant.now().plusSeconds(300))
+                    .build();
+            entityManager.persist(token);
+            entityManager.flush();
+        });
+
+        // Set up valid Bearer access token
+        String token = jwtTokenProvider.generateAccessToken(userId, Role.BUYER);
+
+        // Spy throw service unavailable when blacklisting JTI
+        doThrow(new AppException(ErrorCode.SERVICE_UNAVAILABLE))
+                .when(blacklistService).blacklist(any(AccessTokenClaims.class));
+
+        // Get CSRF cookie to bypass CSRF filter
+        org.springframework.test.web.servlet.MvcResult csrfResult = mockMvc.perform(get("/api/auth/csrf"))
+                .andExpect(status().isOk())
+                .andReturn();
+        var csrfCookie = csrfResult.getResponse().getCookie("XSRF-TOKEN");
+
+        // Request logout
+        var req = post("/api/auth/logout")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .cookie(new jakarta.servlet.http.Cookie("__Secure-refresh_token", rawRt));
+
+        if (csrfCookie != null) {
+            req.cookie(csrfCookie).header("X-XSRF-TOKEN", csrfCookie.getValue());
+        }
+
+        mockMvc.perform(req)
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value(503))
+                .andExpect(jsonPath("$.message").value(ErrorCode.SERVICE_UNAVAILABLE.getMessage()));
+
+        // Verify Postgres changes committed (tokens revoked)
+        txTemplate.executeWithoutResult(status -> {
+            java.util.List<RefreshToken> tokens = refreshTokenRepository.findAllByFamilyId(familyId);
+            assertFalse(tokens.isEmpty());
+            for (RefreshToken t : tokens) {
+                org.junit.jupiter.api.Assertions.assertNotNull(t.getRevokedAt());
+            }
+        });
+
+        // Clean up
+        txTemplate.executeWithoutResult(status -> {
+            entityManager.createQuery("delete from RefreshToken t where t.userId = :userId")
+                    .setParameter("userId", userId)
+                    .executeUpdate();
+            entityManager.createQuery("delete from RefreshTokenFamily f where f.userId = :userId")
+                    .setParameter("userId", userId)
+                    .executeUpdate();
+            entityManager.createQuery("delete from User u where u.id = :id")
+                    .setParameter("id", userId)
+                    .executeUpdate();
+        });
     }
 
     @RestController

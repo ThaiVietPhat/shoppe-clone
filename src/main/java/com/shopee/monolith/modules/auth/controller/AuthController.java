@@ -70,13 +70,11 @@ public class AuthController {
     @PostMapping("/logout")
     public ApiResponse<Void> logout(HttpServletRequest request, HttpServletResponse response) {
         String rawToken = getRefreshTokenFromCookiesOrNull(request);
-        if (rawToken != null) {
-            var auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth != null && auth.getPrincipal() instanceof AccessTokenClaims claims) {
-                revocationService.logout(rawToken, claims);
-            } else {
-                revocationService.logout(rawToken, null);
-            }
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof AccessTokenClaims claims) {
+            revocationService.logout(rawToken, claims);
+        } else if (rawToken != null) {
+            revocationService.logout(rawToken, null);
         }
         clearRefreshTokenCookie(response);
         return ApiResponse.success();

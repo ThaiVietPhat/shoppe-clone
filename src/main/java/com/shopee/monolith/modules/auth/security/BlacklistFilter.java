@@ -26,6 +26,15 @@ public class BlacklistFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
+        String path = request.getServletPath();
+        if (path == null) {
+            path = request.getRequestURI();
+        }
+        if (path != null && (path.equals("/api/auth/logout") || path.equals("/api/auth/logout-all"))) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
         if (authentication != null && authentication.isAuthenticated()

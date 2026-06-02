@@ -29,7 +29,7 @@ public class AsyncConfig implements AsyncConfigurer {
         executor.setThreadNamePrefix("event-async-");
         executor.setWaitForTasksToCompleteOnShutdown(true);   // Graceful shutdown — đợi task đang chạy
         executor.setAwaitTerminationSeconds(30);
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
         executor.initialize();
         return executor;
     }
@@ -41,6 +41,6 @@ public class AsyncConfig implements AsyncConfigurer {
     @Override
     public AsyncUncaughtExceptionHandler getAsyncUncaughtExceptionHandler() {
         return (ex, method, params) ->
-                log.error("[ASYNC ERROR] method={}, params={}", method.getName(), params, ex);
+                log.error("[ASYNC ERROR] method={}", method.getName(), ex);
     }
 }

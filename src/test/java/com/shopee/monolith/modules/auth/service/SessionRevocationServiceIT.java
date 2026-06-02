@@ -443,6 +443,54 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
         });
     }
 
+    @Test
+    void loginVsLogoutAllConcurrencyShouldNotDeadlock() throws Exception {
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        txTemplate.setPropagationBehavior(TransactionTemplate.PROPAGATION_REQUIRES_NEW);
+
+        java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(2);
+        java.util.concurrent.atomic.AtomicReference<Exception> loginError = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<Exception> logoutAllError = new java.util.concurrent.atomic.AtomicReference<>();
+
+        // Thread 1: Concurrent login/issueTokenPair
+        Thread tLogin = new Thread(() -> {
+            try {
+                barrier.await();
+                txTemplate.execute(status -> {
+                    refreshTokenService.issueTokenPair(userId1, com.shopee.monolith.modules.user.model.Role.BUYER);
+                    return null;
+                });
+            } catch (Exception e) {
+                loginError.set(e);
+            }
+        });
+
+        // Thread 2: Concurrent logoutAll
+        Thread tLogoutAll = new Thread(() -> {
+            try {
+                barrier.await();
+                sessionRevocationService.logoutAll(userId1);
+            } catch (Exception e) {
+                logoutAllError.set(e);
+            }
+        });
+
+        tLogin.setName("tLogin");
+        tLogoutAll.setName("tLogoutAll");
+        tLogin.start();
+        tLogoutAll.start();
+
+        awaitThreads(tLogin, tLogoutAll);
+
+        // Verify no deadlock or unhandled exception happened
+        if (loginError.get() != null) {
+            throw loginError.get();
+        }
+        if (logoutAllError.get() != null) {
+            throw logoutAllError.get();
+        }
+    }
+
     private void awaitThreads(Thread... threads) {
         for (Thread thread : threads) {
             try {

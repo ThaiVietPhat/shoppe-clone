@@ -30,10 +30,13 @@ public interface RefreshTokenFamilyRepository extends JpaRepository<RefreshToken
                    "WHERE id IN (" +
                    "    SELECT f.id " +
                    "    FROM refresh_token_families f " +
-                   "    JOIN refresh_tokens t ON t.family_id = f.id " +
-                   "    GROUP BY f.id " +
-                   "    HAVING MAX(t.expires_at) < :now " +
-                   "    ORDER BY MAX(t.expires_at) " +
+                   "    WHERE f.id IN (" +
+                   "        SELECT f2.id " +
+                   "        FROM refresh_token_families f2 " +
+                   "        LEFT JOIN refresh_tokens t ON t.family_id = f2.id " +
+                   "        GROUP BY f2.id " +
+                   "        HAVING COALESCE(MAX(t.expires_at), f2.created_at) < :now" +
+                   "    ) " +
                    "    LIMIT :batchSize " +
                    "    FOR UPDATE SKIP LOCKED" +
                    ")", nativeQuery = true)

@@ -188,6 +188,109 @@ class JwtTokenProviderTest {
         assertEquals(ErrorCode.INVALID_TOKEN, exception.getErrorCode());
     }
 
+    @Test
+    void parseTokenSignedWithPreviousKeyShouldBeAccepted() {
+        JwtProperties rotationProps = new JwtProperties();
+        rotationProps.setIssuer("shoppe-monolith");
+        rotationProps.setAudience("shoppe-web-client");
+        JwtProperties.KeyRingProperties keyRing = new JwtProperties.KeyRingProperties();
+        keyRing.setActiveKeyId("key-v2");
+        keyRing.setKeys(Map.of(
+                "key-v1", VALID_SECRET,
+                "key-v2", "another-very-long-secret-key-at-least-64-bytes-long"
+        ));
+        rotationProps.setKeyRing(keyRing);
+        rotationProps.setExpiration(Duration.ofMinutes(10));
+        rotationProps.setRefreshExpiration(Duration.ofDays(7));
+        JwtTokenProvider provider = new JwtTokenProvider(rotationProps, clock);
+
+        String tokenPreviousKey = io.jsonwebtoken.Jwts.builder()
+                .header().keyId("key-v1").and()
+                .subject(UUID.randomUUID().toString())
+                .issuer("shoppe-monolith")
+                .audience().add("shoppe-web-client").and()
+                .claim("role", Role.BUYER.name())
+                .id(UUID.randomUUID().toString())
+                .issuedAt(java.util.Date.from(clock.instant()))
+                .expiration(java.util.Date.from(clock.instant().plus(Duration.ofMinutes(10))))
+                .signWith(io.jsonwebtoken.security.Keys.hmacShaKeyFor(VALID_SECRET.getBytes(java.nio.charset.StandardCharsets.UTF_8)), io.jsonwebtoken.Jwts.SIG.HS256)
+                .compact();
+
+        AccessTokenClaims claims = provider.parseAccessToken(tokenPreviousKey);
+        assertNotNull(claims);
+    }
+
+    @Test
+    void parseTokenWithUnknownKidShouldThrowInvalidTokenException() {
+        String tokenUnknownKid = io.jsonwebtoken.Jwts.builder()
+                .header().keyId("key-unknown").and()
+                .subject(UUID.randomUUID().toString())
+                .issuer("shoppe-monolith")
+                .audience().add("shoppe-web-client").and()
+                .claim("role", Role.BUYER.name())
+                .id(UUID.randomUUID().toString())
+                .issuedAt(java.util.Date.from(clock.instant()))
+                .expiration(java.util.Date.from(clock.instant().plus(Duration.ofMinutes(10))))
+                .signWith(io.jsonwebtoken.security.Keys.hmacShaKeyFor(VALID_SECRET.getBytes(java.nio.charset.StandardCharsets.UTF_8)), io.jsonwebtoken.Jwts.SIG.HS256)
+                .compact();
+
+        AppException exception = assertThrows(AppException.class, () -> jwtTokenProvider.parseAccessToken(tokenUnknownKid));
+        assertEquals(ErrorCode.INVALID_TOKEN, exception.getErrorCode());
+    }
+
+    @Test
+    void parseTokenWithMissingKidShouldThrowInvalidTokenException() {
+        String tokenMissingKid = io.jsonwebtoken.Jwts.builder()
+                .subject(UUID.randomUUID().toString())
+                .issuer("shoppe-monolith")
+                .audience().add("shoppe-web-client").and()
+                .claim("role", Role.BUYER.name())
+                .id(UUID.randomUUID().toString())
+                .issuedAt(java.util.Date.from(clock.instant()))
+                .expiration(java.util.Date.from(clock.instant().plus(Duration.ofMinutes(10))))
+                .signWith(io.jsonwebtoken.security.Keys.hmacShaKeyFor(VALID_SECRET.getBytes(java.nio.charset.StandardCharsets.UTF_8)), io.jsonwebtoken.Jwts.SIG.HS256)
+                .compact();
+
+        AppException exception = assertThrows(AppException.class, () -> jwtTokenProvider.parseAccessToken(tokenMissingKid));
+        assertEquals(ErrorCode.INVALID_TOKEN, exception.getErrorCode());
+    }
+
+    @Test
+    void parseTokenWithWrongIssuerShouldThrowInvalidTokenException() {
+        String tokenWrongIssuer = io.jsonwebtoken.Jwts.builder()
+                .header().keyId("key-v1").and()
+                .subject(UUID.randomUUID().toString())
+                .issuer("wrong-issuer")
+                .audience().add("shoppe-web-client").and()
+                .claim("role", Role.BUYER.name())
+                .id(UUID.randomUUID().toString())
+                .issuedAt(java.util.Date.from(clock.instant()))
+                .expiration(java.util.Date.from(clock.instant().plus(Duration.ofMinutes(10))))
+                .signWith(io.jsonwebtoken.security.Keys.hmacShaKeyFor(VALID_SECRET.getBytes(java.nio.charset.StandardCharsets.UTF_8)), io.jsonwebtoken.Jwts.SIG.HS256)
+                .compact();
+
+        AppException exception = assertThrows(AppException.class, () -> jwtTokenProvider.parseAccessToken(tokenWrongIssuer));
+        assertEquals(ErrorCode.INVALID_TOKEN, exception.getErrorCode());
+    }
+
+    @Test
+    void parseTokenWithWrongAudienceShouldThrowInvalidTokenException() {
+        String tokenWrongAudience = io.jsonwebtoken.Jwts.builder()
+                .header().keyId("key-v1").and()
+                .subject(UUID.randomUUID().toString())
+                .issuer("shoppe-monolith")
+                .audience().add("wrong-audience").and()
+                .claim("role", Role.BUYER.name())
+                .id(UUID.randomUUID().toString())
+                .issuedAt(java.util.Date.from(clock.instant()))
+                .expiration(java.util.Date.from(clock.instant().plus(Duration.ofMinutes(10))))
+                .signWith(io.jsonwebtoken.security.Keys.hmacShaKeyFor(VALID_SECRET.getBytes(java.nio.charset.StandardCharsets.UTF_8)), io.jsonwebtoken.Jwts.SIG.HS256)
+                .compact();
+
+        AppException exception = assertThrows(AppException.class, () -> jwtTokenProvider.parseAccessToken(tokenWrongAudience));
+        assertEquals(ErrorCode.INVALID_TOKEN, exception.getErrorCode());
+    }
+
     private static class MutableClock extends Clock {
         private Instant now;
 

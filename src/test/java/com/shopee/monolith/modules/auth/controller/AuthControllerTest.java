@@ -179,6 +179,43 @@ class AuthControllerTest {
     }
 
     @Test
+    void logoutWhenCookieMissingButAuthenticatedShouldBlacklistAccessToken() throws Exception {
+        UUID userId = UUID.randomUUID();
+        AccessTokenClaims claims = AccessTokenClaims.builder()
+                .userId(userId)
+                .role(Role.BUYER)
+                .jti("jti-456")
+                .issuedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(60))
+                .build();
+
+        var auth = new UsernamePasswordAuthenticationToken(claims, null, List.of());
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        doNothing().when(revocationService).logout(eq(null), any(AccessTokenClaims.class));
+
+        mockMvc.perform(post("/api/auth/logout"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(cookie().maxAge("__Secure-refresh_token", 0))
+                .andExpect(cookie().value("__Secure-refresh_token", ""));
+
+        verify(revocationService).logout(null, claims);
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void logoutWhenCookieAndAuthenticationMissingShouldNotThrowAndClearCookie() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(null);
+
+        mockMvc.perform(post("/api/auth/logout"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(cookie().maxAge("__Secure-refresh_token", 0))
+                .andExpect(cookie().value("__Secure-refresh_token", ""));
+    }
+
+    @Test
     void logoutAllWhenAuthenticatedShouldRevokeAllAndClearCookie() throws Exception {
         UUID userId = UUID.randomUUID();
         AccessTokenClaims claims = AccessTokenClaims.builder()
