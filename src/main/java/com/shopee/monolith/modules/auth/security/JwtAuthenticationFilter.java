@@ -37,7 +37,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
-        if (!authHeader.startsWith(BEARER_PREFIX)) {
+        if (authHeader.length() <= BEARER_PREFIX.length() || !authHeader.startsWith(BEARER_PREFIX)) {
             securityErrorWriter.writeError(response, ErrorCode.INVALID_TOKEN);
             return;
         }
