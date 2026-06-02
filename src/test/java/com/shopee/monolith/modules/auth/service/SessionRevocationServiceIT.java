@@ -321,11 +321,12 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
             }
         });
 
+        tRotate.setName("tRotate");
+        tLogout.setName("tLogout");
         tRotate.start();
         tLogout.start();
 
-        tRotate.join();
-        tLogout.join();
+        awaitThreads(tRotate, tLogout);
 
         // Verify no deadlock exceptions or unexpected errors occurred
         if (logoutError.get() != null) {
@@ -404,11 +405,12 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
             }
         });
 
+        tRotate.setName("tRotateTombstoneVsActive");
+        tLogout.setName("tLogoutTombstoneVsActive");
         tRotate.start();
         tLogout.start();
 
-        tRotate.join();
-        tLogout.join();
+        awaitThreads(tRotate, tLogout);
 
         // Verify no deadlock exceptions or unexpected errors occurred
         if (logoutError.get() != null) {
@@ -428,5 +430,23 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
                     .anyMatch(t -> t.getRevokedAt() == null && t.getExpiresAt().isAfter(Instant.now()));
             assertFalse(hasActiveToken, "There should be no active refresh token left in the family!");
         });
+    }
+
+    private void awaitThreads(Thread... threads) {
+        for (Thread thread : threads) {
+            try {
+                thread.join(5000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        for (Thread thread : threads) {
+            if (thread.isAlive()) {
+                thread.interrupt();
+            }
+        }
+        for (Thread thread : threads) {
+            assertFalse(thread.isAlive(), thread.getName() + " thread did not finish within timeout");
+        }
     }
 }
