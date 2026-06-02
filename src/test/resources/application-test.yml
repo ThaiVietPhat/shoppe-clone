@@ -14,7 +14,5 @@ spring:
 jwt:
   expiration: 600000
   refresh-expiration: 604800000
-  key-ring:
-    active-key-id: key-v1
-    keys:
-      key-v1: test-secret-key-for-integration-tests-only-32chars
+  active-key-id: key-v1
+  active-secret: test-secret-key-for-integration-tests-only-32chars

@@ -87,7 +87,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 || path.equals("/api/auth/refresh")
                 || path.equals("/api/auth/logout")
                 || path.equals("/api/auth/logout-all")
-                || path.equals("/api/auth/csrf")
-                || path.equals("/api/auth/test-public");
+                || path.equals("/api/auth/csrf");
     }
 }

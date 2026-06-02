@@ -2,7 +2,6 @@ package com.shopee.monolith.modules.auth.config;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -33,15 +32,22 @@ public class JwtProperties {
     @NotNull
     private Duration refreshExpiration;
 
+    @NotBlank
+    private String activeKeyId;
+
+    @NotBlank
+    private String activeSecret;
+
+    private String previousKeyId;
+    private String previousSecret;
+
     @NotNull
     private KeyRingProperties keyRing = new KeyRingProperties();
 
     @Getter
     @Setter
     public static class KeyRingProperties {
-        @NotBlank
         private String activeKeyId;
-        @NotEmpty
         private Map<String, String> keys;
     }
 
@@ -53,14 +59,43 @@ public class JwtProperties {
         if (refreshExpiration == null || refreshExpiration.isNegative() || refreshExpiration.isZero()) {
             throw new IllegalStateException("JWT refresh expiration must be greater than zero");
         }
-        String activeKey = keyRing.getKeys().get(keyRing.getActiveKeyId());
-        if (activeKey == null || activeKey.getBytes(StandardCharsets.UTF_8).length < 32) {
-            throw new IllegalStateException("Active key value must exist and be at least 32 bytes");
-        }
-        for (Map.Entry<String, String> entry : keyRing.getKeys().entrySet()) {
-            if (entry.getValue() != null && entry.getValue().getBytes(StandardCharsets.UTF_8).length < 32) {
-                throw new IllegalStateException("Key " + entry.getKey() + " must be at least 32 bytes");
+
+        // If keyRing was set manually (e.g. in unit tests) and flat properties are blank, sync them
+        if ((activeKeyId == null || activeKeyId.isBlank()) && keyRing != null && keyRing.getActiveKeyId() != null) {
+            activeKeyId = keyRing.getActiveKeyId();
+            if (keyRing.getKeys() != null) {
+                activeSecret = keyRing.getKeys().get(activeKeyId);
             }
         }
+
+        if (activeKeyId == null || activeKeyId.isBlank()) {
+            throw new IllegalStateException("Active key ID must not be blank");
+        }
+        if (activeSecret == null || activeSecret.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalStateException("Active key value must exist and be at least 32 bytes");
+        }
+
+        keyRing.setActiveKeyId(activeKeyId);
+        Map<String, String> keysMap = new java.util.HashMap<>();
+        keysMap.put(activeKeyId, activeSecret);
+
+        if (previousKeyId != null && !previousKeyId.isBlank() && previousSecret != null && !previousSecret.isBlank()) {
+            if (previousSecret.getBytes(StandardCharsets.UTF_8).length < 32) {
+                throw new IllegalStateException("Key " + previousKeyId + " must be at least 32 bytes");
+            }
+            keysMap.put(previousKeyId, previousSecret);
+        } else if (keyRing != null && keyRing.getKeys() != null) {
+            // Sync any other keys that were set manually in the keyRing
+            for (Map.Entry<String, String> entry : keyRing.getKeys().entrySet()) {
+                if (!entry.getKey().equals(activeKeyId)) {
+                    if (entry.getValue() != null && entry.getValue().getBytes(StandardCharsets.UTF_8).length < 32) {
+                        throw new IllegalStateException("Key " + entry.getKey() + " must be at least 32 bytes");
+                    }
+                    keysMap.put(entry.getKey(), entry.getValue());
+                }
+            }
+        }
+
+        keyRing.setKeys(keysMap);
     }
 }

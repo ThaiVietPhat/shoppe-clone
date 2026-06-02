@@ -444,10 +444,11 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
         try {
             try {
                 java.util.List<java.util.concurrent.Future<Void>> futures = executor.invokeAll(
-                        java.util.Arrays.asList(task, task)
+                        java.util.Arrays.asList(task, task),
+                        5, java.util.concurrent.TimeUnit.SECONDS
                 );
                 for (java.util.concurrent.Future<Void> future : futures) {
-                    future.get();
+                    future.get(5, java.util.concurrent.TimeUnit.SECONDS);
                 }
 
                 // 4. Verify exactly one thread succeeded in rotating (producing RT2)
@@ -632,7 +633,9 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
 
                 lockAcquiredLatch.countDown();
                 try {
-                    deleteCompletedLatch.await();
+                    if (!deleteCompletedLatch.await(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                        System.err.println("Timeout waiting for deleteCompletedLatch in thread");
+                    }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
@@ -643,7 +646,9 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
 
         try {
             // Wait until Thread 1 holds the lock
-            lockAcquiredLatch.await();
+            if (!lockAcquiredLatch.await(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                throw new AssertionError("Timeout waiting for lock acquisition");
+            }
 
             // 3. Thread 2 (Main Thread): Try to clean up expired tokens batch
             txTemplate.executeWithoutResult(status -> {
@@ -653,7 +658,11 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
         } finally {
             // Release lock
             deleteCompletedLatch.countDown();
-            thread.join();
+            thread.join(5000);
+            if (thread.isAlive()) {
+                thread.interrupt();
+                thread.join(1000);
+            }
 
             // Cleanup DB state to prevent pollution
             txTemplate.executeWithoutResult(status -> {
@@ -842,7 +851,9 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
                 refreshTokenFamilyRepository.findByIdForUpdate(expFamilyId1);
                 lockAcquiredLatch.countDown();
                 try {
-                    deleteCompletedLatch.await();
+                    if (!deleteCompletedLatch.await(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                        System.err.println("Timeout waiting for deleteCompletedLatch in family thread");
+                    }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
@@ -852,7 +863,9 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
         thread.start();
 
         try {
-            lockAcquiredLatch.await();
+            if (!lockAcquiredLatch.await(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                throw new AssertionError("Timeout waiting for lock acquisition");
+            }
 
             // Main Thread: Try to clean up expired families
             txTemplate.executeWithoutResult(status -> {
@@ -861,7 +874,11 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
             });
         } finally {
             deleteCompletedLatch.countDown();
-            thread.join();
+            thread.join(5000);
+            if (thread.isAlive()) {
+                thread.interrupt();
+                thread.join(1000);
+            }
 
             // Cleanup DB
             txTemplate.executeWithoutResult(status -> {
@@ -876,5 +893,72 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
 
         // We expect expFamilyId1 (locked) was skipped, while expFamilyId2 was successfully deleted.
         assertEquals(1, deletedCount.get());
+    }
+
+    @Test
+    void insertTokenWithMismatchedUserIdAndFamilyIdShouldThrowException() {
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        txTemplate.setPropagationBehavior(TransactionTemplate.PROPAGATION_REQUIRES_NEW);
+
+        // 1. Create User A and User B
+        UUID userAId = txTemplate.execute(status -> {
+            User uA = User.builder()
+                    .email("usera." + UUID.randomUUID() + "@example.com")
+                    .passwordHash("hash")
+                    .build();
+            entityManager.persist(uA);
+            entityManager.flush();
+            return uA.getId();
+        });
+
+        UUID userBId = txTemplate.execute(status -> {
+            User uB = User.builder()
+                    .email("userb." + UUID.randomUUID() + "@example.com")
+                    .passwordHash("hash")
+                    .build();
+            entityManager.persist(uB);
+            entityManager.flush();
+            return uB.getId();
+        });
+
+        // 2. Create family F belonging to User A
+        UUID familyId = UUID.randomUUID();
+        txTemplate.executeWithoutResult(status -> {
+            entityManager.createNativeQuery(
+                    "INSERT INTO refresh_token_families (id, user_id, created_at, updated_at) " +
+                    "VALUES (:id, :userId, NOW(), NOW())")
+                    .setParameter("id", familyId)
+                    .setParameter("userId", userAId)
+                    .executeUpdate();
+        });
+
+        // 3. Attempt to insert RefreshToken for User B with family F (belonging to User A)
+        // This should fail due to fk_refresh_tokens_family_id_user_id composite FK constraint
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> {
+            txTemplate.executeWithoutResult(status -> {
+                RefreshToken token = RefreshToken.builder()
+                        .userId(userBId)
+                        .tokenHash("mismatched-hash")
+                        .familyId(familyId)
+                        .expiresAt(Instant.now().plusSeconds(300))
+                        .build();
+                entityManager.persist(token);
+                entityManager.flush();
+            });
+        });
+
+        // Cleanup
+        txTemplate.executeWithoutResult(status -> {
+            entityManager.createNativeQuery("DELETE FROM refresh_tokens WHERE family_id = :id")
+                    .setParameter("id", familyId)
+                    .executeUpdate();
+            entityManager.createNativeQuery("DELETE FROM refresh_token_families WHERE id = :id")
+                    .setParameter("id", familyId)
+                    .executeUpdate();
+            entityManager.createQuery("DELETE FROM User u WHERE u.id IN (:idA, :idB)")
+                    .setParameter("idA", userAId)
+                    .setParameter("idB", userBId)
+                    .executeUpdate();
+        });
     }
 }

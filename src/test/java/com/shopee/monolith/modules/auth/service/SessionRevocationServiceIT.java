@@ -5,6 +5,7 @@ import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.modules.auth.dto.internal.AccessTokenClaims;
 import com.shopee.monolith.modules.auth.entity.RefreshToken;
+import com.shopee.monolith.modules.auth.repository.RefreshTokenFamilyRepository;
 import com.shopee.monolith.modules.auth.repository.RefreshTokenRepository;
 import com.shopee.monolith.modules.auth.security.RefreshTokenGenerator;
 import com.shopee.monolith.modules.user.entity.User;
@@ -41,6 +42,9 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
 
     @Autowired
     private RefreshTokenRepository refreshTokenRepository;
+
+    @Autowired
+    private RefreshTokenFamilyRepository familyRepository;
 
     @Autowired
     private RefreshTokenGenerator refreshTokenGenerator;
@@ -448,16 +452,32 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
         TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
         txTemplate.setPropagationBehavior(TransactionTemplate.PROPAGATION_REQUIRES_NEW);
 
+        java.util.concurrent.atomic.AtomicReference<UUID> preFamilyId = new java.util.concurrent.atomic.AtomicReference<>();
+
+        // Pre-seed an active token and family for userId1
+        txTemplate.executeWithoutResult(status -> {
+            com.shopee.monolith.modules.auth.dto.internal.IssuedTokenPair pair =
+                    refreshTokenService.issueTokenPair(userId1, com.shopee.monolith.modules.user.model.Role.BUYER);
+            String hash = refreshTokenGenerator.hash(pair.refreshToken());
+            RefreshToken rt = refreshTokenRepository.findByTokenHash(hash).orElseThrow();
+            preFamilyId.set(rt.getFamilyId());
+            assertTrue(refreshTokenRepository.existsByFamilyId(rt.getFamilyId()));
+        });
+
         java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(2);
         java.util.concurrent.atomic.AtomicReference<Exception> loginError = new java.util.concurrent.atomic.AtomicReference<>();
         java.util.concurrent.atomic.AtomicReference<Exception> logoutAllError = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<com.shopee.monolith.modules.auth.dto.internal.IssuedTokenPair> newPairRef =
+                new java.util.concurrent.atomic.AtomicReference<>();
 
         // Thread 1: Concurrent login/issueTokenPair
         Thread tLogin = new Thread(() -> {
             try {
                 barrier.await();
                 txTemplate.execute(status -> {
-                    refreshTokenService.issueTokenPair(userId1, com.shopee.monolith.modules.user.model.Role.BUYER);
+                    com.shopee.monolith.modules.auth.dto.internal.IssuedTokenPair pair =
+                            refreshTokenService.issueTokenPair(userId1, com.shopee.monolith.modules.user.model.Role.BUYER);
+                    newPairRef.set(pair);
                     return null;
                 });
             } catch (Exception e) {
@@ -489,6 +509,40 @@ class SessionRevocationServiceIT extends BasePostgresRedisIntegrationTest {
         if (logoutAllError.get() != null) {
             throw logoutAllError.get();
         }
+
+        // Assert serial ordering outcomes
+        txTemplate.executeWithoutResult(status -> {
+            // Find all tokens for user1
+            List<RefreshToken> tokens = refreshTokenRepository.findAll().stream()
+                    .filter(t -> t.getUserId().equals(userId1))
+                    .toList();
+
+            // The pre-seeded token must be revoked
+            boolean preSeedRevoked = tokens.stream()
+                    .filter(t -> t.getFamilyId().equals(preFamilyId.get()))
+                    .allMatch(t -> t.getRevokedAt() != null);
+            assertTrue(preSeedRevoked, "Pre-seeded token must be revoked");
+
+            // For the new token, if it was successfully issued, its family must be in a consistent state
+            if (newPairRef.get() != null) {
+                String hash = refreshTokenGenerator.hash(newPairRef.get().refreshToken());
+                RefreshToken rt = refreshTokenRepository.findByTokenHash(hash).orElseThrow();
+                UUID newFamilyId = rt.getFamilyId();
+                var familyOpt = familyRepository.findById(newFamilyId);
+                assertTrue(familyOpt.isPresent());
+                var family = familyOpt.get();
+
+                List<RefreshToken> newFamilyTokens = refreshTokenRepository.findAllByFamilyId(newFamilyId);
+                boolean allNewTokensRevoked = newFamilyTokens.stream().allMatch(t -> t.getRevokedAt() != null);
+                boolean allNewTokensActive = newFamilyTokens.stream().allMatch(t -> t.getRevokedAt() == null);
+
+                if (family.getRevokedAt() != null) {
+                    assertTrue(allNewTokensRevoked, "If new family is revoked, all its tokens must be revoked");
+                } else {
+                    assertTrue(allNewTokensActive, "If new family is active, all its tokens must be active");
+                }
+            }
+        });
     }
 
     private void awaitThreads(Thread... threads) {

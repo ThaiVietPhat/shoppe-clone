@@ -56,8 +56,7 @@ public class SecurityConfig {
                                 "/api/auth/refresh",
                                 "/api/auth/logout",
                                 "/api/auth/logout-all",
-                                "/api/auth/csrf",
-                                "/api/auth/test-public"
+                                "/api/auth/csrf"
                         ).permitAll()
                         .requestMatchers(
                                 "/actuator/health",

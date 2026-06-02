@@ -4,6 +4,7 @@ import com.shopee.monolith.BasePostgresRedisIntegrationTest;
 import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.modules.auth.dto.internal.AccessTokenClaims;
+import com.shopee.monolith.modules.auth.config.AuthSecurityProperties;
 import com.shopee.monolith.modules.auth.service.AccessTokenBlacklistService;
 import com.shopee.monolith.modules.user.model.Role;
 import org.junit.jupiter.api.AfterEach;
@@ -35,7 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 @AutoConfigureMockMvc
-@Import(SecurityIntegrationTest.TestSecurityController.class)
+@Import({SecurityIntegrationTest.TestSecurityController.class, SecurityIntegrationTest.TestSecurityConfig.class})
 class SecurityIntegrationTest extends BasePostgresRedisIntegrationTest {
 
     @Autowired
@@ -58,6 +59,9 @@ class SecurityIntegrationTest extends BasePostgresRedisIntegrationTest {
 
     @Autowired
     private jakarta.persistence.EntityManager entityManager;
+
+    @Autowired
+    private AuthSecurityProperties properties;
 
     @AfterEach
     void tearDown() {
@@ -242,6 +246,59 @@ class SecurityIntegrationTest extends BasePostgresRedisIntegrationTest {
         });
     }
 
+    @Test
+    void logoutAllWhenBlacklistedTokenShouldReturn401InvalidToken() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String token = jwtTokenProvider.generateAccessToken(userId, Role.BUYER);
+        AccessTokenClaims claims = jwtTokenProvider.parseAccessToken(token);
+
+        // Blacklist it
+        blacklistService.blacklist(claims);
+
+        // Get CSRF token
+        org.springframework.test.web.servlet.MvcResult csrfResult = mockMvc.perform(get("/api/auth/csrf"))
+                .andExpect(status().isOk())
+                .andReturn();
+        var csrfCookie = csrfResult.getResponse().getCookie(properties.getCsrf().getCookieName());
+
+        var req = post("/api/auth/logout-all")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+        if (csrfCookie != null) {
+            req.cookie(csrfCookie).header(properties.getCsrf().getHeaderName(), csrfCookie.getValue());
+        }
+
+        mockMvc.perform(req)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401))
+                .andExpect(jsonPath("$.message").value(ErrorCode.INVALID_TOKEN.getMessage()));
+    }
+
+    @Test
+    void logoutAllWhenRedisUnavailableShouldReturn503ServiceUnavailable() throws Exception {
+        String token = jwtTokenProvider.generateAccessToken(UUID.randomUUID(), Role.BUYER);
+
+        // Force a SERVICE_UNAVAILABLE from blacklist check
+        doThrow(new AppException(ErrorCode.SERVICE_UNAVAILABLE))
+                .when(blacklistService).isBlacklisted(anyString());
+
+        // Get CSRF token
+        org.springframework.test.web.servlet.MvcResult csrfResult = mockMvc.perform(get("/api/auth/csrf"))
+                .andExpect(status().isOk())
+                .andReturn();
+        var csrfCookie = csrfResult.getResponse().getCookie(properties.getCsrf().getCookieName());
+
+        var req = post("/api/auth/logout-all")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+        if (csrfCookie != null) {
+            req.cookie(csrfCookie).header(properties.getCsrf().getHeaderName(), csrfCookie.getValue());
+        }
+
+        mockMvc.perform(req)
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value(503))
+                .andExpect(jsonPath("$.message").value(ErrorCode.SERVICE_UNAVAILABLE.getMessage()));
+    }
+
     @RestController
     static class TestSecurityController {
         @GetMapping("/api/auth/test-public")
@@ -258,6 +315,20 @@ class SecurityIntegrationTest extends BasePostgresRedisIntegrationTest {
         @PreAuthorize("hasRole('ADMIN')")
         public String adminEndpoint() {
             return "admin";
+        }
+    }
+
+    @org.springframework.boot.test.context.TestConfiguration
+    static class TestSecurityConfig {
+        @org.springframework.context.annotation.Bean
+        @org.springframework.core.annotation.Order(1)
+        public org.springframework.security.web.SecurityFilterChain testPublicSecurityFilterChain(
+                org.springframework.security.config.annotation.web.builders.HttpSecurity http) throws Exception {
+            http
+                    .securityMatcher("/api/auth/test-public")
+                    .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+                    .csrf(csrf -> csrf.disable());
+            return http.build();
         }
     }
 }

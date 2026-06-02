@@ -30,7 +30,7 @@ public class BlacklistFilter extends OncePerRequestFilter {
         if (path == null) {
             path = request.getRequestURI();
         }
-        if (path != null && (path.equals("/api/auth/logout") || path.equals("/api/auth/logout-all"))) {
+        if (path != null && path.equals("/api/auth/logout")) {
             filterChain.doFilter(request, response);
             return;
         }

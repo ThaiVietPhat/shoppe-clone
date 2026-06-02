@@ -71,11 +71,47 @@ public class AuthSecurityProperties {
         return true;
     }
 
-    @jakarta.validation.constraints.AssertTrue(message = "Wildcard origin '*' cannot be used when allowCredentials is true")
+    @jakarta.validation.constraints.AssertTrue(message = "SameSite=None requires Secure=true")
+    public boolean isSameSiteSecureValid() {
+        if (authCookie != null && "None".equalsIgnoreCase(authCookie.getSameSite())) {
+            return authCookie.isSecure();
+        }
+        return true;
+    }
+
+    @jakarta.validation.constraints.AssertTrue(message = "CORS allowed origins must be valid URIs and cannot contain path or wildcards if allowCredentials is true")
     public boolean isCorsAllowedOriginsValid() {
-        if (cors != null && cors.isAllowCredentials()) {
-            if (cors.getAllowedOrigins() != null) {
-                return !cors.getAllowedOrigins().contains("*");
+        if (cors == null || cors.getAllowedOrigins() == null) {
+            return true;
+        }
+        for (String origin : cors.getAllowedOrigins()) {
+            if (origin == null || origin.isBlank()) {
+                return false;
+            }
+            if (cors.isAllowCredentials() && origin.contains("*")) {
+                return false;
+            }
+            try {
+                java.net.URI uri = new java.net.URI(origin);
+                String scheme = uri.getScheme();
+                if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
+                    return false;
+                }
+                if (uri.getHost() == null || uri.getHost().isBlank()) {
+                    return false;
+                }
+                String path = uri.getRawPath();
+                if (path != null && !path.isEmpty() && !"/".equals(path)) {
+                    return false;
+                }
+                if (uri.getRawQuery() != null && !uri.getRawQuery().isEmpty()) {
+                    return false;
+                }
+                if (uri.getRawFragment() != null && !uri.getRawFragment().isEmpty()) {
+                    return false;
+                }
+            } catch (java.net.URISyntaxException e) {
+                return false;
             }
         }
         return true;
