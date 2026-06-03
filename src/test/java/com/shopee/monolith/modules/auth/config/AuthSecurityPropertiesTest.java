@@ -23,9 +23,15 @@ class AuthSecurityPropertiesTest {
         validator = factory.getValidator();
     }
 
+    private AuthSecurityProperties createValidProperties() {
+        AuthSecurityProperties properties = new AuthSecurityProperties();
+        properties.getEventCrypto().setActiveSecret("default-event-crypto-secret-32b-key-default-value");
+        return properties;
+    }
+
     @Test
     void whenSameSiteIsNoneAndSecureIsFalseShouldFailValidation() {
-        AuthSecurityProperties properties = new AuthSecurityProperties();
+        AuthSecurityProperties properties = createValidProperties();
         properties.getAuthCookie().setSameSite("None");
         properties.getAuthCookie().setSecure(false);
 
@@ -36,17 +42,17 @@ class AuthSecurityPropertiesTest {
 
     @Test
     void whenSameSiteIsNoneAndSecureIsTrueShouldPassValidation() {
-        AuthSecurityProperties properties = new AuthSecurityProperties();
+        AuthSecurityProperties properties = createValidProperties();
         properties.getAuthCookie().setSameSite("None");
         properties.getAuthCookie().setSecure(true);
 
         Set<ConstraintViolation<AuthSecurityProperties>> violations = validator.validate(properties);
-        assertTrue(violations.isEmpty() || violations.stream().noneMatch(v -> v.getMessage().contains("SameSite=None requires Secure=true")));
+        assertTrue(violations.isEmpty());
     }
 
     @Test
     void whenCorsAllowedOriginsContainsWildcardWithCredentialsShouldFailValidation() {
-        AuthSecurityProperties properties = new AuthSecurityProperties();
+        AuthSecurityProperties properties = createValidProperties();
         properties.getCors().setAllowCredentials(true);
         properties.getCors().setAllowedOrigins(List.of("http://localhost:3000", "*.domain.com"));
 
@@ -57,7 +63,7 @@ class AuthSecurityPropertiesTest {
 
     @Test
     void whenCorsAllowedOriginsContainsPathShouldFailValidation() {
-        AuthSecurityProperties properties = new AuthSecurityProperties();
+        AuthSecurityProperties properties = createValidProperties();
         properties.getCors().setAllowCredentials(false);
         properties.getCors().setAllowedOrigins(List.of("http://localhost:3000/api"));
 
@@ -67,17 +73,17 @@ class AuthSecurityPropertiesTest {
 
     @Test
     void whenCorsAllowedOriginsIsValidShouldPassValidation() {
-        AuthSecurityProperties properties = new AuthSecurityProperties();
+        AuthSecurityProperties properties = createValidProperties();
         properties.getCors().setAllowCredentials(true);
         properties.getCors().setAllowedOrigins(List.of("http://localhost:3000", "https://app.shopee.com"));
 
         Set<ConstraintViolation<AuthSecurityProperties>> violations = validator.validate(properties);
-        assertTrue(violations.isEmpty() || violations.stream().noneMatch(v -> v.getMessage().contains("CORS allowed origins must be valid URIs")));
+        assertTrue(violations.isEmpty());
     }
 
     @Test
     void whenVerificationTokenTtlIsNullShouldFailValidation() {
-        AuthSecurityProperties properties = new AuthSecurityProperties();
+        AuthSecurityProperties properties = createValidProperties();
         properties.getVerificationToken().setTtl(null);
 
         Set<ConstraintViolation<AuthSecurityProperties>> violations = validator.validate(properties);
@@ -86,7 +92,7 @@ class AuthSecurityPropertiesTest {
 
     @Test
     void whenVerificationTokenTtlIsNegativeOrZeroShouldFailValidation() {
-        AuthSecurityProperties properties = new AuthSecurityProperties();
+        AuthSecurityProperties properties = createValidProperties();
 
         properties.getVerificationToken().setTtl(java.time.Duration.ofSeconds(-5));
         Set<ConstraintViolation<AuthSecurityProperties>> violations1 = validator.validate(properties);
@@ -101,7 +107,7 @@ class AuthSecurityPropertiesTest {
 
     @Test
     void whenEventCryptoActiveSecretIsTooShortShouldFailValidation() {
-        AuthSecurityProperties properties = new AuthSecurityProperties();
+        AuthSecurityProperties properties = createValidProperties();
         properties.getEventCrypto().setActiveSecret("too-short");
 
         Set<ConstraintViolation<AuthSecurityProperties>> violations = validator.validate(properties);
@@ -111,7 +117,7 @@ class AuthSecurityPropertiesTest {
 
     @Test
     void whenEventCryptoPreviousKeyConfiguredButSecretMissingOrTooShortShouldFailValidation() {
-        AuthSecurityProperties properties = new AuthSecurityProperties();
+        AuthSecurityProperties properties = createValidProperties();
         properties.getEventCrypto().setPreviousKeyId("crypto-v0");
         properties.getEventCrypto().setPreviousSecret("too-short");
 
@@ -127,8 +133,7 @@ class AuthSecurityPropertiesTest {
 
     @Test
     void whenEventCryptoIsValidShouldPassValidation() {
-        AuthSecurityProperties properties = new AuthSecurityProperties();
-        properties.getEventCrypto().setActiveSecret("a-very-long-secret-key-at-least-32-bytes");
+        AuthSecurityProperties properties = createValidProperties();
         properties.getEventCrypto().setPreviousKeyId("crypto-v0");
         properties.getEventCrypto().setPreviousSecret("another-very-long-secret-key-at-least-32-bytes");
 
@@ -138,7 +143,7 @@ class AuthSecurityPropertiesTest {
 
     @Test
     void whenEventCryptoActiveSecretIsMissingShouldFailValidation() {
-        AuthSecurityProperties properties = new AuthSecurityProperties();
+        AuthSecurityProperties properties = createValidProperties();
         properties.getEventCrypto().setActiveSecret(null);
 
         Set<ConstraintViolation<AuthSecurityProperties>> violations1 = validator.validate(properties);
@@ -151,11 +156,8 @@ class AuthSecurityPropertiesTest {
 
     @Test
     void whenEventCryptoKeyIdsAreIdenticalShouldFailValidation() {
-        AuthSecurityProperties properties = new AuthSecurityProperties();
-        properties.getEventCrypto().setActiveKeyId("crypto-v1");
-        properties.getEventCrypto().setActiveSecret("a-very-long-secret-key-at-least-32-bytes");
-
-        properties.getEventCrypto().setPreviousKeyId("crypto-v1");
+        AuthSecurityProperties properties = createValidProperties();
+        properties.getEventCrypto().setPreviousKeyId(properties.getEventCrypto().getActiveKeyId());
         properties.getEventCrypto().setPreviousSecret("another-very-long-secret-key-at-least-32-bytes");
 
         Set<ConstraintViolation<AuthSecurityProperties>> violations = validator.validate(properties);
