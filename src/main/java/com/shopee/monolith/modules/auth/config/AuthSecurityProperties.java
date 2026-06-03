@@ -31,6 +31,10 @@ public class AuthSecurityProperties {
     @NotNull
     private CsrfProperties csrf = new CsrfProperties();
 
+    @Valid
+    @NotNull
+    private VerificationTokenProperties verificationToken = new VerificationTokenProperties();
+
     private List<String> trustedProxies = List.of();
 
     @Getter
@@ -127,5 +131,18 @@ public class AuthSecurityProperties {
             return "Lax".equalsIgnoreCase(sameSite) || "Strict".equalsIgnoreCase(sameSite) || "None".equalsIgnoreCase(sameSite);
         }
         return true;
+    }
+
+    @jakarta.validation.constraints.AssertTrue(message = "Verification token TTL must be positive")
+    public boolean isVerificationTokenTtlValid() {
+        return verificationToken != null && verificationToken.getTtl() != null 
+                && !verificationToken.getTtl().isNegative() && !verificationToken.getTtl().isZero();
+    }
+
+    @Getter
+    @Setter
+    public static class VerificationTokenProperties {
+        @NotNull
+        private java.time.Duration ttl = java.time.Duration.ofHours(24);
     }
 }

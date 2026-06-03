@@ -22,8 +22,11 @@ import lombok.experimental.SuperBuilder;
 @AllArgsConstructor(access = AccessLevel.PROTECTED)
 public class User extends BaseEntity {
 
-    @Column(name = "email", nullable = false, unique = true, length = 255)
+    @Column(name = "email", nullable = false, length = 255)
     private String email;
+
+    @Column(name = "normalized_email", nullable = false, unique = true, length = 255)
+    private String normalizedEmail;
 
     @Column(name = "password_hash") // Nullable for OAuth2 users
     private String passwordHash;
@@ -40,6 +43,14 @@ public class User extends BaseEntity {
 
     public void activate() {
         this.status = UserStatus.ACTIVE;
+    }
+
+    @jakarta.persistence.PrePersist
+    @jakarta.persistence.PreUpdate
+    protected void normalizeEmailBeforeSave() {
+        if (this.email != null) {
+            this.normalizedEmail = this.email.trim().toLowerCase(java.util.Locale.ROOT);
+        }
     }
 }
 

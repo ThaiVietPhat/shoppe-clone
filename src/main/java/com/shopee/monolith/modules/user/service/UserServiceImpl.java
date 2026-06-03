@@ -37,7 +37,7 @@ public class UserServiceImpl implements UserService {
             throw new AppException(ErrorCode.USER_NOT_FOUND);
         }
         String normalizedEmail = normalizeEmail(email);
-        User user = userRepository.findByEmail(normalizedEmail)
+        User user = userRepository.findByNormalizedEmail(normalizedEmail)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         return userMapper.toResponse(user);
     }
@@ -48,7 +48,7 @@ public class UserServiceImpl implements UserService {
             return Optional.empty();
         }
         String normalizedEmail = normalizeEmail(email);
-        return userRepository.findByEmail(normalizedEmail)
+        return userRepository.findByNormalizedEmail(normalizedEmail)
                 .map(userMapper::toAuthenticationData);
     }
 
@@ -65,12 +65,13 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public UserResponse registerUser(RegisterUserCommand command) {
         String normalizedEmail = normalizeEmail(command.email());
-        if (userRepository.existsByEmail(normalizedEmail)) {
+        if (userRepository.existsByNormalizedEmail(normalizedEmail)) {
             throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
         User user = User.builder()
-                .email(normalizedEmail)
+                .email(command.email())
+                .normalizedEmail(normalizedEmail)
                 .passwordHash(command.passwordHash())
                 .build();
 

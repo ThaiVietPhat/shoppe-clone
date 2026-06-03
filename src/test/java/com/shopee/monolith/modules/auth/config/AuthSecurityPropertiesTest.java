@@ -74,4 +74,28 @@ class AuthSecurityPropertiesTest {
         Set<ConstraintViolation<AuthSecurityProperties>> violations = validator.validate(properties);
         assertTrue(violations.isEmpty() || violations.stream().noneMatch(v -> v.getMessage().contains("CORS allowed origins must be valid URIs")));
     }
+
+    @Test
+    void whenVerificationTokenTtlIsNullShouldFailValidation() {
+        AuthSecurityProperties properties = new AuthSecurityProperties();
+        properties.getVerificationToken().setTtl(null);
+
+        Set<ConstraintViolation<AuthSecurityProperties>> violations = validator.validate(properties);
+        assertFalse(violations.isEmpty());
+    }
+
+    @Test
+    void whenVerificationTokenTtlIsNegativeOrZeroShouldFailValidation() {
+        AuthSecurityProperties properties = new AuthSecurityProperties();
+        
+        properties.getVerificationToken().setTtl(java.time.Duration.ofSeconds(-5));
+        Set<ConstraintViolation<AuthSecurityProperties>> violations1 = validator.validate(properties);
+        assertFalse(violations1.isEmpty());
+        assertTrue(violations1.stream().anyMatch(v -> v.getMessage().contains("Verification token TTL must be positive")));
+
+        properties.getVerificationToken().setTtl(java.time.Duration.ZERO);
+        Set<ConstraintViolation<AuthSecurityProperties>> violations2 = validator.validate(properties);
+        assertFalse(violations2.isEmpty());
+        assertTrue(violations2.stream().anyMatch(v -> v.getMessage().contains("Verification token TTL must be positive")));
+    }
 }

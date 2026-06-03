@@ -80,3 +80,7 @@ desktop.ini
 .mtj.tmp/
 hs_err_pid*
 replay_pid*
+
+# ==================== Local Reports ====================
+report/
+reports/

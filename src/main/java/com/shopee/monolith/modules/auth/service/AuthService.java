@@ -5,4 +5,8 @@ import com.shopee.monolith.modules.auth.dto.request.LoginRequest;
 
 public interface AuthService {
     IssuedTokenPair login(LoginRequest request);
+
+    com.shopee.monolith.modules.user.dto.response.UserResponse register(com.shopee.monolith.modules.auth.dto.request.RegisterRequest request);
+
+    void verify(com.shopee.monolith.modules.auth.dto.request.VerifyRequest request);
 }

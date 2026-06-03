@@ -10,9 +10,9 @@ import java.util.UUID;
 @Repository
 public interface UserRepository extends JpaRepository<User, UUID> {
     
-    Optional<User> findByEmail(String email);
+    Optional<User> findByNormalizedEmail(String normalizedEmail);
     
-    boolean existsByEmail(String email);
+    boolean existsByNormalizedEmail(String normalizedEmail);
 
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @org.springframework.data.jpa.repository.Query("select u from User u where u.id = :id")

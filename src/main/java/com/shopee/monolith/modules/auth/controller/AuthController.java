@@ -12,6 +12,9 @@ import com.shopee.monolith.modules.auth.dto.response.LoginResponse;
 import com.shopee.monolith.modules.auth.service.AuthService;
 import com.shopee.monolith.modules.auth.service.RefreshTokenService;
 import com.shopee.monolith.modules.auth.service.SessionRevocationService;
+import com.shopee.monolith.modules.auth.dto.request.RegisterRequest;
+import com.shopee.monolith.modules.auth.dto.request.VerifyRequest;
+import com.shopee.monolith.modules.user.dto.response.UserResponse;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -54,6 +57,17 @@ public class AuthController {
         IssuedTokenPair tokenPair = authService.login(request);
         setRefreshTokenCookie(response, tokenPair.refreshToken(), jwtProperties.getRefreshExpiration());
         return ApiResponse.success(new LoginResponse(tokenPair.accessToken()));
+    }
+
+    @PostMapping("/register")
+    public ApiResponse<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
+        return ApiResponse.success(authService.register(request));
+    }
+
+    @PostMapping("/verify")
+    public ApiResponse<Void> verify(@Valid @RequestBody VerifyRequest request) {
+        authService.verify(request);
+        return ApiResponse.success();
     }
 
     @PostMapping("/refresh")

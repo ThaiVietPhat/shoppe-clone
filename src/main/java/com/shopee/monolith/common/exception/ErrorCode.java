@@ -27,6 +27,8 @@ public enum ErrorCode {
     TOKEN_REUSE_DETECTED(401, "Security violation detected — please log in again"),
     EMAIL_NOT_VERIFIED(403, "Please verify your email before logging in"),
     ACCOUNT_NOT_ACTIVE(403, "Account is not active"),
+    VERIFICATION_TOKEN_EXPIRED(400, "Verification token has expired"),
+    VERIFICATION_TOKEN_REUSED(400, "Verification token has already been used"),
 
     // ==================== User ====================
     USER_NOT_FOUND(404, "User not found"),

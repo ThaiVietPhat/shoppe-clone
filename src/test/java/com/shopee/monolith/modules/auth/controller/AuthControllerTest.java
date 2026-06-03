@@ -249,4 +249,43 @@ class AuthControllerTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(401));
     }
+
+    @Test
+    void registerShouldReturnUserResponse() throws Exception {
+        com.shopee.monolith.modules.auth.dto.request.RegisterRequest request =
+                new com.shopee.monolith.modules.auth.dto.request.RegisterRequest("register@shopee.com", "password123");
+
+        com.shopee.monolith.modules.user.dto.response.UserResponse expectedResponse =
+                com.shopee.monolith.modules.user.dto.response.UserResponse.builder()
+                        .id(UUID.randomUUID())
+                        .email("register@shopee.com")
+                        .role(Role.BUYER)
+                        .build();
+
+        when(authService.register(any(com.shopee.monolith.modules.auth.dto.request.RegisterRequest.class)))
+                .thenReturn(expectedResponse);
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.email").value("register@shopee.com"));
+    }
+
+    @Test
+    void verifyShouldReturnSuccess() throws Exception {
+        com.shopee.monolith.modules.auth.dto.request.VerifyRequest request =
+                new com.shopee.monolith.modules.auth.dto.request.VerifyRequest("myRawToken");
+
+        doNothing().when(authService).verify(any(com.shopee.monolith.modules.auth.dto.request.VerifyRequest.class));
+
+        mockMvc.perform(post("/api/auth/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(authService).verify(any(com.shopee.monolith.modules.auth.dto.request.VerifyRequest.class));
+    }
 }

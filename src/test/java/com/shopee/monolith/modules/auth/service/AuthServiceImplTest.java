@@ -37,6 +37,24 @@ class AuthServiceImplTest {
     @Mock
     private RefreshTokenService refreshTokenService;
 
+    @Mock
+    private com.shopee.monolith.modules.user.repository.VerificationTokenRepository verificationTokenRepository;
+
+    @Mock
+    private com.shopee.monolith.modules.auth.security.VerificationTokenGenerator verificationTokenGenerator;
+
+    @Mock
+    private com.shopee.monolith.modules.user.repository.UserRepository userRepository;
+
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
+    @Mock
+    private com.shopee.monolith.modules.auth.config.AuthSecurityProperties securityProperties;
+
+    @Mock
+    private java.time.Clock clock;
+
     private AuthServiceImpl authService;
 
     private static final String DUMMY_HASH = AuthServiceImpl.DUMMY_HASH;
@@ -46,7 +64,13 @@ class AuthServiceImplTest {
         authService = new AuthServiceImpl(
                 userService,
                 passwordEncoder,
-                refreshTokenService
+                refreshTokenService,
+                verificationTokenRepository,
+                verificationTokenGenerator,
+                userRepository,
+                eventPublisher,
+                securityProperties,
+                clock
         );
     }
 

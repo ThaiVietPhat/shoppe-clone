@@ -89,7 +89,7 @@ class UserServiceImplTest {
 
     @Test
     void getUserByEmailWhenUserExistsShouldReturnUser() {
-        when(userRepository.findByEmail(testEmail)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByNormalizedEmail(testEmail)).thenReturn(Optional.of(testUser));
         when(userMapper.toResponse(testUser)).thenReturn(testResponse);
 
         UserResponse result = userService.getUserByEmail(testEmail);
@@ -99,7 +99,7 @@ class UserServiceImplTest {
 
     @Test
     void getUserByEmailWhenUserDoesNotExistShouldThrowException() {
-        when(userRepository.findByEmail(testEmail)).thenReturn(Optional.empty());
+        when(userRepository.findByNormalizedEmail(testEmail)).thenReturn(Optional.empty());
 
         AppException exception = assertThrows(AppException.class, () -> userService.getUserByEmail(testEmail));
 
@@ -111,7 +111,7 @@ class UserServiceImplTest {
         String inputEmail = "  TEST@Shopee.COM  ";
         String normalizedEmail = "test@shopee.com";
 
-        when(userRepository.findByEmail(normalizedEmail)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByNormalizedEmail(normalizedEmail)).thenReturn(Optional.of(testUser));
         when(userMapper.toResponse(testUser)).thenReturn(testResponse);
 
         UserResponse result = userService.getUserByEmail(inputEmail);
@@ -129,7 +129,7 @@ class UserServiceImplTest {
                 .status(UserStatus.PENDING_VERIFICATION)
                 .build();
 
-        when(userRepository.findByEmail(testEmail)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByNormalizedEmail(testEmail)).thenReturn(Optional.of(testUser));
         when(userMapper.toAuthenticationData(testUser)).thenReturn(authData);
 
         Optional<UserAuthenticationData> result = userService.findAuthenticationDataByEmail(testEmail);
@@ -140,7 +140,7 @@ class UserServiceImplTest {
 
     @Test
     void findAuthenticationDataByEmailWhenUserDoesNotExistShouldReturnEmpty() {
-        when(userRepository.findByEmail(testEmail)).thenReturn(Optional.empty());
+        when(userRepository.findByNormalizedEmail(testEmail)).thenReturn(Optional.empty());
 
         Optional<UserAuthenticationData> result = userService.findAuthenticationDataByEmail(testEmail);
 
@@ -160,7 +160,7 @@ class UserServiceImplTest {
                 .status(UserStatus.PENDING_VERIFICATION)
                 .build();
 
-        when(userRepository.findByEmail(normalizedEmail)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByNormalizedEmail(normalizedEmail)).thenReturn(Optional.of(testUser));
         when(userMapper.toAuthenticationData(testUser)).thenReturn(authData);
 
         Optional<UserAuthenticationData> result = userService.findAuthenticationDataByEmail(inputEmail);
@@ -180,7 +180,7 @@ class UserServiceImplTest {
                 .passwordHash(pwdHash)
                 .build();
 
-        when(userRepository.existsByEmail(normalizedEmail)).thenReturn(false);
+        when(userRepository.existsByNormalizedEmail(normalizedEmail)).thenReturn(false);
         when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(userMapper.toResponse(any(User.class))).thenReturn(testResponse);
 
@@ -191,7 +191,8 @@ class UserServiceImplTest {
         verify(userRepository).saveAndFlush(userCaptor.capture());
         User savedUser = userCaptor.getValue();
 
-        assertEquals(normalizedEmail, savedUser.getEmail());
+        assertEquals(inputEmail, savedUser.getEmail());
+        assertEquals(normalizedEmail, savedUser.getNormalizedEmail());
         assertEquals(pwdHash, savedUser.getPasswordHash());
         assertEquals(Role.BUYER, savedUser.getRole());
         assertEquals(UserStatus.PENDING_VERIFICATION, savedUser.getStatus());
@@ -204,7 +205,7 @@ class UserServiceImplTest {
                 .passwordHash("hash")
                 .build();
 
-        when(userRepository.existsByEmail(testEmail)).thenReturn(true);
+        when(userRepository.existsByNormalizedEmail(testEmail)).thenReturn(true);
 
         AppException exception = assertThrows(AppException.class, () -> userService.registerUser(command));
 
@@ -219,7 +220,7 @@ class UserServiceImplTest {
                 .passwordHash("hash")
                 .build();
 
-        when(userRepository.existsByEmail(testEmail)).thenReturn(false);
+        when(userRepository.existsByNormalizedEmail(testEmail)).thenReturn(false);
         when(userRepository.saveAndFlush(any(User.class))).thenThrow(DataIntegrityViolationException.class);
 
         AppException exception = assertThrows(AppException.class, () -> userService.registerUser(command));
