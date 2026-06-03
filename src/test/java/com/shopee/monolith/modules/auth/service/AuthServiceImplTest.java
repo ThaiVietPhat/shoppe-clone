@@ -306,8 +306,16 @@ class AuthServiceImplTest {
         String redisVal = userId.toString() + ":BUYER";
         IssuedTokenPair expectedPair = new IssuedTokenPair("accessToken", "refreshToken");
 
+        UserAuthenticationData authData = UserAuthenticationData.builder()
+                .id(userId)
+                .email("test@shopee.com")
+                .role(Role.BUYER)
+                .status(UserStatus.ACTIVE)
+                .build();
+
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get("oauth2:code:" + code)).thenReturn(redisVal);
+        when(valueOperations.getAndDelete("oauth2:code:" + code)).thenReturn(redisVal);
+        when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(authData));
         when(refreshTokenService.issueTokenPair(userId, Role.BUYER)).thenReturn(expectedPair);
 
         IssuedTokenPair result = authService.exchangeOAuth2Code(code);
@@ -315,14 +323,13 @@ class AuthServiceImplTest {
         assertNotNull(result);
         assertEquals("accessToken", result.accessToken());
         assertEquals("refreshToken", result.refreshToken());
-        verify(stringRedisTemplate).delete("oauth2:code:" + code);
     }
 
     @Test
     void exchangeOAuth2CodeWithExpiredOrInvalidCodeShouldThrowException() {
         String code = "invalidCode";
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get("oauth2:code:" + code)).thenReturn(null);
+        when(valueOperations.getAndDelete("oauth2:code:" + code)).thenReturn(null);
 
         AppException ex = assertThrows(AppException.class, () -> authService.exchangeOAuth2Code(code));
         assertEquals(ErrorCode.INVALID_TOKEN, ex.getErrorCode());
@@ -333,10 +340,78 @@ class AuthServiceImplTest {
     void exchangeOAuth2CodeWithInvalidFormatCodeShouldThrowException() {
         String code = "malformedCode";
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get("oauth2:code:" + code)).thenReturn("userIdNoColonRole");
+        when(valueOperations.getAndDelete("oauth2:code:" + code)).thenReturn("userIdNoColonRole");
 
         AppException ex = assertThrows(AppException.class, () -> authService.exchangeOAuth2Code(code));
         assertEquals(ErrorCode.INVALID_TOKEN, ex.getErrorCode());
         assertEquals("Token is invalid or expired", ex.getMessage());
+    }
+
+    @Test
+    void exchangeOAuth2CodeWithRedisFailureShouldThrowServiceUnavailable() {
+        String code = "redisFailCode";
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.getAndDelete("oauth2:code:" + code)).thenThrow(new org.springframework.data.redis.RedisSystemException("Connection lost", new RuntimeException()));
+
+        AppException ex = assertThrows(AppException.class, () -> authService.exchangeOAuth2Code(code));
+        assertEquals(ErrorCode.SERVICE_UNAVAILABLE, ex.getErrorCode());
+    }
+
+    @Test
+    void exchangeOAuth2CodeConcurrentlyShouldAllowOnlyOneSuccess() throws Exception {
+        String code = "concurrentCode";
+        UUID userId = UUID.randomUUID();
+        String redisVal = userId.toString() + ":BUYER";
+        IssuedTokenPair expectedPair = new IssuedTokenPair("accessToken", "refreshToken");
+
+        UserAuthenticationData authData = UserAuthenticationData.builder()
+                .id(userId)
+                .email("test@shopee.com")
+                .role(Role.BUYER)
+                .status(UserStatus.ACTIVE)
+                .build();
+
+        // Stub consecutive calls: first returns val, second returns null
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.getAndDelete("oauth2:code:" + code))
+                .thenReturn(redisVal)
+                .thenReturn(null);
+
+        when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(authData));
+        when(refreshTokenService.issueTokenPair(userId, Role.BUYER)).thenReturn(expectedPair);
+
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        java.util.concurrent.Future<IssuedTokenPair> f1 = executor.submit(() -> authService.exchangeOAuth2Code(code));
+        java.util.concurrent.Future<IssuedTokenPair> f2 = executor.submit(() -> authService.exchangeOAuth2Code(code));
+
+        int successCount = 0;
+        int failCount = 0;
+
+        try {
+            IssuedTokenPair res1 = f1.get();
+            if (res1 != null) {
+                successCount++;
+            }
+        } catch (java.util.concurrent.ExecutionException e) {
+            if (e.getCause() instanceof AppException appEx && appEx.getErrorCode() == ErrorCode.INVALID_TOKEN) {
+                failCount++;
+            }
+        }
+
+        try {
+            IssuedTokenPair res2 = f2.get();
+            if (res2 != null) {
+                successCount++;
+            }
+        } catch (java.util.concurrent.ExecutionException e) {
+            if (e.getCause() instanceof AppException appEx && appEx.getErrorCode() == ErrorCode.INVALID_TOKEN) {
+                failCount++;
+            }
+        }
+
+        executor.shutdown();
+
+        assertEquals(1, successCount);
+        assertEquals(1, failCount);
     }
 }

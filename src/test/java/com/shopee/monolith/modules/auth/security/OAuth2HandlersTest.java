@@ -99,4 +99,29 @@ class OAuth2HandlersTest {
                 + URLEncoder.encode("Authentication failed due to duplicated email", StandardCharsets.UTF_8);
         verify(response).sendRedirect(expectedRedirectUrl);
     }
+
+    @Test
+    void successHandlerWithRedisFailureShouldRedirectToAllowedOriginWithServiceUnavailableError() throws Exception {
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        when(response.encodeRedirectURL(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Authentication authentication = mock(Authentication.class);
+        CustomOAuth2User customOAuth2User = mock(CustomOAuth2User.class);
+
+        UUID userId = UUID.randomUUID();
+        when(customOAuth2User.getUserId()).thenReturn(userId);
+        when(customOAuth2User.getRole()).thenReturn("BUYER");
+        when(authentication.getPrincipal()).thenReturn(customOAuth2User);
+
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        org.mockito.Mockito.doThrow(new org.springframework.data.redis.RedisSystemException("Connection failed", new RuntimeException()))
+                .when(valueOperations).set(anyString(), anyString(), eq(Duration.ofSeconds(60)));
+
+        successHandler.onAuthenticationSuccess(request, response, authentication);
+
+        String expectedRedirectUrl = "http://localhost:3000/login?error="
+                + URLEncoder.encode("Auth service temporarily unavailable", StandardCharsets.UTF_8);
+        verify(response).sendRedirect(expectedRedirectUrl);
+    }
 }

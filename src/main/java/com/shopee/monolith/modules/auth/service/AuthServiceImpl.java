@@ -145,22 +145,28 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public IssuedTokenPair exchangeOAuth2Code(String code) {
         String key = "oauth2:code:" + code;
-        String value = stringRedisTemplate.opsForValue().get(key);
+        String value;
+        try {
+            value = stringRedisTemplate.opsForValue().getAndDelete(key);
+        } catch (Exception e) {
+            throw new AppException(ErrorCode.SERVICE_UNAVAILABLE);
+        }
         if (value == null) {
             throw new AppException(ErrorCode.INVALID_TOKEN);
         }
-        stringRedisTemplate.delete(key);
 
         int colonIdx = value.indexOf(':');
         if (colonIdx == -1) {
             throw new AppException(ErrorCode.INVALID_TOKEN);
         }
         String userIdStr = value.substring(0, colonIdx);
-        String roleStr = value.substring(colonIdx + 1);
 
         UUID userId = UUID.fromString(userIdStr);
-        com.shopee.monolith.modules.user.model.Role role = com.shopee.monolith.modules.user.model.Role.valueOf(roleStr);
+        UserAuthenticationData userAuthData = userService.findAuthenticationDataById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        return refreshTokenService.issueTokenPair(userId, role);
+        validateUserStatus(userAuthData.status());
+
+        return refreshTokenService.issueTokenPair(userId, userAuthData.role());
     }
 }
