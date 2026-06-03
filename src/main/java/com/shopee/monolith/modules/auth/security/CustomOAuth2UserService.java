@@ -20,7 +20,11 @@ import java.util.Optional;
 public class CustomOAuth2UserService implements OAuth2UserService<OAuth2UserRequest, OAuth2User> {
 
     private final UserService userService;
-    private final DefaultOAuth2UserService delegate = new DefaultOAuth2UserService();
+    private OAuth2UserService<OAuth2UserRequest, OAuth2User> delegate = new DefaultOAuth2UserService();
+
+    void setDelegate(OAuth2UserService<OAuth2UserRequest, OAuth2User> delegate) {
+        this.delegate = delegate;
+    }
 
     @Override
     public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
@@ -39,17 +43,15 @@ public class CustomOAuth2UserService implements OAuth2UserService<OAuth2UserRequ
         } else if ("facebook".equals(provider)) {
             providerUserId = (String) attributes.get("id");
             email = (String) attributes.get("email");
-            emailVerified = (email != null && !email.isBlank());
+            // Facebook does not provide a trusted email_verified flag.
+            // We set emailVerified to false to block auto-registration, requiring prior account linking.
+            emailVerified = false;
         } else {
             throw new OAuth2AuthenticationException(new OAuth2Error("invalid_provider"), "Unsupported OAuth provider: " + provider);
         }
 
         if (providerUserId == null || providerUserId.isBlank() || email == null || email.isBlank()) {
             throw new OAuth2AuthenticationException(new OAuth2Error("missing_email"), "Email or provider user ID is missing from OAuth provider");
-        }
-
-        if (!emailVerified) {
-            throw new OAuth2AuthenticationException(new OAuth2Error("email_not_verified"), "Email from OAuth provider is not verified");
         }
 
         // Load existing user or register new OAuth-only active user
@@ -60,6 +62,9 @@ public class CustomOAuth2UserService implements OAuth2UserService<OAuth2UserRequ
             userAuthData = userAuthDataOpt.get();
             validateUserStatus(userAuthData.status());
         } else {
+            if (!emailVerified) {
+                throw new OAuth2AuthenticationException(new OAuth2Error("email_not_verified"), "Email from OAuth provider is not verified");
+            }
             try {
                 UserResponse userResponse = userService.registerOAuthUser(provider, providerUserId, email);
                 userAuthData = UserAuthenticationData.builder()

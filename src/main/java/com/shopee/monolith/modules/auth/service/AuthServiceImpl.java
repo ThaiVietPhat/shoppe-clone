@@ -21,6 +21,7 @@ import com.shopee.monolith.modules.user.repository.VerificationTokenRepository;
 import com.shopee.monolith.modules.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -43,6 +45,7 @@ public class AuthServiceImpl implements AuthService {
     private final ApplicationEventPublisher eventPublisher;
     private final AuthSecurityProperties securityProperties;
     private final Clock clock;
+    private final StringRedisTemplate stringRedisTemplate;
 
     // Dummy BCrypt hash of cost 12 to run timing-equivalent check for non-existent users
     static final String DUMMY_HASH = "$2a$12$6yGZ/X4sF.FhPUp1p.2KFeZpG.0u4hW1.c.4zY5P6q7r8s9t0u1v2";
@@ -137,5 +140,27 @@ public class AuthServiceImpl implements AuthService {
         if (status != UserStatus.ACTIVE) {
             throw new AppException(ErrorCode.ACCOUNT_NOT_ACTIVE);
         }
+    }
+
+    @Override
+    public IssuedTokenPair exchangeOAuth2Code(String code) {
+        String key = "oauth2:code:" + code;
+        String value = stringRedisTemplate.opsForValue().get(key);
+        if (value == null) {
+            throw new AppException(ErrorCode.INVALID_TOKEN);
+        }
+        stringRedisTemplate.delete(key);
+
+        int colonIdx = value.indexOf(':');
+        if (colonIdx == -1) {
+            throw new AppException(ErrorCode.INVALID_TOKEN);
+        }
+        String userIdStr = value.substring(0, colonIdx);
+        String roleStr = value.substring(colonIdx + 1);
+
+        UUID userId = UUID.fromString(userIdStr);
+        com.shopee.monolith.modules.user.model.Role role = com.shopee.monolith.modules.user.model.Role.valueOf(roleStr);
+
+        return refreshTokenService.issueTokenPair(userId, role);
     }
 }

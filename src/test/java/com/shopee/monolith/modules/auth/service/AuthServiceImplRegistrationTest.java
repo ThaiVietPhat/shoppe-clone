@@ -26,9 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -68,18 +66,21 @@ class AuthServiceImplRegistrationTest {
     private ApplicationEventPublisher eventPublisher;
 
     @Mock
-    private AuthSecurityProperties securityProperties;
+    private com.shopee.monolith.modules.auth.config.AuthSecurityProperties securityProperties;
 
     @Mock
-    private Clock clock;
+    private org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate;
+
+    @Mock
+    private java.time.Clock clock;
 
     private AuthServiceImpl authService;
 
-    private final Instant fixedInstant = Instant.parse("2026-06-03T12:00:00Z");
+    private final java.time.Instant fixedInstant = java.time.Instant.parse("2026-06-03T12:00:00Z");
 
     @BeforeEach
     void setUp() {
-        when(clock.instant()).thenReturn(fixedInstant);
+        org.mockito.Mockito.when(clock.instant()).thenReturn(fixedInstant);
         authService = new AuthServiceImpl(
                 userService,
                 passwordEncoder,
@@ -90,7 +91,8 @@ class AuthServiceImplRegistrationTest {
                 userRepository,
                 eventPublisher,
                 securityProperties,
-                clock
+                clock,
+                stringRedisTemplate
         );
     }
 

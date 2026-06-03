@@ -1,6 +1,7 @@
 package com.shopee.monolith.modules.auth.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.modules.auth.config.AuthSecurityProperties;
 import com.shopee.monolith.modules.auth.config.JwtProperties;
@@ -290,5 +291,42 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.code").value(200));
 
         verify(authService).verify(any(com.shopee.monolith.modules.auth.dto.request.VerifyRequest.class));
+    }
+
+    @Test
+    void exchangeOAuth2CodeWhenValidShouldReturnAccessTokenAndSetCookie() throws Exception {
+        String code = "validExchangeCode";
+        IssuedTokenPair tokenPair = new IssuedTokenPair("access-token-123", "refresh-token-456");
+
+        when(authService.exchangeOAuth2Code(code)).thenReturn(tokenPair);
+
+        com.shopee.monolith.modules.auth.dto.request.OAuth2ExchangeRequest request =
+                new com.shopee.monolith.modules.auth.dto.request.OAuth2ExchangeRequest(code);
+
+        mockMvc.perform(post("/api/auth/oauth2/exchange")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.accessToken").value("access-token-123"))
+                .andExpect(header().exists(HttpHeaders.SET_COOKIE))
+                .andExpect(cookie().value("__Secure-refresh_token", "refresh-token-456"));
+    }
+
+    @Test
+    void exchangeOAuth2CodeWhenInvalidShouldReturnError() throws Exception {
+        String code = "invalidExchangeCode";
+        when(authService.exchangeOAuth2Code(code))
+                .thenThrow(new AppException(ErrorCode.INVALID_TOKEN));
+
+        com.shopee.monolith.modules.auth.dto.request.OAuth2ExchangeRequest request =
+                new com.shopee.monolith.modules.auth.dto.request.OAuth2ExchangeRequest(code);
+
+        mockMvc.perform(post("/api/auth/oauth2/exchange")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401))
+                .andExpect(jsonPath("$.message").value("Token is invalid or expired"));
     }
 }

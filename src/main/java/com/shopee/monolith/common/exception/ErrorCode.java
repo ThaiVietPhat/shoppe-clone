@@ -29,6 +29,7 @@ public enum ErrorCode {
     ACCOUNT_NOT_ACTIVE(403, "Account is not active"),
     VERIFICATION_TOKEN_EXPIRED(400, "Verification token has expired"),
     VERIFICATION_TOKEN_REUSED(400, "Verification token has already been used"),
+    OAUTH_IDENTITY_ALREADY_LINKED(409, "OAuth identity is already linked to another user"),
 
     // ==================== User ====================
     USER_NOT_FOUND(404, "User not found"),

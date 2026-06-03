@@ -8,6 +8,7 @@ import com.shopee.monolith.modules.auth.config.JwtProperties;
 import com.shopee.monolith.modules.auth.dto.internal.AccessTokenClaims;
 import com.shopee.monolith.modules.auth.dto.internal.IssuedTokenPair;
 import com.shopee.monolith.modules.auth.dto.request.LoginRequest;
+import com.shopee.monolith.modules.auth.dto.request.OAuth2ExchangeRequest;
 import com.shopee.monolith.modules.auth.dto.response.LoginResponse;
 import com.shopee.monolith.modules.auth.service.AuthService;
 import com.shopee.monolith.modules.auth.service.RefreshTokenService;
@@ -55,6 +56,13 @@ public class AuthController {
     @PostMapping("/login")
     public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request, HttpServletResponse response) {
         IssuedTokenPair tokenPair = authService.login(request);
+        setRefreshTokenCookie(response, tokenPair.refreshToken(), jwtProperties.getRefreshExpiration());
+        return ApiResponse.success(new LoginResponse(tokenPair.accessToken()));
+    }
+
+    @PostMapping("/oauth2/exchange")
+    public ApiResponse<LoginResponse> exchangeOAuth2Code(@Valid @RequestBody OAuth2ExchangeRequest request, HttpServletResponse response) {
+        IssuedTokenPair tokenPair = authService.exchangeOAuth2Code(request.code());
         setRefreshTokenCookie(response, tokenPair.refreshToken(), jwtProperties.getRefreshExpiration());
         return ApiResponse.success(new LoginResponse(tokenPair.accessToken()));
     }

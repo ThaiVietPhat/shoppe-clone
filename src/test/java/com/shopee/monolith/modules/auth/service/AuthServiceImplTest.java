@@ -59,6 +59,12 @@ class AuthServiceImplTest {
     @Mock
     private java.time.Clock clock;
 
+    @Mock
+    private org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate;
+
+    @Mock
+    private org.springframework.data.redis.core.ValueOperations<String, String> valueOperations;
+
     private AuthServiceImpl authService;
 
     private static final String DUMMY_HASH = AuthServiceImpl.DUMMY_HASH;
@@ -75,7 +81,8 @@ class AuthServiceImplTest {
                 userRepository,
                 eventPublisher,
                 securityProperties,
-                clock
+                clock,
+                stringRedisTemplate
         );
     }
 
@@ -290,5 +297,46 @@ class AuthServiceImplTest {
         org.junit.jupiter.api.Assertions.assertTrue(
                 java.util.regex.Pattern.matches("^\\$2[abyd]\\$\\d{2}\\$[./A-Za-z0-9]{53}$", AuthServiceImpl.DUMMY_HASH)
         );
+    }
+
+    @Test
+    void exchangeOAuth2CodeWithValidCodeShouldReturnTokenPairAndCleanCode() {
+        String code = "validCode123";
+        UUID userId = UUID.randomUUID();
+        String redisVal = userId.toString() + ":BUYER";
+        IssuedTokenPair expectedPair = new IssuedTokenPair("accessToken", "refreshToken");
+
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("oauth2:code:" + code)).thenReturn(redisVal);
+        when(refreshTokenService.issueTokenPair(userId, Role.BUYER)).thenReturn(expectedPair);
+
+        IssuedTokenPair result = authService.exchangeOAuth2Code(code);
+
+        assertNotNull(result);
+        assertEquals("accessToken", result.accessToken());
+        assertEquals("refreshToken", result.refreshToken());
+        verify(stringRedisTemplate).delete("oauth2:code:" + code);
+    }
+
+    @Test
+    void exchangeOAuth2CodeWithExpiredOrInvalidCodeShouldThrowException() {
+        String code = "invalidCode";
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("oauth2:code:" + code)).thenReturn(null);
+
+        AppException ex = assertThrows(AppException.class, () -> authService.exchangeOAuth2Code(code));
+        assertEquals(ErrorCode.INVALID_TOKEN, ex.getErrorCode());
+        assertEquals("Token is invalid or expired", ex.getMessage());
+    }
+
+    @Test
+    void exchangeOAuth2CodeWithInvalidFormatCodeShouldThrowException() {
+        String code = "malformedCode";
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("oauth2:code:" + code)).thenReturn("userIdNoColonRole");
+
+        AppException ex = assertThrows(AppException.class, () -> authService.exchangeOAuth2Code(code));
+        assertEquals(ErrorCode.INVALID_TOKEN, ex.getErrorCode());
+        assertEquals("Token is invalid or expired", ex.getMessage());
     }
 }

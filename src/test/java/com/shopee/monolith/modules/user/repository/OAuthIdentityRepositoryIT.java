@@ -6,12 +6,14 @@ import com.shopee.monolith.modules.user.entity.User;
 import com.shopee.monolith.modules.user.model.Role;
 import com.shopee.monolith.modules.user.model.UserStatus;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -27,11 +29,18 @@ class OAuthIdentityRepositoryIT extends BasePostgresRedisIntegrationTest {
     @Autowired
     private OAuthIdentityRepository oauthIdentityRepository;
 
-    @BeforeEach
+    private final List<UUID> createdUserIds = new ArrayList<>();
+
     @AfterEach
     void cleanDb() {
-        oauthIdentityRepository.deleteAll();
-        userRepository.deleteAll();
+        for (UUID userId : createdUserIds) {
+            try {
+                userRepository.deleteById(userId);
+            } catch (Exception ignored) {
+            }
+        }
+        userRepository.flush();
+        createdUserIds.clear();
     }
 
     @Test
@@ -45,6 +54,7 @@ class OAuthIdentityRepositoryIT extends BasePostgresRedisIntegrationTest {
                 .build();
 
         User savedUser = userRepository.saveAndFlush(user);
+        createdUserIds.add(savedUser.getId());
 
         OAuthIdentity identity = OAuthIdentity.builder()
                 .userId(savedUser.getId())
@@ -72,6 +82,7 @@ class OAuthIdentityRepositoryIT extends BasePostgresRedisIntegrationTest {
                 .role(Role.BUYER)
                 .status(UserStatus.ACTIVE)
                 .build());
+        createdUserIds.add(user1.getId());
 
         User user2 = userRepository.saveAndFlush(User.builder()
                 .email("user2@shopee.com")
@@ -79,6 +90,7 @@ class OAuthIdentityRepositoryIT extends BasePostgresRedisIntegrationTest {
                 .role(Role.BUYER)
                 .status(UserStatus.ACTIVE)
                 .build());
+        createdUserIds.add(user2.getId());
 
         oauthIdentityRepository.saveAndFlush(OAuthIdentity.builder()
                 .userId(user1.getId())
@@ -105,6 +117,7 @@ class OAuthIdentityRepositoryIT extends BasePostgresRedisIntegrationTest {
                 .role(Role.BUYER)
                 .status(UserStatus.ACTIVE)
                 .build());
+        createdUserIds.add(user.getId());
 
         OAuthIdentity identity = oauthIdentityRepository.saveAndFlush(OAuthIdentity.builder()
                 .userId(user.getId())

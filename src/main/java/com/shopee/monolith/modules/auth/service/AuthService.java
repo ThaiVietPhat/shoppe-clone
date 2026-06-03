@@ -9,4 +9,6 @@ public interface AuthService {
     com.shopee.monolith.modules.user.dto.response.UserResponse register(com.shopee.monolith.modules.auth.dto.request.RegisterRequest request);
 
     void verify(com.shopee.monolith.modules.auth.dto.request.VerifyRequest request);
+
+    IssuedTokenPair exchangeOAuth2Code(String code);
 }

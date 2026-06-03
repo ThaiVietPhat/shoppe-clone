@@ -135,10 +135,14 @@ public class UserServiceImpl implements UserService {
                     .providerUserId(providerUserId)
                     .emailAtProvider(email)
                     .build();
-            oauthIdentityRepository.save(identity);
+            oauthIdentityRepository.saveAndFlush(identity);
 
             return userMapper.toResponse(savedUser);
         } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            String msg = e.getMessage() != null ? e.getMessage() : "";
+            if (msg.contains("uq_oauth_identities_provider_user_id") || msg.contains("oauth_identities")) {
+                throw new AppException(ErrorCode.OAUTH_IDENTITY_ALREADY_LINKED);
+            }
             throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
     }

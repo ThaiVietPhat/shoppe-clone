@@ -68,7 +68,8 @@ public class SecurityConfig {
                                 "/api/auth/logout",
                                 "/api/auth/csrf",
                                 "/api/auth/register",
-                                "/api/auth/verify"
+                                "/api/auth/verify",
+                                "/api/auth/oauth2/exchange"
                         ).permitAll()
                         .requestMatchers(
                                 "/actuator/health",
