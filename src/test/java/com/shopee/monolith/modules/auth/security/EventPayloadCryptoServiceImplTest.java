@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -70,16 +69,16 @@ class EventPayloadCryptoServiceImplTest {
     }
 
     @Test
-    void whenEncryptNullOrBlankShouldReturnAsIs() {
-        assertNull(cryptoService.encrypt(null));
-        assertEquals("", cryptoService.encrypt(""));
-        assertEquals("   ", cryptoService.encrypt("   "));
+    void whenEncryptNullOrBlankShouldThrowException() {
+        assertThrows(IllegalArgumentException.class, () -> cryptoService.encrypt(null));
+        assertThrows(IllegalArgumentException.class, () -> cryptoService.encrypt(""));
+        assertThrows(IllegalArgumentException.class, () -> cryptoService.encrypt("   "));
     }
 
     @Test
-    void whenDecryptNullOrBlankShouldReturnAsIs() {
-        assertNull(cryptoService.decrypt(null));
-        assertEquals("", cryptoService.decrypt(""));
-        assertEquals("   ", cryptoService.decrypt("   "));
+    void whenDecryptNullOrBlankShouldThrowException() {
+        assertThrows(IllegalArgumentException.class, () -> cryptoService.decrypt(null));
+        assertThrows(IllegalArgumentException.class, () -> cryptoService.decrypt(""));
+        assertThrows(IllegalArgumentException.class, () -> cryptoService.decrypt("   "));
     }
 }

@@ -166,6 +166,19 @@ public class AuthSecurityProperties {
         return true;
     }
 
+    @jakarta.validation.constraints.AssertTrue(message = "Event active key ID and previous key ID must not be identical")
+    public boolean isEventCryptoKeyIdsDifferent() {
+        if (eventCrypto == null) {
+            return true;
+        }
+        String activeId = eventCrypto.getActiveKeyId();
+        String prevId = eventCrypto.getPreviousKeyId();
+        if (activeId == null || activeId.isBlank() || prevId == null || prevId.isBlank()) {
+            return true;
+        }
+        return !activeId.equals(prevId);
+    }
+
     @Getter
     @Setter
     public static class VerificationTokenProperties {
@@ -179,7 +192,7 @@ public class AuthSecurityProperties {
         @NotBlank
         private String activeKeyId = "crypto-v1";
         @NotBlank
-        private String activeSecret = "default-event-crypto-secret-32b-key-default-value";
+        private String activeSecret;
 
         private String previousKeyId;
         private String previousSecret;

@@ -25,7 +25,7 @@ public class EventPayloadCryptoServiceImpl implements EventPayloadCryptoService 
     @Override
     public String encrypt(String plainText) {
         if (plainText == null || plainText.isBlank()) {
-            return plainText;
+            throw new IllegalArgumentException("Plain text to encrypt must not be null or blank");
         }
         try {
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
@@ -51,7 +51,7 @@ public class EventPayloadCryptoServiceImpl implements EventPayloadCryptoService 
     @Override
     public String decrypt(String cipherText) {
         if (cipherText == null || cipherText.isBlank()) {
-            return cipherText;
+            throw new IllegalArgumentException("Cipher text to decrypt must not be null or blank");
         }
         int dotIndex = cipherText.indexOf('.');
         if (dotIndex == -1) {

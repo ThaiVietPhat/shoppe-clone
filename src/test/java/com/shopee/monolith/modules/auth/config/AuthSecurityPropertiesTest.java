@@ -135,4 +135,31 @@ class AuthSecurityPropertiesTest {
         Set<ConstraintViolation<AuthSecurityProperties>> violations = validator.validate(properties);
         assertTrue(violations.isEmpty());
     }
+
+    @Test
+    void whenEventCryptoActiveSecretIsMissingShouldFailValidation() {
+        AuthSecurityProperties properties = new AuthSecurityProperties();
+        properties.getEventCrypto().setActiveSecret(null);
+
+        Set<ConstraintViolation<AuthSecurityProperties>> violations1 = validator.validate(properties);
+        assertFalse(violations1.isEmpty());
+
+        properties.getEventCrypto().setActiveSecret("");
+        Set<ConstraintViolation<AuthSecurityProperties>> violations2 = validator.validate(properties);
+        assertFalse(violations2.isEmpty());
+    }
+
+    @Test
+    void whenEventCryptoKeyIdsAreIdenticalShouldFailValidation() {
+        AuthSecurityProperties properties = new AuthSecurityProperties();
+        properties.getEventCrypto().setActiveKeyId("crypto-v1");
+        properties.getEventCrypto().setActiveSecret("a-very-long-secret-key-at-least-32-bytes");
+
+        properties.getEventCrypto().setPreviousKeyId("crypto-v1");
+        properties.getEventCrypto().setPreviousSecret("another-very-long-secret-key-at-least-32-bytes");
+
+        Set<ConstraintViolation<AuthSecurityProperties>> violations = validator.validate(properties);
+        assertFalse(violations.isEmpty());
+        assertTrue(violations.stream().anyMatch(v -> v.getMessage().contains("Event active key ID and previous key ID must not be identical")));
+    }
 }
