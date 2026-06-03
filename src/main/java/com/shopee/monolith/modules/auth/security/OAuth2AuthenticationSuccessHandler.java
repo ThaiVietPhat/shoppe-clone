@@ -37,7 +37,7 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
                 // Store exchange code in Redis for 60 seconds
                 stringRedisTemplate.opsForValue().set(key, value, Duration.ofSeconds(60));
             } catch (Exception e) {
-                String targetUrl = allowedOrigin + "/login?error=" + java.net.URLEncoder.encode("Auth service temporarily unavailable", java.nio.charset.StandardCharsets.UTF_8);
+                String targetUrl = allowedOrigin + "/login?error=" + java.net.URLEncoder.encode("service_unavailable", java.nio.charset.StandardCharsets.UTF_8);
                 getRedirectStrategy().sendRedirect(request, response, targetUrl);
                 return;
             }

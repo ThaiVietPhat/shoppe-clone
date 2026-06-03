@@ -85,18 +85,50 @@ class OAuth2HandlersTest {
     }
 
     @Test
-    void failureHandlerShouldRedirectToAllowedOriginWithErrorMessage() throws Exception {
+    void failureHandlerShouldRedirectToAllowedOriginWithEmailAlreadyExistsCode() throws Exception {
         HttpServletRequest request = mock(HttpServletRequest.class);
         HttpServletResponse response = mock(HttpServletResponse.class);
         when(response.encodeRedirectURL(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
         AuthenticationException exception = mock(AuthenticationException.class);
 
-        when(exception.getMessage()).thenReturn("Authentication failed due to duplicated email");
+        when(exception.getMessage()).thenReturn("Email already exists. Please link account.");
 
         failureHandler.onAuthenticationFailure(request, response, exception);
 
         String expectedRedirectUrl = "http://localhost:3000/login?error="
-                + URLEncoder.encode("Authentication failed due to duplicated email", StandardCharsets.UTF_8);
+                + URLEncoder.encode("email_already_exists", StandardCharsets.UTF_8);
+        verify(response).sendRedirect(expectedRedirectUrl);
+    }
+
+    @Test
+    void failureHandlerShouldRedirectToAllowedOriginWithAccountLockedCode() throws Exception {
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        when(response.encodeRedirectURL(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
+        AuthenticationException exception = mock(AuthenticationException.class);
+
+        when(exception.getMessage()).thenReturn("Account is locked");
+
+        failureHandler.onAuthenticationFailure(request, response, exception);
+
+        String expectedRedirectUrl = "http://localhost:3000/login?error="
+                + URLEncoder.encode("account_locked", StandardCharsets.UTF_8);
+        verify(response).sendRedirect(expectedRedirectUrl);
+    }
+
+    @Test
+    void failureHandlerShouldRedirectToAllowedOriginWithDefaultOauthFailedCode() throws Exception {
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        when(response.encodeRedirectURL(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
+        AuthenticationException exception = mock(AuthenticationException.class);
+
+        when(exception.getMessage()).thenReturn("Random unknown auth exception message");
+
+        failureHandler.onAuthenticationFailure(request, response, exception);
+
+        String expectedRedirectUrl = "http://localhost:3000/login?error="
+                + URLEncoder.encode("oauth_failed", StandardCharsets.UTF_8);
         verify(response).sendRedirect(expectedRedirectUrl);
     }
 
@@ -121,7 +153,7 @@ class OAuth2HandlersTest {
         successHandler.onAuthenticationSuccess(request, response, authentication);
 
         String expectedRedirectUrl = "http://localhost:3000/login?error="
-                + URLEncoder.encode("Auth service temporarily unavailable", StandardCharsets.UTF_8);
+                + URLEncoder.encode("service_unavailable", StandardCharsets.UTF_8);
         verify(response).sendRedirect(expectedRedirectUrl);
     }
 }

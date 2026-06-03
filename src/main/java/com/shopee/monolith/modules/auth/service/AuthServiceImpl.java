@@ -161,7 +161,12 @@ public class AuthServiceImpl implements AuthService {
         }
         String userIdStr = value.substring(0, colonIdx);
 
-        UUID userId = UUID.fromString(userIdStr);
+        UUID userId;
+        try {
+            userId = UUID.fromString(userIdStr);
+        } catch (IllegalArgumentException e) {
+            throw new AppException(ErrorCode.INVALID_TOKEN);
+        }
         UserAuthenticationData userAuthData = userService.findAuthenticationDataById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 

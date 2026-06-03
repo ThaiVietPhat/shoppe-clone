@@ -1,11 +1,21 @@
 package com.shopee.monolith.modules.auth.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shopee.monolith.BasePostgresRedisIntegrationTest;
+import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.modules.auth.config.AuthSecurityProperties;
+import com.shopee.monolith.modules.auth.dto.request.OAuth2ExchangeRequest;
+import com.shopee.monolith.modules.auth.repository.RefreshTokenRepository;
+import com.shopee.monolith.modules.auth.repository.RefreshTokenFamilyRepository;
+import com.shopee.monolith.modules.user.entity.User;
+import com.shopee.monolith.modules.user.model.Role;
+import com.shopee.monolith.modules.user.model.UserStatus;
+import com.shopee.monolith.modules.user.repository.UserRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -13,8 +23,19 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -28,6 +49,15 @@ class AuthControllerIT extends BasePostgresRedisIntegrationTest {
 
     @Autowired
     private AuthSecurityProperties properties;
+
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @AfterEach
     void tearDown() {
@@ -108,5 +138,100 @@ class AuthControllerIT extends BasePostgresRedisIntegrationTest {
                 .andReturn().getResponse().getStatus();
         // Since probe is public, it should return 200 (or 503 if DOWN), but definitely NOT 401/403.
         assertEquals(200, livenessStatus);
+    }
+
+    @Autowired
+    private RefreshTokenRepository refreshTokenRepository;
+
+    @Autowired
+    private RefreshTokenFamilyRepository refreshTokenFamilyRepository;
+
+    @Test
+    void exchangeOAuth2CodeConcurrentlyShouldSucceedOnlyOnceOnRedisRealServer() throws Exception {
+        // 1. Create a real user in DB
+        User user = User.builder()
+                .email("oauth2-concurrent@example.com")
+                .role(Role.BUYER)
+                .status(UserStatus.ACTIVE)
+                .build();
+        user = userRepository.save(user);
+        final UUID userId = user.getId();
+
+        // 2. Seed exchange code in Redis
+        String code = UUID.randomUUID().toString();
+        String key = "oauth2:code:" + code;
+        String redisVal = userId.toString() + ":BUYER";
+        stringRedisTemplate.opsForValue().set(key, redisVal, Duration.ofSeconds(60));
+
+        // 3. Prepare exchange request
+        OAuth2ExchangeRequest exchangeReq = new OAuth2ExchangeRequest(code);
+
+        int concurrency = 2;
+        ExecutorService executor = Executors.newFixedThreadPool(concurrency);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch endLatch = new CountDownLatch(concurrency);
+        List<Future<MvcResult>> futures = new ArrayList<>();
+
+        for (int i = 0; i < concurrency; i++) {
+            futures.add(executor.submit(() -> {
+                startLatch.await();
+                try {
+                    MvcResult csrfResult = mockMvc.perform(get("/api/auth/csrf"))
+                            .andExpect(status().isOk())
+                            .andReturn();
+                    var csrfCookie = csrfResult.getResponse().getCookie(properties.getCsrf().getCookieName());
+                    assertNotNull(csrfCookie);
+
+                    return mockMvc.perform(post("/api/auth/oauth2/exchange")
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content(objectMapper.writeValueAsString(exchangeReq))
+                                    .cookie(csrfCookie)
+                                    .header(properties.getCsrf().getHeaderName(), csrfCookie.getValue()))
+                            .andReturn();
+                } finally {
+                    endLatch.countDown();
+                }
+            }));
+        }
+
+        try {
+            startLatch.countDown();
+            assertTrue(endLatch.await(10, TimeUnit.SECONDS));
+        } finally {
+            executor.shutdown();
+        }
+
+        int successCount = 0;
+        int failCount = 0;
+
+        for (Future<MvcResult> future : futures) {
+            MvcResult res = future.get();
+            int status = res.getResponse().getStatus();
+            if (status == 200) {
+                successCount++;
+            } else if (status == 401) {
+                failCount++;
+                String body = res.getResponse().getContentAsString();
+                assertTrue(body.contains(ErrorCode.INVALID_TOKEN.getMessage()));
+            }
+        }
+
+        assertEquals(1, successCount, "Exactly one exchange request must succeed");
+        assertEquals(concurrency - 1, failCount, "Other request must fail with INVALID_TOKEN");
+
+        // Verify only 1 refresh family was created in PostgreSQL
+        var families = refreshTokenFamilyRepository.findAll();
+        long userFamilyCount = families.stream().filter(f -> f.getUserId().equals(userId)).count();
+        assertEquals(1, userFamilyCount, "Exactly 1 refresh token family must be created");
+
+        // Clean up
+        families.stream()
+                .filter(f -> f.getUserId().equals(userId))
+                .forEach(f -> {
+                    var tokens = refreshTokenRepository.findAllByFamilyId(f.getId());
+                    refreshTokenRepository.deleteAll(tokens);
+                    refreshTokenFamilyRepository.delete(f);
+                });
+        userRepository.delete(user);
     }
 }

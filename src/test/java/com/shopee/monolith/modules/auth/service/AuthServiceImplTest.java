@@ -348,6 +348,17 @@ class AuthServiceImplTest {
     }
 
     @Test
+    void exchangeOAuth2CodeWithMalformedUuidShouldThrowException() {
+        String code = "malformedUuidCode";
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.getAndDelete("oauth2:code:" + code)).thenReturn("not-a-uuid:BUYER");
+
+        AppException ex = assertThrows(AppException.class, () -> authService.exchangeOAuth2Code(code));
+        assertEquals(ErrorCode.INVALID_TOKEN, ex.getErrorCode());
+        assertEquals("Token is invalid or expired", ex.getMessage());
+    }
+
+    @Test
     void exchangeOAuth2CodeWithRedisFailureShouldThrowServiceUnavailable() {
         String code = "redisFailCode";
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);

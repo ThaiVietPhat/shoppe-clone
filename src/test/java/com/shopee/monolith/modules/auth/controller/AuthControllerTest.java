@@ -295,7 +295,7 @@ class AuthControllerTest {
 
     @Test
     void exchangeOAuth2CodeWhenValidShouldReturnAccessTokenAndSetCookie() throws Exception {
-        String code = "validExchangeCode";
+        String code = java.util.UUID.randomUUID().toString();
         IssuedTokenPair tokenPair = new IssuedTokenPair("access-token-123", "refresh-token-456");
 
         when(authService.exchangeOAuth2Code(code)).thenReturn(tokenPair);
@@ -315,7 +315,7 @@ class AuthControllerTest {
 
     @Test
     void exchangeOAuth2CodeWhenInvalidShouldReturnError() throws Exception {
-        String code = "invalidExchangeCode";
+        String code = java.util.UUID.randomUUID().toString();
         when(authService.exchangeOAuth2Code(code))
                 .thenThrow(new AppException(ErrorCode.INVALID_TOKEN));
 
