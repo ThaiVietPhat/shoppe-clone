@@ -89,9 +89,9 @@ class OAuth2HandlersTest {
         HttpServletRequest request = mock(HttpServletRequest.class);
         HttpServletResponse response = mock(HttpServletResponse.class);
         when(response.encodeRedirectURL(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
-        AuthenticationException exception = mock(AuthenticationException.class);
-
-        when(exception.getMessage()).thenReturn("Email already exists. Please link account.");
+        org.springframework.security.oauth2.core.OAuth2AuthenticationException exception =
+                new org.springframework.security.oauth2.core.OAuth2AuthenticationException(
+                        new org.springframework.security.oauth2.core.OAuth2Error("email_already_exists"), "Email already exists");
 
         failureHandler.onAuthenticationFailure(request, response, exception);
 
@@ -105,9 +105,9 @@ class OAuth2HandlersTest {
         HttpServletRequest request = mock(HttpServletRequest.class);
         HttpServletResponse response = mock(HttpServletResponse.class);
         when(response.encodeRedirectURL(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
-        AuthenticationException exception = mock(AuthenticationException.class);
-
-        when(exception.getMessage()).thenReturn("Account is locked");
+        org.springframework.security.oauth2.core.OAuth2AuthenticationException exception =
+                new org.springframework.security.oauth2.core.OAuth2AuthenticationException(
+                        new org.springframework.security.oauth2.core.OAuth2Error("account_locked"), "Account is locked");
 
         failureHandler.onAuthenticationFailure(request, response, exception);
 
@@ -117,13 +117,27 @@ class OAuth2HandlersTest {
     }
 
     @Test
+    void failureHandlerShouldRedirectToAllowedOriginWithAccountInactiveCode() throws Exception {
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        when(response.encodeRedirectURL(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
+        org.springframework.security.oauth2.core.OAuth2AuthenticationException exception =
+                new org.springframework.security.oauth2.core.OAuth2AuthenticationException(
+                        new org.springframework.security.oauth2.core.OAuth2Error("account_inactive"), "Account is inactive");
+
+        failureHandler.onAuthenticationFailure(request, response, exception);
+
+        String expectedRedirectUrl = "http://localhost:3000/login?error="
+                + URLEncoder.encode("account_inactive", StandardCharsets.UTF_8);
+        verify(response).sendRedirect(expectedRedirectUrl);
+    }
+
+    @Test
     void failureHandlerShouldRedirectToAllowedOriginWithDefaultOauthFailedCode() throws Exception {
         HttpServletRequest request = mock(HttpServletRequest.class);
         HttpServletResponse response = mock(HttpServletResponse.class);
         when(response.encodeRedirectURL(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
         AuthenticationException exception = mock(AuthenticationException.class);
-
-        when(exception.getMessage()).thenReturn("Random unknown auth exception message");
 
         failureHandler.onAuthenticationFailure(request, response, exception);
 

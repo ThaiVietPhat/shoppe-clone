@@ -129,6 +129,8 @@ app:
       cookie-name: XSRF-TOKEN
       header-name: X-XSRF-TOKEN
     trusted-proxies: ${TRUSTED_PROXY_CIDRS:}
+    oauth2:
+      exchange-code-ttl: ${OAUTH2_EXCHANGE_CODE_TTL:60s}
     verification-token:
       ttl: 24h
     event-crypto:

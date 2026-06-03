@@ -150,7 +150,7 @@ class AuthControllerIT extends BasePostgresRedisIntegrationTest {
     void exchangeOAuth2CodeConcurrentlyShouldSucceedOnlyOnceOnRedisRealServer() throws Exception {
         // 1. Create a real user in DB
         User user = User.builder()
-                .email("oauth2-concurrent@example.com")
+                .email("oauth2-concurrent-" + UUID.randomUUID() + "@example.com")
                 .role(Role.BUYER)
                 .status(UserStatus.ACTIVE)
                 .build();
@@ -160,78 +160,83 @@ class AuthControllerIT extends BasePostgresRedisIntegrationTest {
         // 2. Seed exchange code in Redis
         String code = UUID.randomUUID().toString();
         String key = "oauth2:code:" + code;
-        String redisVal = userId.toString() + ":BUYER";
-        stringRedisTemplate.opsForValue().set(key, redisVal, Duration.ofSeconds(60));
-
-        // 3. Prepare exchange request
-        OAuth2ExchangeRequest exchangeReq = new OAuth2ExchangeRequest(code);
-
-        int concurrency = 2;
-        ExecutorService executor = Executors.newFixedThreadPool(concurrency);
-        CountDownLatch startLatch = new CountDownLatch(1);
-        CountDownLatch endLatch = new CountDownLatch(concurrency);
-        List<Future<MvcResult>> futures = new ArrayList<>();
-
-        for (int i = 0; i < concurrency; i++) {
-            futures.add(executor.submit(() -> {
-                startLatch.await();
-                try {
-                    MvcResult csrfResult = mockMvc.perform(get("/api/auth/csrf"))
-                            .andExpect(status().isOk())
-                            .andReturn();
-                    var csrfCookie = csrfResult.getResponse().getCookie(properties.getCsrf().getCookieName());
-                    assertNotNull(csrfCookie);
-
-                    return mockMvc.perform(post("/api/auth/oauth2/exchange")
-                                    .contentType(MediaType.APPLICATION_JSON)
-                                    .content(objectMapper.writeValueAsString(exchangeReq))
-                                    .cookie(csrfCookie)
-                                    .header(properties.getCsrf().getHeaderName(), csrfCookie.getValue()))
-                            .andReturn();
-                } finally {
-                    endLatch.countDown();
-                }
-            }));
-        }
 
         try {
-            startLatch.countDown();
-            assertTrue(endLatch.await(10, TimeUnit.SECONDS));
-        } finally {
-            executor.shutdown();
-        }
+            String redisVal = userId.toString() + ":BUYER";
+            stringRedisTemplate.opsForValue().set(key, redisVal, Duration.ofSeconds(60));
 
-        int successCount = 0;
-        int failCount = 0;
+            // 3. Prepare exchange request
+            OAuth2ExchangeRequest exchangeReq = new OAuth2ExchangeRequest(code);
 
-        for (Future<MvcResult> future : futures) {
-            MvcResult res = future.get();
-            int status = res.getResponse().getStatus();
-            if (status == 200) {
-                successCount++;
-            } else if (status == 401) {
-                failCount++;
-                String body = res.getResponse().getContentAsString();
-                assertTrue(body.contains(ErrorCode.INVALID_TOKEN.getMessage()));
+            int concurrency = 2;
+            ExecutorService executor = Executors.newFixedThreadPool(concurrency);
+            CountDownLatch startLatch = new CountDownLatch(1);
+            CountDownLatch endLatch = new CountDownLatch(concurrency);
+            List<Future<MvcResult>> futures = new ArrayList<>();
+
+            for (int i = 0; i < concurrency; i++) {
+                futures.add(executor.submit(() -> {
+                    startLatch.await();
+                    try {
+                        MvcResult csrfResult = mockMvc.perform(get("/api/auth/csrf"))
+                                .andExpect(status().isOk())
+                                .andReturn();
+                        var csrfCookie = csrfResult.getResponse().getCookie(properties.getCsrf().getCookieName());
+                        assertNotNull(csrfCookie);
+
+                        return mockMvc.perform(post("/api/auth/oauth2/exchange")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(objectMapper.writeValueAsString(exchangeReq))
+                                        .cookie(csrfCookie)
+                                        .header(properties.getCsrf().getHeaderName(), csrfCookie.getValue()))
+                                .andReturn();
+                    } finally {
+                        endLatch.countDown();
+                    }
+                }));
             }
+
+            try {
+                startLatch.countDown();
+                assertTrue(endLatch.await(10, TimeUnit.SECONDS));
+            } finally {
+                executor.shutdown();
+            }
+
+            int successCount = 0;
+            int failCount = 0;
+
+            for (Future<MvcResult> future : futures) {
+                MvcResult res = future.get();
+                int status = res.getResponse().getStatus();
+                if (status == 200) {
+                    successCount++;
+                } else if (status == 401) {
+                    failCount++;
+                    String body = res.getResponse().getContentAsString();
+                    assertTrue(body.contains(ErrorCode.INVALID_TOKEN.getMessage()));
+                }
+            }
+
+            assertEquals(1, successCount, "Exactly one exchange request must succeed");
+            assertEquals(concurrency - 1, failCount, "Other request must fail with INVALID_TOKEN");
+
+            // Verify only 1 refresh family was created in PostgreSQL
+            var families = refreshTokenFamilyRepository.findAll();
+            long userFamilyCount = families.stream().filter(f -> f.getUserId().equals(userId)).count();
+            assertEquals(1, userFamilyCount, "Exactly 1 refresh token family must be created");
+        } finally {
+            // Clean up
+            var families = refreshTokenFamilyRepository.findAll();
+            families.stream()
+                    .filter(f -> f.getUserId().equals(userId))
+                    .forEach(f -> {
+                        var tokens = refreshTokenRepository.findAllByFamilyId(f.getId());
+                        refreshTokenRepository.deleteAll(tokens);
+                        refreshTokenFamilyRepository.delete(f);
+                    });
+            userRepository.delete(user);
+            stringRedisTemplate.delete(key);
         }
-
-        assertEquals(1, successCount, "Exactly one exchange request must succeed");
-        assertEquals(concurrency - 1, failCount, "Other request must fail with INVALID_TOKEN");
-
-        // Verify only 1 refresh family was created in PostgreSQL
-        var families = refreshTokenFamilyRepository.findAll();
-        long userFamilyCount = families.stream().filter(f -> f.getUserId().equals(userId)).count();
-        assertEquals(1, userFamilyCount, "Exactly 1 refresh token family must be created");
-
-        // Clean up
-        families.stream()
-                .filter(f -> f.getUserId().equals(userId))
-                .forEach(f -> {
-                    var tokens = refreshTokenRepository.findAllByFamilyId(f.getId());
-                    refreshTokenRepository.deleteAll(tokens);
-                    refreshTokenFamilyRepository.delete(f);
-                });
-        userRepository.delete(user);
     }
 }

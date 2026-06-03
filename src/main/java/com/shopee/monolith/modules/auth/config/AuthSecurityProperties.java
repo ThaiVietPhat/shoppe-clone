@@ -39,6 +39,10 @@ public class AuthSecurityProperties {
     @NotNull
     private EventCryptoProperties eventCrypto = new EventCryptoProperties();
 
+    @Valid
+    @NotNull
+    private OAuth2Properties oauth2 = new OAuth2Properties();
+
     private List<String> trustedProxies = List.of();
 
     @Getter
@@ -196,5 +200,18 @@ public class AuthSecurityProperties {
 
         private String previousKeyId;
         private String previousSecret;
+    }
+
+    @Getter
+    @Setter
+    public static class OAuth2Properties {
+        @NotNull
+        private java.time.Duration exchangeCodeTtl = java.time.Duration.ofSeconds(60);
+    }
+
+    @jakarta.validation.constraints.AssertTrue(message = "OAuth2 exchange code TTL must be positive")
+    public boolean isOAuth2ExchangeCodeTtlValid() {
+        return oauth2 != null && oauth2.getExchangeCodeTtl() != null
+                && !oauth2.getExchangeCodeTtl().isNegative() && !oauth2.getExchangeCodeTtl().isZero();
     }
 }

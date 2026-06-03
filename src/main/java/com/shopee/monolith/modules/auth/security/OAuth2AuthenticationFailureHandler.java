@@ -31,25 +31,11 @@ public class OAuth2AuthenticationFailureHandler extends SimpleUrlAuthenticationF
             errorCode = switch (oauth2ErrorCode) {
                 case "email_already_exists" -> "email_already_exists";
                 case "email_not_verified" -> "email_not_verified";
-                case "account_locked", "account_inactive" -> "account_locked";
+                case "account_locked" -> "account_locked";
+                case "account_inactive" -> "account_inactive";
                 case "service_unavailable" -> "service_unavailable";
                 default -> "oauth_failed";
             };
-        } else {
-            String message = exception.getMessage();
-            if (message != null) {
-                if (message.contains("locked")) {
-                    errorCode = "account_locked";
-                } else if (message.contains("inactive")) {
-                    errorCode = "account_locked";
-                } else if (message.contains("already exists")) {
-                    errorCode = "email_already_exists";
-                } else if (message.contains("not verified")) {
-                    errorCode = "email_not_verified";
-                } else if (message.contains("unavailable") || message.contains("Redis")) {
-                    errorCode = "service_unavailable";
-                }
-            }
         }
 
         String targetUrl = allowedOrigin + "/login?error=" + URLEncoder.encode(errorCode, StandardCharsets.UTF_8);

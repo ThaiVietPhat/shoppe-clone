@@ -55,7 +55,20 @@ public class CustomOAuth2UserService implements OAuth2UserService<OAuth2UserRequ
         }
 
         // Load existing user or register new OAuth-only active user
-        Optional<UserAuthenticationData> userAuthDataOpt = userService.findAuthenticationDataByOAuth(provider, providerUserId);
+        Optional<UserAuthenticationData> userAuthDataOpt;
+        try {
+            userAuthDataOpt = userService.findAuthenticationDataByOAuth(provider, providerUserId);
+        } catch (com.shopee.monolith.common.exception.AppException e) {
+            if (e.getErrorCode() == com.shopee.monolith.common.exception.ErrorCode.SERVICE_UNAVAILABLE) {
+                throw new OAuth2AuthenticationException(new OAuth2Error("service_unavailable"), e.getMessage());
+            }
+            throw new OAuth2AuthenticationException(new OAuth2Error("oauth_failed"), e.getMessage());
+        } catch (org.springframework.dao.DataAccessException e) {
+            throw new OAuth2AuthenticationException(new OAuth2Error("service_unavailable"), "Database service unavailable");
+        } catch (Exception e) {
+            throw new OAuth2AuthenticationException(new OAuth2Error("oauth_failed"), "Authentication failed unexpected");
+        }
+
         UserAuthenticationData userAuthData;
 
         if (userAuthDataOpt.isPresent()) {
@@ -77,7 +90,14 @@ public class CustomOAuth2UserService implements OAuth2UserService<OAuth2UserRequ
                 if (e.getErrorCode() == com.shopee.monolith.common.exception.ErrorCode.EMAIL_ALREADY_EXISTS) {
                     throw new OAuth2AuthenticationException(new OAuth2Error("email_already_exists"), "Email already exists. Please login and link account.");
                 }
+                if (e.getErrorCode() == com.shopee.monolith.common.exception.ErrorCode.SERVICE_UNAVAILABLE) {
+                    throw new OAuth2AuthenticationException(new OAuth2Error("service_unavailable"), e.getMessage());
+                }
                 throw new OAuth2AuthenticationException(new OAuth2Error("registration_failed"), e.getMessage());
+            } catch (org.springframework.dao.DataAccessException e) {
+                throw new OAuth2AuthenticationException(new OAuth2Error("service_unavailable"), "Infrastructure service unavailable");
+            } catch (Exception e) {
+                throw new OAuth2AuthenticationException(new OAuth2Error("oauth_failed"), "Authentication failed unexpected");
             }
         }
 
@@ -100,6 +120,9 @@ public class CustomOAuth2UserService implements OAuth2UserService<OAuth2UserRequ
     }
 
     private void validateUserStatus(com.shopee.monolith.modules.user.model.UserStatus status) {
+        if (status == com.shopee.monolith.modules.user.model.UserStatus.PENDING_VERIFICATION) {
+            throw new OAuth2AuthenticationException(new OAuth2Error("email_not_verified"), "Email from OAuth provider is not verified");
+        }
         if (status == com.shopee.monolith.modules.user.model.UserStatus.LOCKED) {
             throw new OAuth2AuthenticationException(new OAuth2Error("account_locked"), "Account is locked");
         }

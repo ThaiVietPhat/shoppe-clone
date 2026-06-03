@@ -11,7 +11,6 @@ import org.springframework.security.web.authentication.SimpleUrlAuthenticationSu
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
-import java.time.Duration;
 import java.util.UUID;
 
 @Component
@@ -34,8 +33,8 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
                     : properties.getCors().getAllowedOrigins().get(0);
 
             try {
-                // Store exchange code in Redis for 60 seconds
-                stringRedisTemplate.opsForValue().set(key, value, Duration.ofSeconds(60));
+                // Store exchange code in Redis for configured TTL
+                stringRedisTemplate.opsForValue().set(key, value, properties.getOauth2().getExchangeCodeTtl());
             } catch (Exception e) {
                 String targetUrl = allowedOrigin + "/login?error=" + java.net.URLEncoder.encode("service_unavailable", java.nio.charset.StandardCharsets.UTF_8);
                 getRedirectStrategy().sendRedirect(request, response, targetUrl);

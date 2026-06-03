@@ -281,4 +281,73 @@ class CustomOAuth2UserServiceTest {
                 () -> customOAuth2UserService.loadUser(request));
         assertEquals("Email from OAuth provider is not verified", exception.getMessage());
     }
+
+    @Test
+    void loadUserWithPendingVerificationUserStatusShouldThrowException() {
+        OAuth2UserRequest request = createMockRequest("google");
+        OAuth2User oauth2User = mock(OAuth2User.class);
+        Map<String, Object> attribs = new HashMap<>();
+        attribs.put("sub", "google_12345");
+        attribs.put("email", "google@shopee.com");
+        attribs.put("email_verified", true);
+
+        when(oauth2User.getAttributes()).thenReturn(attribs);
+        when(delegate.loadUser(request)).thenReturn(oauth2User);
+
+        UUID userId = UUID.randomUUID();
+        UserAuthenticationData authData = UserAuthenticationData.builder()
+                .id(userId)
+                .email("google@shopee.com")
+                .role(Role.BUYER)
+                .status(UserStatus.PENDING_VERIFICATION)
+                .build();
+
+        when(userService.findAuthenticationDataByOAuth("google", "google_12345")).thenReturn(Optional.of(authData));
+
+        OAuth2AuthenticationException exception = assertThrows(OAuth2AuthenticationException.class,
+                () -> customOAuth2UserService.loadUser(request));
+        assertEquals("Email from OAuth provider is not verified", exception.getMessage());
+    }
+
+    @Test
+    void loadUserWithDatabaseDownShouldThrowServiceUnavailable() {
+        OAuth2UserRequest request = createMockRequest("google");
+        OAuth2User oauth2User = mock(OAuth2User.class);
+        Map<String, Object> attribs = new HashMap<>();
+        attribs.put("sub", "google_12345");
+        attribs.put("email", "google@shopee.com");
+        attribs.put("email_verified", true);
+
+        when(oauth2User.getAttributes()).thenReturn(attribs);
+        when(delegate.loadUser(request)).thenReturn(oauth2User);
+
+        when(userService.findAuthenticationDataByOAuth("google", "google_12345"))
+                .thenThrow(new org.springframework.dao.QueryTimeoutException("Database timeout"));
+
+        org.springframework.security.oauth2.core.OAuth2AuthenticationException exception = assertThrows(
+                org.springframework.security.oauth2.core.OAuth2AuthenticationException.class,
+                () -> customOAuth2UserService.loadUser(request));
+        assertEquals("service_unavailable", exception.getError().getErrorCode());
+    }
+
+    @Test
+    void loadUserWithUnexpectedExceptionShouldThrowOauthFailed() {
+        OAuth2UserRequest request = createMockRequest("google");
+        OAuth2User oauth2User = mock(OAuth2User.class);
+        Map<String, Object> attribs = new HashMap<>();
+        attribs.put("sub", "google_12345");
+        attribs.put("email", "google@shopee.com");
+        attribs.put("email_verified", true);
+
+        when(oauth2User.getAttributes()).thenReturn(attribs);
+        when(delegate.loadUser(request)).thenReturn(oauth2User);
+
+        when(userService.findAuthenticationDataByOAuth("google", "google_12345"))
+                .thenThrow(new NullPointerException("Unexpected null value"));
+
+        org.springframework.security.oauth2.core.OAuth2AuthenticationException exception = assertThrows(
+                org.springframework.security.oauth2.core.OAuth2AuthenticationException.class,
+                () -> customOAuth2UserService.loadUser(request));
+        assertEquals("oauth_failed", exception.getError().getErrorCode());
+    }
 }

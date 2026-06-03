@@ -164,4 +164,28 @@ class AuthSecurityPropertiesTest {
         assertFalse(violations.isEmpty());
         assertTrue(violations.stream().anyMatch(v -> v.getMessage().contains("Event active key ID and previous key ID must not be identical")));
     }
+
+    @Test
+    void whenOauth2ExchangeCodeTtlIsNegativeOrZeroShouldFailValidation() {
+        AuthSecurityProperties properties = createValidProperties();
+
+        properties.getOauth2().setExchangeCodeTtl(java.time.Duration.ofSeconds(-5));
+        Set<ConstraintViolation<AuthSecurityProperties>> violations1 = validator.validate(properties);
+        assertFalse(violations1.isEmpty());
+        assertTrue(violations1.stream().anyMatch(v -> v.getMessage().contains("OAuth2 exchange code TTL must be positive")));
+
+        properties.getOauth2().setExchangeCodeTtl(java.time.Duration.ZERO);
+        Set<ConstraintViolation<AuthSecurityProperties>> violations2 = validator.validate(properties);
+        assertFalse(violations2.isEmpty());
+        assertTrue(violations2.stream().anyMatch(v -> v.getMessage().contains("OAuth2 exchange code TTL must be positive")));
+    }
+
+    @Test
+    void whenOauth2ExchangeCodeTtlIsValidShouldPass() {
+        AuthSecurityProperties properties = createValidProperties();
+        properties.getOauth2().setExchangeCodeTtl(java.time.Duration.ofSeconds(60));
+
+        Set<ConstraintViolation<AuthSecurityProperties>> violations = validator.validate(properties);
+        assertTrue(violations.isEmpty());
+    }
 }
