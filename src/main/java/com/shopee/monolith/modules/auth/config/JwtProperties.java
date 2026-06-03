@@ -79,7 +79,17 @@ public class JwtProperties {
         Map<String, String> keysMap = new java.util.HashMap<>();
         keysMap.put(activeKeyId, activeSecret);
 
-        if (previousKeyId != null && !previousKeyId.isBlank() && previousSecret != null && !previousSecret.isBlank()) {
+        boolean prevIdBlank = (previousKeyId == null || previousKeyId.isBlank());
+        boolean prevSecretBlank = (previousSecret == null || previousSecret.isBlank());
+
+        if (prevIdBlank != prevSecretBlank) {
+            throw new IllegalStateException("Both previous-key-id and previous-secret must be provided, or both must be blank");
+        }
+
+        if (!prevIdBlank) {
+            if (previousKeyId.equals(activeKeyId)) {
+                throw new IllegalStateException("Active key ID and previous key ID must not be identical");
+            }
             if (previousSecret.getBytes(StandardCharsets.UTF_8).length < 32) {
                 throw new IllegalStateException("Key " + previousKeyId + " must be at least 32 bytes");
             }

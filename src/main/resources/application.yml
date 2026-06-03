@@ -103,7 +103,7 @@ jwt:
   refresh-expiration: 7d                           # 7 ngày — Refresh Token
   active-key-id: ${JWT_ACTIVE_KEY_ID:key-v1}
   active-secret: ${JWT_SECRET}
-  previous-key-id: ${JWT_PREVIOUS_KEY_ID:key-v0}
+  previous-key-id: ${JWT_PREVIOUS_KEY_ID:}
   previous-secret: ${JWT_PREVIOUS_SECRET:}
 
 app:

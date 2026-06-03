@@ -55,7 +55,6 @@ public class SecurityConfig {
                                 "/api/auth/login",
                                 "/api/auth/refresh",
                                 "/api/auth/logout",
-                                "/api/auth/logout-all",
                                 "/api/auth/csrf"
                         ).permitAll()
                         .requestMatchers(

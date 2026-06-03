@@ -658,11 +658,20 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
         } finally {
             // Release lock
             deleteCompletedLatch.countDown();
-            thread.join(5000);
+            try {
+                thread.join(5000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
             if (thread.isAlive()) {
                 thread.interrupt();
-                thread.join(1000);
+                try {
+                    thread.join(1000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
             }
+            assertFalse(thread.isAlive(), "Lock-holding thread did not terminate within timeout");
 
             // Cleanup DB state to prevent pollution
             txTemplate.executeWithoutResult(status -> {
@@ -874,11 +883,20 @@ class RefreshTokenRepositoryIT extends BasePostgresRedisIntegrationTest {
             });
         } finally {
             deleteCompletedLatch.countDown();
-            thread.join(5000);
+            try {
+                thread.join(5000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
             if (thread.isAlive()) {
                 thread.interrupt();
-                thread.join(1000);
+                try {
+                    thread.join(1000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
             }
+            assertFalse(thread.isAlive(), "Lock-holding thread did not terminate within timeout");
 
             // Cleanup DB
             txTemplate.executeWithoutResult(status -> {

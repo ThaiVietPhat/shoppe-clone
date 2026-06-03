@@ -101,13 +101,16 @@ public class AuthSecurityProperties {
                     return false;
                 }
                 String path = uri.getRawPath();
-                if (path != null && !path.isEmpty() && !"/".equals(path)) {
+                if (path != null && !path.isEmpty()) {
                     return false;
                 }
                 if (uri.getRawQuery() != null && !uri.getRawQuery().isEmpty()) {
                     return false;
                 }
                 if (uri.getRawFragment() != null && !uri.getRawFragment().isEmpty()) {
+                    return false;
+                }
+                if (uri.getUserInfo() != null && !uri.getUserInfo().isEmpty()) {
                     return false;
                 }
             } catch (java.net.URISyntaxException e) {
