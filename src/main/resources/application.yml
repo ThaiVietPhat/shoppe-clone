@@ -131,3 +131,8 @@ app:
     trusted-proxies: ${TRUSTED_PROXY_CIDRS:}
     verification-token:
       ttl: 24h
+    event-crypto:
+      active-key-id: ${EVENT_CRYPTO_ACTIVE_KEY_ID:crypto-v1}
+      active-secret: ${EVENT_CRYPTO_ACTIVE_SECRET:default-event-crypto-secret-32b-key-default-value}
+      previous-key-id: ${EVENT_CRYPTO_PREVIOUS_KEY_ID:}
+      previous-secret: ${EVENT_CRYPTO_PREVIOUS_SECRET:}

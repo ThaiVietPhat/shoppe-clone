@@ -2,6 +2,7 @@ package com.shopee.monolith.modules.auth.service;
 
 import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
+import com.shopee.monolith.common.security.EventPayloadCryptoService;
 import com.shopee.monolith.modules.auth.config.AuthSecurityProperties;
 import com.shopee.monolith.modules.auth.dto.request.RegisterRequest;
 import com.shopee.monolith.modules.auth.dto.request.VerifyRequest;
@@ -58,6 +59,9 @@ class AuthServiceImplRegistrationTest {
     private VerificationTokenGenerator verificationTokenGenerator;
 
     @Mock
+    private EventPayloadCryptoService eventPayloadCryptoService;
+
+    @Mock
     private UserRepository userRepository;
 
     @Mock
@@ -82,6 +86,7 @@ class AuthServiceImplRegistrationTest {
                 refreshTokenService,
                 verificationTokenRepository,
                 verificationTokenGenerator,
+                eventPayloadCryptoService,
                 userRepository,
                 eventPublisher,
                 securityProperties,
@@ -112,8 +117,8 @@ class AuthServiceImplRegistrationTest {
         
         when(verificationTokenGenerator.generate()).thenReturn(rawToken);
         when(verificationTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
-        when(verificationTokenGenerator.encrypt(rawToken)).thenReturn(encryptedToken);
-        
+        when(eventPayloadCryptoService.encrypt(rawToken)).thenReturn(encryptedToken);
+
         AuthSecurityProperties.VerificationTokenProperties tokenProps = new AuthSecurityProperties.VerificationTokenProperties();
         tokenProps.setTtl(Duration.ofHours(24));
         when(securityProperties.getVerificationToken()).thenReturn(tokenProps);

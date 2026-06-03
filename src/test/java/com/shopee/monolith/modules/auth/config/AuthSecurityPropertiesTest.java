@@ -87,7 +87,7 @@ class AuthSecurityPropertiesTest {
     @Test
     void whenVerificationTokenTtlIsNegativeOrZeroShouldFailValidation() {
         AuthSecurityProperties properties = new AuthSecurityProperties();
-        
+
         properties.getVerificationToken().setTtl(java.time.Duration.ofSeconds(-5));
         Set<ConstraintViolation<AuthSecurityProperties>> violations1 = validator.validate(properties);
         assertFalse(violations1.isEmpty());
@@ -97,5 +97,42 @@ class AuthSecurityPropertiesTest {
         Set<ConstraintViolation<AuthSecurityProperties>> violations2 = validator.validate(properties);
         assertFalse(violations2.isEmpty());
         assertTrue(violations2.stream().anyMatch(v -> v.getMessage().contains("Verification token TTL must be positive")));
+    }
+
+    @Test
+    void whenEventCryptoActiveSecretIsTooShortShouldFailValidation() {
+        AuthSecurityProperties properties = new AuthSecurityProperties();
+        properties.getEventCrypto().setActiveSecret("too-short");
+
+        Set<ConstraintViolation<AuthSecurityProperties>> violations = validator.validate(properties);
+        assertFalse(violations.isEmpty());
+        assertTrue(violations.stream().anyMatch(v -> v.getMessage().contains("Event active crypto secret must be at least 32 bytes")));
+    }
+
+    @Test
+    void whenEventCryptoPreviousKeyConfiguredButSecretMissingOrTooShortShouldFailValidation() {
+        AuthSecurityProperties properties = new AuthSecurityProperties();
+        properties.getEventCrypto().setPreviousKeyId("crypto-v0");
+        properties.getEventCrypto().setPreviousSecret("too-short");
+
+        Set<ConstraintViolation<AuthSecurityProperties>> violations1 = validator.validate(properties);
+        assertFalse(violations1.isEmpty());
+        assertTrue(violations1.stream().anyMatch(v -> v.getMessage().contains("Event previous crypto secret must be at least 32 bytes if previous key is configured")));
+
+        properties.getEventCrypto().setPreviousSecret("");
+        Set<ConstraintViolation<AuthSecurityProperties>> violations2 = validator.validate(properties);
+        assertFalse(violations2.isEmpty());
+        assertTrue(violations2.stream().anyMatch(v -> v.getMessage().contains("Event previous crypto secret must be at least 32 bytes if previous key is configured")));
+    }
+
+    @Test
+    void whenEventCryptoIsValidShouldPassValidation() {
+        AuthSecurityProperties properties = new AuthSecurityProperties();
+        properties.getEventCrypto().setActiveSecret("a-very-long-secret-key-at-least-32-bytes");
+        properties.getEventCrypto().setPreviousKeyId("crypto-v0");
+        properties.getEventCrypto().setPreviousSecret("another-very-long-secret-key-at-least-32-bytes");
+
+        Set<ConstraintViolation<AuthSecurityProperties>> violations = validator.validate(properties);
+        assertTrue(violations.isEmpty());
     }
 }

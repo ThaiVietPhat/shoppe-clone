@@ -35,6 +35,10 @@ public class AuthSecurityProperties {
     @NotNull
     private VerificationTokenProperties verificationToken = new VerificationTokenProperties();
 
+    @Valid
+    @NotNull
+    private EventCryptoProperties eventCrypto = new EventCryptoProperties();
+
     private List<String> trustedProxies = List.of();
 
     @Getter
@@ -135,8 +139,31 @@ public class AuthSecurityProperties {
 
     @jakarta.validation.constraints.AssertTrue(message = "Verification token TTL must be positive")
     public boolean isVerificationTokenTtlValid() {
-        return verificationToken != null && verificationToken.getTtl() != null 
+        return verificationToken != null && verificationToken.getTtl() != null
                 && !verificationToken.getTtl().isNegative() && !verificationToken.getTtl().isZero();
+    }
+
+    @jakarta.validation.constraints.AssertTrue(message = "Event active crypto secret must be at least 32 bytes")
+    public boolean isEventCryptoActiveSecretValid() {
+        return eventCrypto != null && eventCrypto.getActiveSecret() != null
+                && eventCrypto.getActiveSecret().getBytes(java.nio.charset.StandardCharsets.UTF_8).length >= 32;
+    }
+
+    @jakarta.validation.constraints.AssertTrue(message = "Event previous crypto secret must be at least 32 bytes if previous key is configured")
+    public boolean isEventCryptoPreviousSecretValid() {
+        if (eventCrypto == null) {
+            return true;
+        }
+        boolean hasPrevId = eventCrypto.getPreviousKeyId() != null && !eventCrypto.getPreviousKeyId().isBlank();
+        boolean hasPrevSec = eventCrypto.getPreviousSecret() != null && !eventCrypto.getPreviousSecret().isBlank();
+        if (hasPrevId || hasPrevSec) {
+            if (eventCrypto.getPreviousKeyId() == null || eventCrypto.getPreviousKeyId().isBlank() ||
+                    eventCrypto.getPreviousSecret() == null || eventCrypto.getPreviousSecret().isBlank()) {
+                return false;
+            }
+            return eventCrypto.getPreviousSecret().getBytes(java.nio.charset.StandardCharsets.UTF_8).length >= 32;
+        }
+        return true;
     }
 
     @Getter
@@ -144,5 +171,17 @@ public class AuthSecurityProperties {
     public static class VerificationTokenProperties {
         @NotNull
         private java.time.Duration ttl = java.time.Duration.ofHours(24);
+    }
+
+    @Getter
+    @Setter
+    public static class EventCryptoProperties {
+        @NotBlank
+        private String activeKeyId = "crypto-v1";
+        @NotBlank
+        private String activeSecret = "default-event-crypto-secret-32b-key-default-value";
+
+        private String previousKeyId;
+        private String previousSecret;
     }
 }

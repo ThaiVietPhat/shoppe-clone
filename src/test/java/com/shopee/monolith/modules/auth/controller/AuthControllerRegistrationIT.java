@@ -7,6 +7,7 @@ import com.shopee.monolith.modules.auth.config.AuthSecurityProperties;
 import com.shopee.monolith.modules.auth.dto.request.RegisterRequest;
 import com.shopee.monolith.modules.auth.dto.request.VerifyRequest;
 import com.shopee.monolith.modules.user.entity.User;
+import com.shopee.monolith.common.security.EventPayloadCryptoService;
 import com.shopee.monolith.modules.user.entity.VerificationToken;
 import com.shopee.monolith.modules.user.event.UserRegisteredEvent;
 import com.shopee.monolith.modules.user.model.UserStatus;
@@ -64,6 +65,9 @@ class AuthControllerRegistrationIT extends BasePostgresRedisIntegrationTest {
     private com.shopee.monolith.modules.auth.security.VerificationTokenGenerator verificationTokenGenerator;
 
     @Autowired
+    private EventPayloadCryptoService eventPayloadCryptoService;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     private static volatile UserRegisteredEvent lastEvent;
@@ -80,8 +84,19 @@ class AuthControllerRegistrationIT extends BasePostgresRedisIntegrationTest {
     @AfterEach
     void cleanDb() {
         lastEvent = null;
-        verificationTokenRepository.deleteAll();
-        userRepository.deleteAll();
+        List<String> testEmails = List.of(
+                "phatdz@vietnam.com",
+                "concurrent@shopee.com",
+                "verify@shopee.com",
+                "expired@shopee.com",
+                "reused@shopee.com",
+                "race@shopee.com"
+        );
+        for (String email : testEmails) {
+            userRepository.findByNormalizedEmail(email).ifPresent(user -> {
+                userRepository.delete(user);
+            });
+        }
         SecurityContextHolder.clearContext();
     }
 
@@ -125,7 +140,7 @@ class AuthControllerRegistrationIT extends BasePostgresRedisIntegrationTest {
         assertTrue(lastEvent.toString().contains("encryptedVerificationToken=[REDACTED]"));
 
         // Decrypt raw token from event payload
-        String rawToken = verificationTokenGenerator.decrypt(lastEvent.encryptedVerificationToken());
+        String rawToken = eventPayloadCryptoService.decrypt(lastEvent.encryptedVerificationToken());
         assertNotNull(rawToken);
 
         // Verify only token hash is saved in DB and raw/encrypted tokens are not stored in plaintext
@@ -192,7 +207,7 @@ class AuthControllerRegistrationIT extends BasePostgresRedisIntegrationTest {
         performPostWithCsrf("/api/auth/register", registerReq);
 
         assertNotNull(lastEvent);
-        String rawToken = verificationTokenGenerator.decrypt(lastEvent.encryptedVerificationToken());
+        String rawToken = eventPayloadCryptoService.decrypt(lastEvent.encryptedVerificationToken());
 
         VerifyRequest verifyReq = new VerifyRequest(rawToken);
         MvcResult result = performPostWithCsrf("/api/auth/verify", verifyReq);
@@ -220,7 +235,7 @@ class AuthControllerRegistrationIT extends BasePostgresRedisIntegrationTest {
                 .build();
         verificationTokenRepository.save(expiredToken);
 
-        String rawToken = verificationTokenGenerator.decrypt(lastEvent.encryptedVerificationToken());
+        String rawToken = eventPayloadCryptoService.decrypt(lastEvent.encryptedVerificationToken());
         VerifyRequest verifyReq = new VerifyRequest(rawToken);
         mockMvc.perform(post("/api/auth/verify")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -237,7 +252,7 @@ class AuthControllerRegistrationIT extends BasePostgresRedisIntegrationTest {
         RegisterRequest registerReq = new RegisterRequest("reused@shopee.com", "password123");
         performPostWithCsrf("/api/auth/register", registerReq);
 
-        String rawToken = verificationTokenGenerator.decrypt(lastEvent.encryptedVerificationToken());
+        String rawToken = eventPayloadCryptoService.decrypt(lastEvent.encryptedVerificationToken());
         VerifyRequest verifyReq = new VerifyRequest(rawToken);
 
         // First verification succeeds
@@ -263,7 +278,7 @@ class AuthControllerRegistrationIT extends BasePostgresRedisIntegrationTest {
         RegisterRequest registerReq = new RegisterRequest("race@shopee.com", "password123");
         performPostWithCsrf("/api/auth/register", registerReq);
 
-        String rawToken = verificationTokenGenerator.decrypt(lastEvent.encryptedVerificationToken());
+        String rawToken = eventPayloadCryptoService.decrypt(lastEvent.encryptedVerificationToken());
         VerifyRequest verifyReq = new VerifyRequest(rawToken);
 
         int concurrency = 4;

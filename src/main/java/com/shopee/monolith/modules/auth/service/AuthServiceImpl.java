@@ -6,6 +6,7 @@ import com.shopee.monolith.modules.auth.config.AuthSecurityProperties;
 import com.shopee.monolith.modules.auth.dto.internal.IssuedTokenPair;
 import com.shopee.monolith.modules.auth.dto.request.LoginRequest;
 import com.shopee.monolith.modules.auth.dto.request.RegisterRequest;
+import com.shopee.monolith.common.security.EventPayloadCryptoService;
 import com.shopee.monolith.modules.auth.dto.request.VerifyRequest;
 import com.shopee.monolith.modules.auth.security.VerificationTokenGenerator;
 import com.shopee.monolith.modules.user.dto.command.RegisterUserCommand;
@@ -37,6 +38,7 @@ public class AuthServiceImpl implements AuthService {
     private final RefreshTokenService refreshTokenService;
     private final VerificationTokenRepository verificationTokenRepository;
     private final VerificationTokenGenerator verificationTokenGenerator;
+    private final EventPayloadCryptoService eventPayloadCryptoService;
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final AuthSecurityProperties securityProperties;
@@ -86,7 +88,7 @@ public class AuthServiceImpl implements AuthService {
         verificationTokenRepository.save(verificationToken);
 
         // Encrypt the raw token for transmission via event (safe for Modulith event log)
-        String encryptedToken = verificationTokenGenerator.encrypt(rawToken);
+        String encryptedToken = eventPayloadCryptoService.encrypt(rawToken);
 
         // Publish event with the encrypted token
         eventPublisher.publishEvent(new UserRegisteredEvent(userResponse.id(), request.email(), encryptedToken));

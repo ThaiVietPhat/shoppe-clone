@@ -2,6 +2,7 @@ package com.shopee.monolith.modules.auth.service;
 
 import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
+import com.shopee.monolith.common.security.EventPayloadCryptoService;
 import com.shopee.monolith.modules.auth.dto.internal.IssuedTokenPair;
 import com.shopee.monolith.modules.auth.dto.request.LoginRequest;
 import com.shopee.monolith.modules.user.dto.internal.UserAuthenticationData;
@@ -44,6 +45,9 @@ class AuthServiceImplTest {
     private com.shopee.monolith.modules.auth.security.VerificationTokenGenerator verificationTokenGenerator;
 
     @Mock
+    private EventPayloadCryptoService eventPayloadCryptoService;
+
+    @Mock
     private com.shopee.monolith.modules.user.repository.UserRepository userRepository;
 
     @Mock
@@ -67,6 +71,7 @@ class AuthServiceImplTest {
                 refreshTokenService,
                 verificationTokenRepository,
                 verificationTokenGenerator,
+                eventPayloadCryptoService,
                 userRepository,
                 eventPublisher,
                 securityProperties,
