@@ -1,7 +1,10 @@
 package com.shopee.monolith.modules.auth.config;
 
 import com.shopee.monolith.modules.auth.security.BlacklistFilter;
+import com.shopee.monolith.modules.auth.security.CustomOAuth2UserService;
 import com.shopee.monolith.modules.auth.security.JwtAuthenticationFilter;
+import com.shopee.monolith.modules.auth.security.OAuth2AuthenticationFailureHandler;
+import com.shopee.monolith.modules.auth.security.OAuth2AuthenticationSuccessHandler;
 import com.shopee.monolith.modules.auth.security.RestAccessDeniedHandler;
 import com.shopee.monolith.modules.auth.security.RestAuthenticationEntryPoint;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +35,9 @@ public class SecurityConfig {
     private final RestAuthenticationEntryPoint restAuthenticationEntryPoint;
     private final RestAccessDeniedHandler restAccessDeniedHandler;
     private final AuthSecurityProperties properties;
+    private final CustomOAuth2UserService customOAuth2UserService;
+    private final OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
+    private final OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -50,6 +56,11 @@ public class SecurityConfig {
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
                 .logout(logout -> logout.disable())
+                .oauth2Login(oauth2 -> oauth2
+                        .userInfoEndpoint(userInfo -> userInfo.userService(customOAuth2UserService))
+                        .successHandler(oAuth2AuthenticationSuccessHandler)
+                        .failureHandler(oAuth2AuthenticationFailureHandler)
+                )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/api/auth/login",

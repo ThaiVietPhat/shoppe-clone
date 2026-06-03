@@ -15,7 +15,6 @@ import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -58,7 +57,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.
                         com.shopee.monolith.modules.auth.security.RestAccessDeniedHandler.class
                 }
         ),
-        excludeAutoConfiguration = SecurityAutoConfiguration.class
+        excludeAutoConfiguration = {
+                org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration.class,
+                org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration.class,
+                org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration.class
+        }
 )
 class AuthControllerTest {
 

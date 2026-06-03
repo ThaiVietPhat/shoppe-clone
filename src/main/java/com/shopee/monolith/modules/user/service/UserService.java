@@ -22,5 +22,9 @@ public interface UserService {
     void activateUser(UUID userId);
 
     void lockUser(UUID userId);
+
+    Optional<UserAuthenticationData> findAuthenticationDataByOAuth(String provider, String providerUserId);
+
+    UserResponse registerOAuthUser(String provider, String providerUserId, String email);
 }
 

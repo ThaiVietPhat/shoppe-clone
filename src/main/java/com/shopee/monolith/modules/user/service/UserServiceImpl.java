@@ -5,8 +5,10 @@ import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.modules.user.dto.command.RegisterUserCommand;
 import com.shopee.monolith.modules.user.dto.internal.UserAuthenticationData;
 import com.shopee.monolith.modules.user.dto.response.UserResponse;
+import com.shopee.monolith.modules.user.entity.OAuthIdentity;
 import com.shopee.monolith.modules.user.entity.User;
 import com.shopee.monolith.modules.user.mapper.UserMapper;
+import com.shopee.monolith.modules.user.repository.OAuthIdentityRepository;
 import com.shopee.monolith.modules.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -22,6 +24,7 @@ import java.util.UUID;
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
+    private final OAuthIdentityRepository oauthIdentityRepository;
     private final UserMapper userMapper;
 
     @Override
@@ -96,6 +99,48 @@ public class UserServiceImpl implements UserService {
     public void lockUser(UUID userId) {
         userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    @Override
+    public Optional<UserAuthenticationData> findAuthenticationDataByOAuth(String provider, String providerUserId) {
+        if (provider == null || providerUserId == null) {
+            return Optional.empty();
+        }
+        return oauthIdentityRepository.findByProviderAndProviderUserId(provider, providerUserId)
+                .flatMap(identity -> userRepository.findById(identity.getUserId()))
+                .map(userMapper::toAuthenticationData);
+    }
+
+    @Override
+    @Transactional
+    public UserResponse registerOAuthUser(String provider, String providerUserId, String email) {
+        String normalizedEmail = normalizeEmail(email);
+        if (userRepository.existsByNormalizedEmail(normalizedEmail)) {
+            throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
+        }
+
+        User user = User.builder()
+                .email(email)
+                .normalizedEmail(normalizedEmail)
+                .passwordHash(null)
+                .status(com.shopee.monolith.modules.user.model.UserStatus.ACTIVE)
+                .build();
+
+        try {
+            User savedUser = userRepository.saveAndFlush(user);
+
+            OAuthIdentity identity = OAuthIdentity.builder()
+                    .userId(savedUser.getId())
+                    .provider(provider)
+                    .providerUserId(providerUserId)
+                    .emailAtProvider(email)
+                    .build();
+            oauthIdentityRepository.save(identity);
+
+            return userMapper.toResponse(savedUser);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
+        }
     }
 
     private String normalizeEmail(String email) {
