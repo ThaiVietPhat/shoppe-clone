@@ -22,3 +22,5 @@ app:
     event-crypto:
       active-key-id: crypto-v1
       active-secret: test-event-crypto-secret-32b-key-default-value
+    rate-limit:
+      enabled: false

@@ -2,6 +2,7 @@ package com.shopee.monolith.modules.auth.config;
 
 import com.shopee.monolith.modules.auth.security.BlacklistFilter;
 import com.shopee.monolith.modules.auth.security.CustomOAuth2UserService;
+import com.shopee.monolith.modules.auth.security.RateLimitingFilter;
 import com.shopee.monolith.modules.auth.security.JwtAuthenticationFilter;
 import com.shopee.monolith.modules.auth.security.OAuth2AuthenticationFailureHandler;
 import com.shopee.monolith.modules.auth.security.OAuth2AuthenticationSuccessHandler;
@@ -32,6 +33,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final BlacklistFilter blacklistFilter;
+    private final RateLimitingFilter rateLimitingFilter;
     private final RestAuthenticationEntryPoint restAuthenticationEntryPoint;
     private final RestAccessDeniedHandler restAccessDeniedHandler;
     private final AuthSecurityProperties properties;
@@ -84,7 +86,8 @@ public class SecurityConfig {
                         .accessDeniedHandler(restAccessDeniedHandler)
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(blacklistFilter, JwtAuthenticationFilter.class);
+                .addFilterAfter(blacklistFilter, JwtAuthenticationFilter.class)
+                .addFilterAfter(rateLimitingFilter, BlacklistFilter.class);
 
         return http.build();
     }

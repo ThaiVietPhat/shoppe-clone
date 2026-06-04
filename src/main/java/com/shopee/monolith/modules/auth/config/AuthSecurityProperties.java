@@ -43,6 +43,10 @@ public class AuthSecurityProperties {
     @NotNull
     private OAuth2Properties oauth2 = new OAuth2Properties();
 
+    @Valid
+    @NotNull
+    private RateLimitProperties rateLimit = new RateLimitProperties();
+
     private List<String> trustedProxies = List.of();
 
     @Getter
@@ -213,5 +217,88 @@ public class AuthSecurityProperties {
     public boolean isOAuth2ExchangeCodeTtlValid() {
         return oauth2 != null && oauth2.getExchangeCodeTtl() != null
                 && !oauth2.getExchangeCodeTtl().isNegative() && !oauth2.getExchangeCodeTtl().isZero();
+    }
+
+    @jakarta.validation.constraints.AssertTrue(message = "Rate limit windows must be positive")
+    public boolean isRateLimitWindowsValid() {
+        if (rateLimit == null) {
+            return true;
+        }
+        return isBucketLimitWindowValid(rateLimit.getAnonymous())
+                && isBucketLimitWindowValid(rateLimit.getAuthenticated())
+                && isBucketLimitWindowValid(rateLimit.getLogin())
+                && isBucketLimitWindowValid(rateLimit.getRegister())
+                && isBucketLimitWindowValid(rateLimit.getVerify())
+                && isBucketLimitWindowValid(rateLimit.getOauth2Callback())
+                && isBucketLimitWindowValid(rateLimit.getResendVerification());
+    }
+
+    private boolean isBucketLimitWindowValid(BucketLimitProperties limit) {
+        return limit != null && limit.getWindow() != null
+                && !limit.getWindow().isNegative() && !limit.getWindow().isZero();
+    }
+
+    @jakarta.validation.constraints.AssertTrue(message = "Trusted proxies must be valid CIDR expressions")
+    public boolean isTrustedProxiesValid() {
+        if (trustedProxies == null) {
+            return true;
+        }
+        for (String proxy : trustedProxies) {
+            if (proxy == null || proxy.isBlank()) {
+                return false;
+            }
+            try {
+                new org.springframework.security.web.util.matcher.IpAddressMatcher(proxy);
+            } catch (IllegalArgumentException e) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @Getter
+    @Setter
+    public static class RateLimitProperties {
+        private boolean enabled = true;
+
+        @Valid
+        @NotNull
+        private BucketLimitProperties anonymous = new BucketLimitProperties(100, java.time.Duration.ofMinutes(1));
+
+        @Valid
+        @NotNull
+        private BucketLimitProperties authenticated = new BucketLimitProperties(300, java.time.Duration.ofMinutes(1));
+
+        @Valid
+        @NotNull
+        private BucketLimitProperties login = new BucketLimitProperties(10, java.time.Duration.ofMinutes(1));
+
+        @Valid
+        @NotNull
+        private BucketLimitProperties register = new BucketLimitProperties(5, java.time.Duration.ofMinutes(1));
+
+        @Valid
+        @NotNull
+        private BucketLimitProperties verify = new BucketLimitProperties(20, java.time.Duration.ofMinutes(1));
+
+        @Valid
+        @NotNull
+        private BucketLimitProperties oauth2Callback = new BucketLimitProperties(30, java.time.Duration.ofMinutes(1));
+
+        @Valid
+        @NotNull
+        private BucketLimitProperties resendVerification = new BucketLimitProperties(3, java.time.Duration.ofMinutes(1));
+    }
+
+    @Getter
+    @Setter
+    @lombok.NoArgsConstructor
+    @lombok.AllArgsConstructor
+    public static class BucketLimitProperties {
+        @jakarta.validation.constraints.Min(1)
+        private int capacity;
+
+        @NotNull
+        private java.time.Duration window;
     }
 }

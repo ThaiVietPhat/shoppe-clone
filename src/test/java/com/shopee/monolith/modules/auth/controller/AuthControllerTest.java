@@ -54,6 +54,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.
                         com.shopee.monolith.modules.auth.config.SecurityConfig.class,
                         com.shopee.monolith.modules.auth.security.JwtAuthenticationFilter.class,
                         com.shopee.monolith.modules.auth.security.BlacklistFilter.class,
+                        com.shopee.monolith.modules.auth.security.RateLimitingFilter.class,
                         com.shopee.monolith.modules.auth.security.RestAuthenticationEntryPoint.class,
                         com.shopee.monolith.modules.auth.security.RestAccessDeniedHandler.class
                 }

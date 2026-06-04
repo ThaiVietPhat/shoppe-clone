@@ -138,3 +138,27 @@ app:
       active-secret: ${EVENT_CRYPTO_ACTIVE_SECRET}
       previous-key-id: ${EVENT_CRYPTO_PREVIOUS_KEY_ID:}
       previous-secret: ${EVENT_CRYPTO_PREVIOUS_SECRET:}
+    rate-limit:
+      enabled: true
+      anonymous:
+        capacity: 100
+        window: 1m
+      authenticated:
+        capacity: 300
+        window: 1m
+      login:
+        capacity: 10
+        window: 1m
+      register:
+        capacity: 5
+        window: 1m
+      verify:
+        capacity: 20
+        window: 1m
+      oauth2-callback:
+        capacity: 30
+        window: 1m
+      resend-verification:
+        capacity: 3
+        window: 1m
+

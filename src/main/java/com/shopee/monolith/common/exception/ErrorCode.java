@@ -20,6 +20,7 @@ public enum ErrorCode {
     NOT_FOUND(404, "Resource not found"),
     CONFLICT(409, "Resource already exists"),
     SERVICE_UNAVAILABLE(503, "Service temporarily unavailable"),
+    RATE_LIMIT_EXCEEDED(429, "Too many requests — please try again later"),
 
     // ==================== Auth ====================
     INVALID_CREDENTIALS(401, "Invalid email or password"),

@@ -188,4 +188,53 @@ class AuthSecurityPropertiesTest {
         Set<ConstraintViolation<AuthSecurityProperties>> violations = validator.validate(properties);
         assertTrue(violations.isEmpty());
     }
+
+    @Test
+    void whenRateLimitWindowIsNegativeOrZeroShouldFailValidation() {
+        AuthSecurityProperties properties = createValidProperties();
+
+        properties.getRateLimit().getAnonymous().setWindow(java.time.Duration.ofSeconds(-5));
+        Set<ConstraintViolation<AuthSecurityProperties>> violations1 = validator.validate(properties);
+        assertFalse(violations1.isEmpty());
+        assertTrue(violations1.stream().anyMatch(v -> v.getMessage().contains("Rate limit windows must be positive")));
+
+        properties = createValidProperties();
+        properties.getRateLimit().getAuthenticated().setWindow(java.time.Duration.ZERO);
+        Set<ConstraintViolation<AuthSecurityProperties>> violations2 = validator.validate(properties);
+        assertFalse(violations2.isEmpty());
+        assertTrue(violations2.stream().anyMatch(v -> v.getMessage().contains("Rate limit windows must be positive")));
+    }
+
+    @Test
+    void whenRateLimitCapacityIsZeroOrLessShouldFailValidation() {
+        AuthSecurityProperties properties = createValidProperties();
+
+        properties.getRateLimit().getAnonymous().setCapacity(0);
+        Set<ConstraintViolation<AuthSecurityProperties>> violations1 = validator.validate(properties);
+        assertFalse(violations1.isEmpty());
+
+        properties = createValidProperties();
+        properties.getRateLimit().getLogin().setCapacity(-10);
+        Set<ConstraintViolation<AuthSecurityProperties>> violations2 = validator.validate(properties);
+        assertFalse(violations2.isEmpty());
+    }
+
+    @Test
+    void whenTrustedProxiesAreInvalidCidrShouldFailValidation() {
+        AuthSecurityProperties properties = createValidProperties();
+        properties.setTrustedProxies(List.of("192.168.1.1/invalid", "invalid-cidr"));
+
+        Set<ConstraintViolation<AuthSecurityProperties>> violations = validator.validate(properties);
+        assertFalse(violations.isEmpty());
+        assertTrue(violations.stream().anyMatch(v -> v.getMessage().contains("Trusted proxies must be valid CIDR expressions")));
+    }
+
+    @Test
+    void whenTrustedProxiesAreValidCidrShouldPassValidation() {
+        AuthSecurityProperties properties = createValidProperties();
+        properties.setTrustedProxies(List.of("192.168.1.0/24", "10.0.0.0/8", "::1/128"));
+
+        Set<ConstraintViolation<AuthSecurityProperties>> violations = validator.validate(properties);
+        assertTrue(violations.isEmpty());
+    }
 }

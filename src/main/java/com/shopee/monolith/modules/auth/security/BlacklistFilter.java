@@ -27,7 +27,7 @@ public class BlacklistFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         String path = request.getServletPath();
-        if (path == null) {
+        if (path == null || path.isEmpty()) {
             path = request.getRequestURI();
         }
         if (path != null && path.equals("/api/auth/logout")) {
