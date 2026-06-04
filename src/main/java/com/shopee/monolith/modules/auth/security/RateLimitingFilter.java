@@ -45,10 +45,12 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         }
         String method = request.getMethod();
 
-        // Bypass health probes
+        // Bypass health probes and Swagger UI
         if (path != null && (path.equals("/actuator/health")
                 || path.equals("/actuator/health/liveness")
-                || path.equals("/actuator/health/readiness"))) {
+                || path.equals("/actuator/health/readiness")
+                || path.startsWith("/swagger-ui")
+                || path.startsWith("/v3/api-docs"))) {
             filterChain.doFilter(request, response);
             return;
         }

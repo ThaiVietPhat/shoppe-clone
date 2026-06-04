@@ -71,7 +71,10 @@ public class SecurityConfig {
                                 "/api/auth/csrf",
                                 "/api/auth/register",
                                 "/api/auth/verify",
-                                "/api/auth/oauth2/exchange"
+                                "/api/auth/oauth2/exchange",
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html"
                         ).permitAll()
                         .requestMatchers(
                                 "/actuator/health",

@@ -3,6 +3,7 @@ package com.shopee.monolith.modules.auth.controller;
 import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.common.response.ApiResponse;
+import com.shopee.monolith.common.response.SwaggerResponses;
 import com.shopee.monolith.modules.auth.config.AuthSecurityProperties;
 import com.shopee.monolith.modules.auth.config.JwtProperties;
 import com.shopee.monolith.modules.auth.dto.internal.AccessTokenClaims;
@@ -16,6 +17,14 @@ import com.shopee.monolith.modules.auth.service.SessionRevocationService;
 import com.shopee.monolith.modules.auth.dto.request.RegisterRequest;
 import com.shopee.monolith.modules.auth.dto.request.VerifyRequest;
 import com.shopee.monolith.modules.user.dto.response.UserResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.headers.Header;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -35,6 +44,7 @@ import java.time.Duration;
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
+@Tag(name = "Authentication", description = "Authentication APIs for users (Login, Register, Verify, Refresh, OAuth2, Logout)")
 public class AuthController {
 
     private final AuthService authService;
@@ -43,6 +53,17 @@ public class AuthController {
     private final AuthSecurityProperties properties;
     private final JwtProperties jwtProperties;
 
+    @Operation(summary = "Get CSRF Token", description = "Retrieves the CSRF token and initializes the XSRF-TOKEN cookie.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "CSRF Token initialized successfully.",
+            headers = @Header(name = "Set-Cookie", description = "Sets the XSRF-TOKEN cookie containing the CSRF token", schema = @Schema(type = "string")),
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "503",
+            description = "Security filters or system configuration services are unavailable."
+    )
     @GetMapping("/csrf")
     public ApiResponse<Void> getCsrfToken(HttpServletRequest request) {
         org.springframework.security.web.csrf.CsrfToken token =
@@ -53,6 +74,30 @@ public class AuthController {
         return ApiResponse.success();
     }
 
+    @Operation(summary = "User Login", description = "Authenticates a user with email and password, issuing an access token and setting a secure HttpOnly refresh token cookie.")
+    @Parameter(name = "X-XSRF-TOKEN", in = ParameterIn.HEADER, required = true, description = "CSRF token retrieved from the XSRF-TOKEN cookie", schema = @Schema(type = "string"))
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "Login successful.",
+            headers = @Header(name = "Set-Cookie", description = "Sets the __Secure-refresh_token cookie containing the refresh token", schema = @Schema(type = "string")),
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseLoginResponse.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "401",
+            description = "Invalid credentials or email address is not verified yet."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "403",
+            description = "User account is suspended/locked, or the CSRF token is invalid."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "429",
+            description = "Rate limit exceeded for login attempts from this IP."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "503",
+            description = "Rate limiting service or session store database is down (fail-closed)."
+    )
     @PostMapping("/login")
     public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request, HttpServletResponse response) {
         IssuedTokenPair tokenPair = authService.login(request);
@@ -60,6 +105,30 @@ public class AuthController {
         return ApiResponse.success(new LoginResponse(tokenPair.accessToken()));
     }
 
+    @Operation(summary = "Exchange OAuth2 Code", description = "Exchanges a redirect one-time code for a JWT access token and sets a secure refresh token cookie.")
+    @Parameter(name = "X-XSRF-TOKEN", in = ParameterIn.HEADER, required = true, description = "CSRF token retrieved from the XSRF-TOKEN cookie", schema = @Schema(type = "string"))
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "OAuth2 code exchange successful.",
+            headers = @Header(name = "Set-Cookie", description = "Sets the __Secure-refresh_token cookie containing the refresh token", schema = @Schema(type = "string")),
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseLoginResponse.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "400",
+            description = "Invalid, expired, or already used exchange code."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "403",
+            description = "User account associated with OAuth identity is suspended/locked."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "409",
+            description = "OAuth identity is already linked to another registered account."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "503",
+            description = "Redis or rate limiting service is temporarily unavailable (fail-closed)."
+    )
     @PostMapping("/oauth2/exchange")
     public ApiResponse<LoginResponse> exchangeOAuth2Code(@Valid @RequestBody OAuth2ExchangeRequest request, HttpServletResponse response) {
         IssuedTokenPair tokenPair = authService.exchangeOAuth2Code(request.code());
@@ -67,17 +136,84 @@ public class AuthController {
         return ApiResponse.success(new LoginResponse(tokenPair.accessToken()));
     }
 
+    @Operation(summary = "Register User", description = "Registers a new user account and triggers verification email delivery.")
+    @Parameter(name = "X-XSRF-TOKEN", in = ParameterIn.HEADER, required = true, description = "CSRF token retrieved from the XSRF-TOKEN cookie", schema = @Schema(type = "string"))
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "Registration successful. User details returned.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseUserResponse.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "400",
+            description = "Invalid input details (e.g. invalid email domain, short password)."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "409",
+            description = "Email address is already registered."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "429",
+            description = "Rate limit exceeded for registration attempts."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "503",
+            description = "Database connection or mailing service is down (fail-closed)."
+    )
     @PostMapping("/register")
     public ApiResponse<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
         return ApiResponse.success(authService.register(request));
     }
 
+    @Operation(summary = "Verify Email address", description = "Consumes a verification token atomically to verify and activate a user's account.")
+    @Parameter(name = "X-XSRF-TOKEN", in = ParameterIn.HEADER, required = true, description = "CSRF token retrieved from the XSRF-TOKEN cookie", schema = @Schema(type = "string"))
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "Email verification successful.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "400",
+            description = "Invalid, expired, or already used email verification token."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "429",
+            description = "Rate limit exceeded for verification attempts."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "503",
+            description = "Database or verification service is down (fail-closed)."
+    )
     @PostMapping("/verify")
     public ApiResponse<Void> verify(@Valid @RequestBody VerifyRequest request) {
         authService.verify(request);
         return ApiResponse.success();
     }
 
+    @Operation(summary = "Rotate Access Token", description = "Uses the refresh token cookie to rotate and issue a new access token and a rotated refresh token cookie.")
+    @Parameter(name = "X-XSRF-TOKEN", in = ParameterIn.HEADER, required = true, description = "CSRF token retrieved from the XSRF-TOKEN cookie", schema = @Schema(type = "string"))
+    @Parameter(name = "__Secure-refresh_token", in = ParameterIn.COOKIE, required = true, description = "Opaque refresh token cookie", schema = @Schema(type = "string"))
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "Token rotation successful.",
+            headers = @Header(name = "Set-Cookie", description = "Sets the rotated __Secure-refresh_token cookie", schema = @Schema(type = "string")),
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseLoginResponse.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "401",
+            description = "Invalid, revoked, or expired refresh token. If a token reuse is detected, all tokens in the family are revoked."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "403",
+            description = "User account associated with this token is suspended/locked."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "429",
+            description = "Rate limit exceeded for token refresh requests."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "503",
+            description = "Redis blacklist or session database is temporarily down (fail-closed)."
+    )
     @PostMapping("/refresh")
     public ApiResponse<LoginResponse> refresh(HttpServletRequest request, HttpServletResponse response) {
         String rawToken = getRefreshTokenFromCookiesOrNull(request);
@@ -89,6 +225,24 @@ public class AuthController {
         return ApiResponse.success(new LoginResponse(tokenPair.accessToken()));
     }
 
+    @Operation(summary = "Logout Current Session", description = "Invalidates the current session's refresh token and blacklists the current access token.")
+    @SecurityRequirement(name = "bearerAuth")
+    @Parameter(name = "X-XSRF-TOKEN", in = ParameterIn.HEADER, required = true, description = "CSRF token retrieved from the XSRF-TOKEN cookie", schema = @Schema(type = "string"))
+    @Parameter(name = "__Secure-refresh_token", in = ParameterIn.COOKIE, required = true, description = "Opaque refresh token cookie to revoke", schema = @Schema(type = "string"))
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "Logout successful.",
+            headers = @Header(name = "Set-Cookie", description = "Clears the __Secure-refresh_token cookie", schema = @Schema(type = "string")),
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "403",
+            description = "CSRF token validation failed."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "503",
+            description = "Redis blacklist is temporarily down. Returns 503 to trigger a client retry (fail-closed)."
+    )
     @PostMapping("/logout")
     public ApiResponse<Void> logout(HttpServletRequest request, HttpServletResponse response) {
         String rawToken = getRefreshTokenFromCookiesOrNull(request);
@@ -102,6 +256,27 @@ public class AuthController {
         return ApiResponse.success();
     }
 
+    @Operation(summary = "Logout All Sessions", description = "Invalidates all active sessions and refresh tokens for the authenticated user.")
+    @SecurityRequirement(name = "bearerAuth")
+    @Parameter(name = "X-XSRF-TOKEN", in = ParameterIn.HEADER, required = true, description = "CSRF token retrieved from the XSRF-TOKEN cookie", schema = @Schema(type = "string"))
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "All sessions revoked successfully.",
+            headers = @Header(name = "Set-Cookie", description = "Clears the __Secure-refresh_token cookie", schema = @Schema(type = "string")),
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "401",
+            description = "Authentication required or invalid JWT access token."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "403",
+            description = "CSRF token validation failed."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "503",
+            description = "Session database or revocation service is down (fail-closed)."
+    )
     @PostMapping("/logout-all")
     public ApiResponse<Void> logoutAll(HttpServletResponse response) {
         var auth = SecurityContextHolder.getContext().getAuthentication();
