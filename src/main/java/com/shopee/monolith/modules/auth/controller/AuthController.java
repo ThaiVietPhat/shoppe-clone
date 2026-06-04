@@ -63,7 +63,8 @@ public class AuthController {
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "503",
-            description = "Security filters or system configuration services are unavailable."
+            description = "Security filters or system configuration services are unavailable.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @GetMapping("/csrf")
     public ApiResponse<Void> getCsrfToken(HttpServletRequest request) {
@@ -85,19 +86,23 @@ public class AuthController {
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "401",
-            description = "Invalid credentials (email or password)."
+            description = "Invalid credentials (email or password).",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "403",
-            description = "User email address is not verified, account is suspended/locked, or the CSRF token is invalid."
+            description = "User email address is not verified, account is suspended/locked, or the CSRF token is invalid.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "429",
-            description = "Rate limit exceeded for login attempts from this IP."
+            description = "Rate limit exceeded for login attempts from this IP.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "503",
-            description = "Rate limiting service or session store database is down (fail-closed)."
+            description = "Rate limiting service or session store database is down (fail-closed).",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @PostMapping("/login")
     public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request, HttpServletResponse response) {
@@ -116,19 +121,23 @@ public class AuthController {
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "400",
-            description = "Invalid, expired, or already used exchange code."
+            description = "Invalid, expired, or already used exchange code.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "403",
-            description = "CSRF token validation failed, or user account associated with OAuth identity is suspended/locked."
+            description = "CSRF token validation failed, or user account associated with OAuth identity is suspended/locked.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "409",
-            description = "OAuth identity is already linked to another registered account."
+            description = "OAuth identity is already linked to another registered account.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "503",
-            description = "Redis or rate limiting service is temporarily unavailable (fail-closed)."
+            description = "Redis or rate limiting service is temporarily unavailable (fail-closed).",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @PostMapping("/oauth2/exchange")
     public ApiResponse<LoginResponse> exchangeOAuth2Code(@Valid @RequestBody OAuth2ExchangeRequest request, HttpServletResponse response) {
@@ -146,23 +155,28 @@ public class AuthController {
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "400",
-            description = "Invalid input details (e.g. invalid email domain, short password)."
+            description = "Invalid input details (e.g. invalid email domain, short password).",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "403",
-            description = "CSRF token validation failed."
+            description = "CSRF token validation failed.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "409",
-            description = "Email address is already registered."
+            description = "Email address is already registered.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "429",
-            description = "Rate limit exceeded for registration attempts."
+            description = "Rate limit exceeded for registration attempts.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "503",
-            description = "Database connection or mailing service is down (fail-closed)."
+            description = "Database connection or rate limiting service is temporarily down (fail-closed).",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @PostMapping("/register")
     public ApiResponse<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
@@ -178,19 +192,23 @@ public class AuthController {
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "400",
-            description = "Invalid, expired, or already used email verification token."
+            description = "Invalid, expired, or already used email verification token.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "403",
-            description = "CSRF token validation failed."
+            description = "CSRF token validation failed.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "429",
-            description = "Rate limit exceeded for verification attempts."
+            description = "Rate limit exceeded for verification attempts.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "503",
-            description = "Database or verification service is down (fail-closed)."
+            description = "Database or verification service is down (fail-closed).",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @PostMapping("/verify")
     public ApiResponse<Void> verify(@Valid @RequestBody VerifyRequest request) {
@@ -209,19 +227,23 @@ public class AuthController {
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "401",
-            description = "Invalid, revoked, or expired refresh token. If a token reuse is detected, all tokens in the family are revoked."
+            description = "Invalid, revoked, or expired refresh token. If a token reuse is detected, all tokens in the family are revoked.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "403",
-            description = "CSRF token validation failed, or user account associated with this token is suspended/locked."
+            description = "CSRF token validation failed, or user account associated with this token is suspended/locked.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "429",
-            description = "Rate limit exceeded for token refresh requests."
+            description = "Rate limit exceeded for token refresh requests.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "503",
-            description = "Redis blacklist or session database is temporarily down (fail-closed)."
+            description = "Redis blacklist or session database is temporarily down (fail-closed).",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @PostMapping("/refresh")
     public ApiResponse<LoginResponse> refresh(HttpServletRequest request, HttpServletResponse response) {
@@ -245,11 +267,13 @@ public class AuthController {
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "403",
-            description = "CSRF token validation failed."
+            description = "CSRF token validation failed.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "503",
-            description = "Redis blacklist is temporarily down. Returns 503 to trigger a client retry (fail-closed)."
+            description = "Redis blacklist is temporarily down. Returns 503 to trigger a client retry (fail-closed).",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @PostMapping("/logout")
     public ApiResponse<Void> logout(HttpServletRequest request, HttpServletResponse response) {
@@ -275,15 +299,18 @@ public class AuthController {
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "401",
-            description = "Authentication required or invalid JWT access token."
+            description = "Authentication required or invalid JWT access token.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "403",
-            description = "CSRF token validation failed."
+            description = "CSRF token validation failed.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "503",
-            description = "Session database or revocation service is down (fail-closed)."
+            description = "Session database or revocation service is down (fail-closed).",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @PostMapping("/logout-all")
     public ApiResponse<Void> logoutAll(HttpServletResponse response) {
