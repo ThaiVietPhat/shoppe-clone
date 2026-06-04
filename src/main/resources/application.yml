@@ -107,6 +107,12 @@ jwt:
   previous-secret: ${JWT_PREVIOUS_SECRET:}
 
 app:
+  notification:
+    verification-url: ${FRONTEND_VERIFICATION_URL:http://localhost:3000/verify-email}
+    sender: ${MAIL_SENDER:no-reply@shoppe.local}
+    retry:
+      batch-size: 50
+      fixed-delay: 5m
   payment:
     pending-expiry-minutes: 15                     # Scheduled job quét và cancel order quá hạn
   media:
