@@ -36,6 +36,11 @@ public enum ErrorCode {
     USER_NOT_FOUND(404, "User not found"),
     EMAIL_ALREADY_EXISTS(409, "Email is already registered"),
 
+    // ==================== Shop ====================
+    SHOP_NOT_FOUND(404, "Shop not found"),
+    SHOP_ALREADY_EXISTS(409, "User already owns a shop"),
+    SHOP_OWNER_REQUIRED(403, "Only the shop owner can perform this action"),
+
     // ==================== Product ====================
     PRODUCT_NOT_FOUND(404, "Product not found"),
     VARIANT_NOT_FOUND(404, "Product variant not found"),

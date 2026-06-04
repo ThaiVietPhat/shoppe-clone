@@ -1,0 +1,41 @@
+package com.shopee.monolith.modules.user.entity;
+
+import com.shopee.monolith.common.entity.BaseEntity;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Table;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
+
+import java.math.BigDecimal;
+import java.util.UUID;
+
+@Entity
+@Table(name = "shops")
+@Getter
+@SuperBuilder
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PROTECTED)
+public class Shop extends BaseEntity {
+
+    @Column(name = "owner_id", nullable = false, unique = true)
+    private UUID ownerId;
+
+    @Column(name = "name", nullable = false, length = 255)
+    private String name;
+
+    @Column(name = "description", columnDefinition = "TEXT")
+    private String description;
+
+    @Column(name = "rating", precision = 3, scale = 2)
+    @lombok.Builder.Default
+    private BigDecimal rating = BigDecimal.ZERO;
+
+    public void update(String name, String description) {
+        this.name = name;
+        this.description = description;
+    }
+}
