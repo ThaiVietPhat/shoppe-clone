@@ -4,6 +4,7 @@ import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.common.response.ApiResponse;
 import com.shopee.monolith.common.response.SwaggerResponses;
+import com.shopee.monolith.modules.auth.dto.response.AuthSwaggerResponses;
 import com.shopee.monolith.modules.auth.config.AuthSecurityProperties;
 import com.shopee.monolith.modules.auth.config.JwtProperties;
 import com.shopee.monolith.modules.auth.dto.internal.AccessTokenClaims;
@@ -80,15 +81,15 @@ public class AuthController {
             responseCode = "200",
             description = "Login successful.",
             headers = @Header(name = "Set-Cookie", description = "Sets the __Secure-refresh_token cookie containing the refresh token", schema = @Schema(type = "string")),
-            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseLoginResponse.class))
+            content = @Content(schema = @Schema(implementation = AuthSwaggerResponses.ApiResponseLoginResponse.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "401",
-            description = "Invalid credentials or email address is not verified yet."
+            description = "Invalid credentials (email or password)."
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "403",
-            description = "User account is suspended/locked, or the CSRF token is invalid."
+            description = "User email address is not verified, account is suspended/locked, or the CSRF token is invalid."
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "429",
@@ -111,7 +112,7 @@ public class AuthController {
             responseCode = "200",
             description = "OAuth2 code exchange successful.",
             headers = @Header(name = "Set-Cookie", description = "Sets the __Secure-refresh_token cookie containing the refresh token", schema = @Schema(type = "string")),
-            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseLoginResponse.class))
+            content = @Content(schema = @Schema(implementation = AuthSwaggerResponses.ApiResponseLoginResponse.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "400",
@@ -141,7 +142,7 @@ public class AuthController {
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "200",
             description = "Registration successful. User details returned.",
-            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseUserResponse.class))
+            content = @Content(schema = @Schema(implementation = AuthSwaggerResponses.ApiResponseUserResponse.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "400",
@@ -196,7 +197,7 @@ public class AuthController {
             responseCode = "200",
             description = "Token rotation successful.",
             headers = @Header(name = "Set-Cookie", description = "Sets the rotated __Secure-refresh_token cookie", schema = @Schema(type = "string")),
-            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseLoginResponse.class))
+            content = @Content(schema = @Schema(implementation = AuthSwaggerResponses.ApiResponseLoginResponse.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "401",
@@ -225,10 +226,10 @@ public class AuthController {
         return ApiResponse.success(new LoginResponse(tokenPair.accessToken()));
     }
 
-    @Operation(summary = "Logout Current Session", description = "Invalidates the current session's refresh token and blacklists the current access token.")
+    @Operation(summary = "Logout Current Session", description = "Invalidates the current session's refresh token and blacklists the current access token. Bearer access token and refresh cookie are both optional at runtime to support idempotent retries.")
     @SecurityRequirement(name = "bearerAuth")
     @Parameter(name = "X-XSRF-TOKEN", in = ParameterIn.HEADER, required = true, description = "CSRF token retrieved from the XSRF-TOKEN cookie", schema = @Schema(type = "string"))
-    @Parameter(name = "__Secure-refresh_token", in = ParameterIn.COOKIE, required = true, description = "Opaque refresh token cookie to revoke", schema = @Schema(type = "string"))
+    @Parameter(name = "__Secure-refresh_token", in = ParameterIn.COOKIE, required = false, description = "Opaque refresh token cookie to revoke (optional)", schema = @Schema(type = "string"))
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "200",
             description = "Logout successful.",

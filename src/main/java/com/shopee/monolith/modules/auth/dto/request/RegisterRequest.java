@@ -16,6 +16,6 @@ public record RegisterRequest(
 
         @NotBlank(message = "Password is required")
         @Size(min = 6, max = 100, message = "Password must be between 6 and 100 characters")
-        @Schema(description = "Password for registration", example = "Password123!")
+        @Schema(description = "Password for registration", example = "<password>")
         String password
 ) {}
