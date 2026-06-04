@@ -120,7 +120,7 @@ public class AuthController {
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "403",
-            description = "User account associated with OAuth identity is suspended/locked."
+            description = "CSRF token validation failed, or user account associated with OAuth identity is suspended/locked."
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "409",
@@ -147,6 +147,10 @@ public class AuthController {
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "400",
             description = "Invalid input details (e.g. invalid email domain, short password)."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "403",
+            description = "CSRF token validation failed."
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "409",
@@ -177,6 +181,10 @@ public class AuthController {
             description = "Invalid, expired, or already used email verification token."
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "403",
+            description = "CSRF token validation failed."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "429",
             description = "Rate limit exceeded for verification attempts."
     )
@@ -205,7 +213,7 @@ public class AuthController {
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "403",
-            description = "User account associated with this token is suspended/locked."
+            description = "CSRF token validation failed, or user account associated with this token is suspended/locked."
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "429",
@@ -227,7 +235,6 @@ public class AuthController {
     }
 
     @Operation(summary = "Logout Current Session", description = "Invalidates the current session's refresh token and blacklists the current access token. Bearer access token and refresh cookie are both optional at runtime to support idempotent retries.")
-    @SecurityRequirement(name = "bearerAuth")
     @Parameter(name = "X-XSRF-TOKEN", in = ParameterIn.HEADER, required = true, description = "CSRF token retrieved from the XSRF-TOKEN cookie", schema = @Schema(type = "string"))
     @Parameter(name = "__Secure-refresh_token", in = ParameterIn.COOKIE, required = false, description = "Opaque refresh token cookie to revoke (optional)", schema = @Schema(type = "string"))
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
