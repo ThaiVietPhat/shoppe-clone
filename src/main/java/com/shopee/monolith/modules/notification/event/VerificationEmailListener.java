@@ -10,6 +10,10 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 @Component
 @RequiredArgsConstructor
@@ -20,7 +24,7 @@ public class VerificationEmailListener {
     private final EventPayloadCryptoService cryptoService;
     private final NotificationProperties properties;
 
-    @Async
+    @Async("eventTaskExecutor")
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handle(UserRegisteredEvent event) {
         log.info("Received UserRegisteredEvent for userId: {}", event.userId());
@@ -28,8 +32,12 @@ public class VerificationEmailListener {
             // Decrypt raw verification token
             String rawToken = cryptoService.decrypt(event.encryptedVerificationToken());
 
-            // Build link: {verification-url}?token={rawToken}
-            String verificationLink = properties.getVerificationUrl() + "?token=" + rawToken;
+            // Build link: {verification-url}?token={rawToken} with URL encoding
+            String encodedToken = URLEncoder.encode(rawToken, StandardCharsets.UTF_8);
+            String verificationLink = UriComponentsBuilder.fromUriString(properties.getVerificationUrl())
+                    .queryParam("token", encodedToken)
+                    .build(true)
+                    .toUriString();
 
             // Send email
             emailService.sendVerificationEmail(event.email(), verificationLink);

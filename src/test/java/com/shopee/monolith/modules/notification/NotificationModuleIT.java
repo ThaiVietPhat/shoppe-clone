@@ -70,10 +70,17 @@ class NotificationModuleIT extends BasePostgresRedisIntegrationTest {
         Mockito.verify(emailService).sendVerificationEmail(email, "http://localhost:3000/verify-email?token=" + rawToken);
 
         // Verify Modulith event publication completed in DB
-        Thread.sleep(500);
-        Integer completedCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM event_publication WHERE completion_date IS NOT NULL", Integer.class);
-        assertEquals(1, completedCount);
+        boolean dbUpdated = false;
+        for (int i = 0; i < 50; i++) {
+            Integer completedCount = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM event_publication WHERE completion_date IS NOT NULL", Integer.class);
+            if (completedCount != null && completedCount == 1) {
+                dbUpdated = true;
+                break;
+            }
+            Thread.sleep(100);
+        }
+        assertTrue(dbUpdated, "Modulith event publication completion was not recorded in DB");
     }
 
     @Test
@@ -123,13 +130,18 @@ class NotificationModuleIT extends BasePostgresRedisIntegrationTest {
         // Wait for async execution
         latch.await(5, TimeUnit.SECONDS);
 
-        // Wait slightly for Modulith to save failure status
-        Thread.sleep(500);
-
         // Verify transaction was committed, but event publication remains incomplete in DB
-        Integer incompleteCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM event_publication WHERE completion_date IS NULL", Integer.class);
-        assertEquals(1, incompleteCount);
+        boolean dbUpdated = false;
+        for (int i = 0; i < 50; i++) {
+            Integer incompleteCount = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM event_publication WHERE completion_date IS NULL", Integer.class);
+            if (incompleteCount != null && incompleteCount == 1) {
+                dbUpdated = true;
+                break;
+            }
+            Thread.sleep(100);
+        }
+        assertTrue(dbUpdated, "Modulith event publication was not recorded as incomplete in DB");
     }
 
     @Test

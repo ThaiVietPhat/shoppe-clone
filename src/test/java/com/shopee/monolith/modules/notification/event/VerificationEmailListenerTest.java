@@ -68,4 +68,22 @@ class VerificationEmailListenerTest {
         RuntimeException exception = assertThrows(RuntimeException.class, () -> listener.handle(event));
         assertTrue(exception.getMessage().contains("Email delivery failed for user"));
     }
+
+    @Test
+    void whenTokenContainsSpecialCharactersShouldUrlEncodeToken() {
+        UUID userId = UUID.randomUUID();
+        String encryptedToken = "kid.encryptedToken";
+        String decryptedToken = "raw+Token/123=";
+        String email = "buyer@shoppe.local";
+
+        UserRegisteredEvent event = new UserRegisteredEvent(userId, email, encryptedToken);
+
+        when(cryptoService.decrypt(encryptedToken)).thenReturn(decryptedToken);
+
+        listener.handle(event);
+
+        verify(cryptoService).decrypt(encryptedToken);
+        // "raw+Token/123=" -> encoded query parameter: "raw%2BToken%2F123%3D"
+        verify(emailService).sendVerificationEmail(email, "http://localhost:3000/verify-email?token=raw%2BToken%2F123%3D");
+    }
 }

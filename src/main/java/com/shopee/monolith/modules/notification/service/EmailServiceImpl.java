@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+import org.springframework.web.util.HtmlUtils;
 
 @Service
 @RequiredArgsConstructor
@@ -27,8 +28,9 @@ public class EmailServiceImpl implements EmailService {
             helper.setTo(to);
             helper.setSubject("Please verify your email address");
 
+            String escapedLink = HtmlUtils.htmlEscape(verificationLink);
             String htmlContent = "<p>Thank you for registering. Please verify your email by clicking the link below:</p>"
-                    + "<a href=\"" + verificationLink + "\">Verify Email</a>";
+                    + "<a href=\"" + escapedLink + "\">Verify Email</a>";
             helper.setText(htmlContent, true);
 
             mailSender.send(message);

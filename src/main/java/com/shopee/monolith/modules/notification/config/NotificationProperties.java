@@ -39,4 +39,10 @@ public class NotificationProperties {
         @NotNull
         private Duration fixedDelay = Duration.ofMinutes(5);
     }
+
+    @jakarta.validation.constraints.AssertTrue(message = "Retry fixed delay must be positive")
+    public boolean isFixedDelayPositive() {
+        return retry != null && retry.getFixedDelay() != null
+                && !retry.getFixedDelay().isNegative() && !retry.getFixedDelay().isZero();
+    }
 }

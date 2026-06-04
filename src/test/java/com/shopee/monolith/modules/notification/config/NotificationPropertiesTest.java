@@ -82,4 +82,19 @@ class NotificationPropertiesTest {
         assertFalse(violations.isEmpty());
         assertTrue(violations.stream().anyMatch(v -> v.getPropertyPath().toString().equals("retry.fixedDelay")));
     }
+
+    @Test
+    void whenRetryFixedDelayIsZeroOrNegativeShouldFailValidation() {
+        NotificationProperties properties = createValidProperties();
+
+        properties.getRetry().setFixedDelay(Duration.ZERO);
+        Set<ConstraintViolation<NotificationProperties>> violations1 = validator.validate(properties);
+        assertFalse(violations1.isEmpty());
+        assertTrue(violations1.stream().anyMatch(v -> v.getMessage().contains("Retry fixed delay must be positive")));
+
+        properties.getRetry().setFixedDelay(Duration.ofSeconds(-30));
+        Set<ConstraintViolation<NotificationProperties>> violations2 = validator.validate(properties);
+        assertFalse(violations2.isEmpty());
+        assertTrue(violations2.stream().anyMatch(v -> v.getMessage().contains("Retry fixed delay must be positive")));
+    }
 }
