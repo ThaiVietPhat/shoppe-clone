@@ -62,6 +62,11 @@ public class AuthController {
             content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "429",
+            description = "Rate limit exceeded for CSRF token retrieval.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "503",
             description = "Security filters or system configuration services are unavailable.",
             content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
@@ -132,6 +137,11 @@ public class AuthController {
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "409",
             description = "OAuth identity is already linked to another registered account.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "429",
+            description = "Rate limit exceeded for OAuth2 code exchange attempts.",
             content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -305,6 +315,11 @@ public class AuthController {
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "403",
             description = "CSRF token validation failed.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "429",
+            description = "Rate limit exceeded for logout requests.",
             content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
