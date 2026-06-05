@@ -49,7 +49,8 @@ public class ProductController {
     @Operation(summary = "List all categories", description = "Retrieves a list of all active categories.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "200",
-            description = "Categories list retrieved successfully."
+            description = "Categories list retrieved successfully.",
+            content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponseCategoryList.class))
     )
     @GetMapping("/api/categories")
     public ApiResponse<List<CategoryResponse>> listCategories() {
