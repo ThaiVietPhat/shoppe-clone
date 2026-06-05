@@ -44,6 +44,9 @@ public enum ErrorCode {
     // ==================== Product ====================
     PRODUCT_NOT_FOUND(404, "Product not found"),
     VARIANT_NOT_FOUND(404, "Product variant not found"),
+    CATEGORY_NOT_FOUND(404, "Category not found"),
+    INVALID_PRODUCT_PRICE(400, "Invalid product price"),
+    SKU_ALREADY_EXISTS(409, "SKU already exists"),
 
     // ==================== Inventory ====================
     INSUFFICIENT_STOCK(409, "Insufficient stock available"),
