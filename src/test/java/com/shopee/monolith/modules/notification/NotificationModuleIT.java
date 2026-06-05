@@ -5,9 +5,14 @@ import com.shopee.monolith.common.security.EventPayloadCryptoService;
 import com.shopee.monolith.modules.notification.scheduler.EventPublicationRetryScheduler;
 import com.shopee.monolith.modules.notification.service.EmailService;
 import com.shopee.monolith.modules.user.event.UserRegisteredEvent;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -18,7 +23,6 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -161,10 +165,26 @@ class NotificationModuleIT extends BasePostgresRedisIntegrationTest {
 
     @Test
     void retrySchedulerWhenNoIncompletePublicationsShouldNotThrow() {
-        // Regression test for P1: verifies @EntityScan includes org.springframework.modulith.events.jpa
-        // so Hibernate can resolve DefaultJpaEventPublication without UnknownEntityException.
-        assertThatCode(() -> retryScheduler.retryFailedPublications())
-                .as("retryFailedPublications must not throw — UnknownEntityException would indicate missing @EntityScan")
-                .doesNotThrowAnyException();
+        // Regression guard for P1: the scheduler catches all exceptions internally,
+        // so assertThatCode().doesNotThrowAnyException() is always green even when
+        // UnknownEntityException occurs. Instead, capture Logback output and assert
+        // no ERROR was emitted — that ERROR is the only observable side-effect of the bug.
+        Logger schedulerLogger = (Logger) LoggerFactory.getLogger(EventPublicationRetryScheduler.class);
+        ListAppender<ILoggingEvent> listAppender = new ListAppender<>();
+        listAppender.start();
+        schedulerLogger.addAppender(listAppender);
+
+        try {
+            retryScheduler.retryFailedPublications();
+        } finally {
+            schedulerLogger.detachAppender(listAppender);
+        }
+
+        boolean hasError = listAppender.list.stream()
+                .anyMatch(event -> event.getLevel() == Level.ERROR);
+        assertFalse(hasError,
+                "Retry scheduler must not log ERROR: UnknownEntityException would indicate " +
+                "that DefaultJpaEventPublication is not registered in the JPA persistence unit. " +
+                "Check META-INF/orm.xml.");
     }
 }
