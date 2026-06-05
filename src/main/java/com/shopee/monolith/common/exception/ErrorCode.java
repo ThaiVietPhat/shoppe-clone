@@ -50,6 +50,9 @@ public enum ErrorCode {
 
     // ==================== Inventory ====================
     INSUFFICIENT_STOCK(409, "Insufficient stock available"),
+    INVENTORY_NOT_FOUND(404, "Inventory not found"),
+    INVENTORY_ALREADY_EXISTS(409, "Inventory already exists for this variant"),
+    INVALID_STOCK_QUANTITY(400, "Stock quantity must be non-negative"),
 
     // ==================== Order ====================
     ORDER_NOT_FOUND(404, "Order not found"),
