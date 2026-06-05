@@ -198,8 +198,12 @@ class CartServiceIT extends BasePostgresRedisIntegrationTest {
             });
         }
 
-        latch.await();
-        executor.shutdown();
+        try {
+            assertTrue(latch.await(10, java.util.concurrent.TimeUnit.SECONDS));
+        } finally {
+            executor.shutdownNow();
+            executor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS);
+        }
 
         CartResponse cart = cartService.getCart(userId);
         assertEquals(1, cart.items().size());
