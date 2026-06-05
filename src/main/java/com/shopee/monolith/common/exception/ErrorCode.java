@@ -58,6 +58,9 @@ public enum ErrorCode {
     ORDER_NOT_FOUND(404, "Order not found"),
     ORDER_CANNOT_BE_CANCELLED(409, "Order cannot be cancelled in its current state"),
     IDEMPOTENCY_KEY_MISSING(400, "Idempotency-Key header is required"),
+    CHECKOUT_NOT_FOUND(404, "Checkout session not found"),
+    IDEMPOTENCY_KEY_CONFLICT(409, "Idempotency key conflict: request payload mismatch"),
+    IDEMPOTENCY_REQUEST_PROCESSING(409, "An identical request is currently processing"),
 
     // ==================== Payment ====================
     PAYMENT_NOT_FOUND(404, "Payment not found"),
