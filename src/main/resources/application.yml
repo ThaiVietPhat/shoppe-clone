@@ -107,6 +107,9 @@ jwt:
   previous-secret: ${JWT_PREVIOUS_SECRET:}
 
 app:
+  cart:
+    ttl: 7d
+    max-quantity-per-item: 99
   notification:
     verification-url: ${FRONTEND_VERIFICATION_URL:http://localhost:3000/verify-email}
     sender: ${MAIL_SENDER:no-reply@shoppe.local}
