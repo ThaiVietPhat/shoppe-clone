@@ -35,6 +35,12 @@ public class CheckoutSession extends BaseEntity {
     @Column(name = "total_amount", nullable = false, precision = 15, scale = 2)
     private BigDecimal totalAmount;
 
+    @Column(name = "shipping_street", nullable = false)
+    private String shippingStreet;
+
+    @Column(name = "shipping_city", nullable = false)
+    private String shippingCity;
+
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 }

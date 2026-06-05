@@ -41,6 +41,12 @@ public class Order extends BaseEntity {
     @Column(name = "total_amount", nullable = false, precision = 15, scale = 2)
     private BigDecimal totalAmount;
 
+    @Column(name = "shipping_street", nullable = false)
+    private String shippingStreet;
+
+    @Column(name = "shipping_city", nullable = false)
+    private String shippingCity;
+
     @Version
     @Column(name = "version", nullable = false)
     @lombok.Builder.Default

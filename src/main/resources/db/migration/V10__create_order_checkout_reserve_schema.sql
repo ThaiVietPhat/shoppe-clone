@@ -31,6 +31,8 @@ CREATE TABLE checkout_sessions (
     buyer_id UUID NOT NULL REFERENCES users(id),
     status VARCHAR(50) NOT NULL,
     total_amount DECIMAL(15,2) NOT NULL,
+    shipping_street VARCHAR(255) NOT NULL,
+    shipping_city VARCHAR(255) NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -44,6 +46,8 @@ CREATE TABLE orders (
     checkout_session_id UUID NOT NULL REFERENCES checkout_sessions(id),
     status VARCHAR(50) NOT NULL,
     total_amount DECIMAL(15,2) NOT NULL,
+    shipping_street VARCHAR(255) NOT NULL,
+    shipping_city VARCHAR(255) NOT NULL,
     version INT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
