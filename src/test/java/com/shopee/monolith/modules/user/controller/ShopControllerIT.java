@@ -172,6 +172,13 @@ class ShopControllerIT extends BasePostgresRedisIntegrationTest {
     }
 
     @Test
+    void getMyShopWhenAnonymousShouldReturn401Unauthorized() throws Exception {
+        mockMvc.perform(get("/api/shops/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(ErrorCode.UNAUTHORIZED.getHttpStatus()));
+    }
+
+    @Test
     void updateMyShopWhenShopExistsShouldUpdateAndReturnShop() throws Exception {
         Shop shop = Shop.builder()
                 .ownerId(activeUser.getId())

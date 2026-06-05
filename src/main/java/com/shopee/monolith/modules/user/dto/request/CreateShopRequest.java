@@ -10,7 +10,7 @@ import lombok.Builder;
 public record CreateShopRequest(
         @NotBlank(message = "Shop name is required")
         @Size(min = 3, max = 100, message = "Shop name must be between 3 and 100 characters")
-        @Schema(description = "Name of the shop", example = "Shopee Mall Demo")
+        @Schema(description = "Name of the shop", example = "Shopee Mall Demo", requiredMode = Schema.RequiredMode.REQUIRED)
         String name,
 
         @Size(max = 1000, message = "Description must not exceed 1000 characters")
