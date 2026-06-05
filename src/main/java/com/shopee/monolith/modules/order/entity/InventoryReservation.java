@@ -38,4 +38,7 @@ public class InventoryReservation extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
     private InventoryReservationStatus status;
+
+    @Column(name = "expires_at", nullable = false)
+    private java.time.Instant expiresAt;
 }

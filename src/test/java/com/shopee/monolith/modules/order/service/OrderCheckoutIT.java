@@ -40,7 +40,6 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -52,7 +51,7 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
     @Autowired
     private CartService cartService;
 
-    @Autowired
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
     private InventoryService inventoryService;
 
     @Autowired
@@ -242,18 +241,27 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
 
     @Test
     void checkoutWhenCartMutatedAfterSnapshotShouldNotDeleteCartMutation() {
+        // Prepare cart with variant1 (this will be part of the checkout snapshot)
         cartService.addItem(buyer.getId(), new AddCartItemRequest(variant1.getId(), 2));
 
-        // Let's hook a way to simulate a cart mutation happening inside another thread or mock to change version
-        // Actually, we can just mutate the cart right before transaction commits.
-        // Or we can verify that if the cart version increments, clearSnapshotIfVersionUnchanged does not delete it.
-        // Let's call checkout which clears cart of version 1. But if we manually change the version in Redis, it won't be deleted.
-        // Let's test clearSnapshotIfVersionUnchanged directly to prove the invariant.
-        cartService.clearSnapshotIfVersionUnchanged(buyer.getId(), 999L); // wrong version
-        // Verify cart still has elements
-        assertFalse(cartService.getCart(buyer.getId()).items().isEmpty());
+        // When inventoryService.reserve is called during checkout (mid-transaction), mutate the cart
+        org.mockito.Mockito.doAnswer(invocation -> {
+            cartService.addItem(buyer.getId(), new AddCartItemRequest(variant2.getId(), 1));
+            invocation.callRealMethod();
+            return null;
+        }).when(inventoryService).reserve(org.mockito.ArgumentMatchers.anyList());
 
-        cartService.clearSnapshotIfVersionUnchanged(buyer.getId(), 1L); // correct version
-        assertTrue(cartService.getCart(buyer.getId()).items().isEmpty());
+        CheckoutRequest request = new CheckoutRequest("123 Street", "Hanoi");
+        String idempotencyKey = UUID.randomUUID().toString();
+
+        CheckoutResponse response = orderService.checkout(buyer.getId(), request, idempotencyKey);
+
+        assertNotNull(response);
+
+        // Verify that the cart was NOT cleared because of the version mismatch (mutated cart remains fully intact)
+        var cart = cartService.getCart(buyer.getId());
+        assertEquals(2, cart.items().size());
+        assertTrue(cart.items().stream().anyMatch(i -> i.variantId().equals(variant1.getId())));
+        assertTrue(cart.items().stream().anyMatch(i -> i.variantId().equals(variant2.getId())));
     }
 }

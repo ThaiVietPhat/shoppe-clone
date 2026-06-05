@@ -179,6 +179,7 @@ public class CheckoutProcessor {
                         .variantId(item.getVariantId())
                         .quantity(item.getQuantity())
                         .status(InventoryReservationStatus.RESERVED)
+                        .expiresAt(session.getExpiresAt())
                         .build());
             }
             inventoryReservationRepository.saveAll(reservations);
