@@ -12,3 +12,4 @@ public class ShopeeMonolithApplication {
         SpringApplication.run(ShopeeMonolithApplication.class, args);
     }
 }
+

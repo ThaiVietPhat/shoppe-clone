@@ -58,6 +58,11 @@ public class InventoryController {
             content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "403",
+            description = "Shop owner or admin permission required.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "409",
             description = "Inventory already exists for this variant.",
             content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
@@ -85,6 +90,11 @@ public class InventoryController {
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "401",
             description = "Authentication required.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "403",
+            description = "Shop owner or admin permission required.",
             content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -120,6 +130,11 @@ public class InventoryController {
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "401",
             description = "Authentication required.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "403",
+            description = "Shop owner or admin permission required.",
             content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(

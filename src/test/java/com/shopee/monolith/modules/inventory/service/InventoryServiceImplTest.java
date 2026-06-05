@@ -127,7 +127,9 @@ class InventoryServiceImplTest {
     }
 
     @Test
-    void getInventoryByVariantIdWhenAdminShouldBypassValidation() {
+    void getInventoryByVariantIdWhenAdminShouldBypassOwnershipButStillCheckVariant() {
+        // ADMIN bypasses shop-ownership check but NOT variant-existence check
+        when(productService.findVariantLookupDataById(variantId)).thenReturn(Optional.of(variantLookup));
         when(inventoryRepository.findByVariantId(variantId)).thenReturn(Optional.of(inventory));
         when(inventoryMapper.toResponse(inventory)).thenReturn(inventoryResponse);
 
@@ -200,6 +202,16 @@ class InventoryServiceImplTest {
     }
 
     @Test
+    void createInventoryWhenAdminAndVariantNotFoundShouldThrowVariantNotFound() {
+        // ADMIN skips ownership check but NOT variant-existence check
+        when(productService.findVariantLookupDataById(variantId)).thenReturn(Optional.empty());
+
+        AppException ex = assertThrows(AppException.class, () ->
+                inventoryService.createInventory(variantId, 10, otherUserId, Role.ADMIN));
+        assertEquals(ErrorCode.VARIANT_NOT_FOUND, ex.getErrorCode());
+    }
+
+    @Test
     void createInventoryWhenNegativeStockShouldThrowException() {
         AppException ex = assertThrows(AppException.class, () ->
                 inventoryService.createInventory(variantId, -1, userId, Role.SELLER));
@@ -221,12 +233,28 @@ class InventoryServiceImplTest {
         stubOwnershipSuccess();
         when(inventoryRepository.findByVariantId(variantId)).thenReturn(Optional.empty());
         when(inventoryRepository.saveAndFlush(any(Inventory.class))).thenThrow(
-                new org.springframework.dao.DataIntegrityViolationException("unique constraint")
+                new org.springframework.dao.DataIntegrityViolationException(
+                        "unique constraint: inventories_variant_id_key")
         );
 
         AppException ex = assertThrows(AppException.class, () ->
                 inventoryService.createInventory(variantId, 50, userId, Role.SELLER));
         assertEquals(ErrorCode.INVENTORY_ALREADY_EXISTS, ex.getErrorCode());
+    }
+
+    @Test
+    void createInventoryWhenFkViolationShouldThrowVariantNotFound() {
+        stubOwnershipSuccess();
+        when(inventoryRepository.findByVariantId(variantId)).thenReturn(Optional.empty());
+        // FK violation message does NOT contain the unique constraint name
+        when(inventoryRepository.saveAndFlush(any(Inventory.class))).thenThrow(
+                new org.springframework.dao.DataIntegrityViolationException(
+                        "violates foreign key constraint \"inventories_variant_id_fkey\"")
+        );
+
+        AppException ex = assertThrows(AppException.class, () ->
+                inventoryService.createInventory(variantId, 50, userId, Role.SELLER));
+        assertEquals(ErrorCode.VARIANT_NOT_FOUND, ex.getErrorCode());
     }
 
     @Test

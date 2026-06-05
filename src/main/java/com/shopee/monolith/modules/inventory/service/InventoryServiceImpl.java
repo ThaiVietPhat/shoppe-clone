@@ -16,9 +16,11 @@ import com.shopee.monolith.modules.user.dto.internal.ShopLookupData;
 import com.shopee.monolith.modules.user.model.Role;
 import com.shopee.monolith.modules.user.service.ShopService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -30,18 +32,32 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class InventoryServiceImpl implements InventoryService {
 
+    // PostgreSQL auto-generates constraint names from table + column, matching DB migration V1
+    private static final String UNIQUE_VARIANT_CONSTRAINT = "inventories_variant_id_key";
+
     private final InventoryRepository inventoryRepository;
     private final InventoryMapper inventoryMapper;
     private final ProductService productService;
     private final ShopService shopService;
 
+    /**
+     * Validates that the variant exists — always runs for ALL callers including ADMIN.
+     */
+    private VariantLookupData validateVariantExists(UUID variantId) {
+        return productService.findVariantLookupDataById(variantId)
+                .orElseThrow(() -> new AppException(ErrorCode.VARIANT_NOT_FOUND));
+    }
+
+    /**
+     * Validates shop ownership for the variant's product.
+     * ADMIN callers skip the ownership check but NOT the variant-existence check.
+     */
     private void validateOwnership(UUID variantId, UUID currentUserId, Role currentRole) {
+        VariantLookupData variant = validateVariantExists(variantId);
+
         if (currentRole == Role.ADMIN) {
             return;
         }
-
-        VariantLookupData variant = productService.findVariantLookupDataById(variantId)
-                .orElseThrow(() -> new AppException(ErrorCode.VARIANT_NOT_FOUND));
 
         ProductLookupData product = productService.findProductLookupDataById(variant.productId())
                 .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
@@ -70,9 +86,9 @@ public class InventoryServiceImpl implements InventoryService {
             throw new AppException(ErrorCode.INVALID_STOCK_QUANTITY);
         }
 
+        // validateOwnership calls validateVariantExists first — variant is always checked, even for ADMIN
         validateOwnership(variantId, currentUserId, currentRole);
 
-        // Check if inventory already exists
         if (inventoryRepository.findByVariantId(variantId).isPresent()) {
             throw new AppException(ErrorCode.INVENTORY_ALREADY_EXISTS);
         }
@@ -86,8 +102,13 @@ public class InventoryServiceImpl implements InventoryService {
 
             inventory = inventoryRepository.saveAndFlush(inventory);
             return inventoryMapper.toResponse(inventory);
-        } catch (org.springframework.dao.DataIntegrityViolationException ex) {
-            throw new AppException(ErrorCode.INVENTORY_ALREADY_EXISTS);
+        } catch (DataIntegrityViolationException ex) {
+            // Distinguish unique-constraint race (duplicate inventory) from FK violation (variant deleted mid-request)
+            String message = ex.getMessage() != null ? ex.getMessage() : "";
+            if (message.contains(UNIQUE_VARIANT_CONSTRAINT)) {
+                throw new AppException(ErrorCode.INVENTORY_ALREADY_EXISTS);
+            }
+            throw new AppException(ErrorCode.VARIANT_NOT_FOUND);
         }
     }
 
@@ -115,27 +136,26 @@ public class InventoryServiceImpl implements InventoryService {
             return;
         }
 
-        // Validate quantities are positive
         for (ReserveInventoryCommand cmd : commands) {
             if (cmd.quantity() <= 0) {
                 throw new AppException(ErrorCode.INVALID_REQUEST);
             }
         }
 
-        // Consolidate quantities per variantId to avoid duplicate mappings and double locks
+        // Consolidate quantities per variantId to reduce lock footprint
         List<ReserveInventoryCommand> consolidated = commands.stream()
                 .collect(Collectors.groupingBy(ReserveInventoryCommand::variantId,
                         Collectors.summingInt(ReserveInventoryCommand::quantity)))
                 .entrySet().stream()
                 .map(entry -> new ReserveInventoryCommand(entry.getKey(), entry.getValue()))
-                .sorted(java.util.Comparator.comparing(cmd -> cmd.variantId().toString()))
+                .sorted(Comparator.comparing(cmd -> cmd.variantId().toString()))
                 .toList();
 
         List<UUID> variantIds = consolidated.stream()
                 .map(ReserveInventoryCommand::variantId)
                 .toList();
 
-        // Lock rows in a deterministic (sorted variantId ASC) order to prevent deadlock
+        // Lock rows in deterministic (variantId ASC) order to prevent deadlock
         List<Inventory> inventories = inventoryRepository.findAllByVariantIdInForUpdate(variantIds);
 
         if (inventories.size() != variantIds.size()) {
@@ -150,11 +170,7 @@ public class InventoryServiceImpl implements InventoryService {
             if (inventory == null) {
                 throw new AppException(ErrorCode.INVENTORY_NOT_FOUND);
             }
-            if (inventory.getAvailableStock() < cmd.quantity()) {
-                throw new AppException(ErrorCode.INSUFFICIENT_STOCK);
-            }
-            inventory.setAvailableStock(inventory.getAvailableStock() - cmd.quantity());
-            inventory.setReservedStock(inventory.getReservedStock() + cmd.quantity());
+            inventory.reserve(cmd.quantity());
         }
 
         inventoryRepository.saveAll(inventories);
@@ -167,7 +183,6 @@ public class InventoryServiceImpl implements InventoryService {
             return;
         }
 
-        // Validate quantities are positive
         for (ConfirmInventoryCommand cmd : commands) {
             if (cmd.quantity() <= 0) {
                 throw new AppException(ErrorCode.INVALID_REQUEST);
@@ -179,7 +194,7 @@ public class InventoryServiceImpl implements InventoryService {
                         Collectors.summingInt(ConfirmInventoryCommand::quantity)))
                 .entrySet().stream()
                 .map(entry -> new ConfirmInventoryCommand(entry.getKey(), entry.getValue()))
-                .sorted(java.util.Comparator.comparing(cmd -> cmd.variantId().toString()))
+                .sorted(Comparator.comparing(cmd -> cmd.variantId().toString()))
                 .toList();
 
         List<UUID> variantIds = consolidated.stream()
@@ -200,10 +215,7 @@ public class InventoryServiceImpl implements InventoryService {
             if (inventory == null) {
                 throw new AppException(ErrorCode.INVENTORY_NOT_FOUND);
             }
-            if (inventory.getReservedStock() < cmd.quantity()) {
-                throw new AppException(ErrorCode.INVALID_REQUEST);
-            }
-            inventory.setReservedStock(inventory.getReservedStock() - cmd.quantity());
+            inventory.confirm(cmd.quantity());
         }
 
         inventoryRepository.saveAll(inventories);
@@ -216,7 +228,6 @@ public class InventoryServiceImpl implements InventoryService {
             return;
         }
 
-        // Validate quantities are positive
         for (ReleaseInventoryCommand cmd : commands) {
             if (cmd.quantity() <= 0) {
                 throw new AppException(ErrorCode.INVALID_REQUEST);
@@ -228,7 +239,7 @@ public class InventoryServiceImpl implements InventoryService {
                         Collectors.summingInt(ReleaseInventoryCommand::quantity)))
                 .entrySet().stream()
                 .map(entry -> new ReleaseInventoryCommand(entry.getKey(), entry.getValue()))
-                .sorted(java.util.Comparator.comparing(cmd -> cmd.variantId().toString()))
+                .sorted(Comparator.comparing(cmd -> cmd.variantId().toString()))
                 .toList();
 
         List<UUID> variantIds = consolidated.stream()
@@ -249,11 +260,7 @@ public class InventoryServiceImpl implements InventoryService {
             if (inventory == null) {
                 throw new AppException(ErrorCode.INVENTORY_NOT_FOUND);
             }
-            if (inventory.getReservedStock() < cmd.quantity()) {
-                throw new AppException(ErrorCode.INVALID_REQUEST);
-            }
-            inventory.setReservedStock(inventory.getReservedStock() - cmd.quantity());
-            inventory.setAvailableStock(inventory.getAvailableStock() + cmd.quantity());
+            inventory.release(cmd.quantity());
         }
 
         inventoryRepository.saveAll(inventories);

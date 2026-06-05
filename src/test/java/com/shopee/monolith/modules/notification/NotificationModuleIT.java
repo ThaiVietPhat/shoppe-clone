@@ -2,6 +2,7 @@ package com.shopee.monolith.modules.notification;
 
 import com.shopee.monolith.BasePostgresRedisIntegrationTest;
 import com.shopee.monolith.common.security.EventPayloadCryptoService;
+import com.shopee.monolith.modules.notification.scheduler.EventPublicationRetryScheduler;
 import com.shopee.monolith.modules.notification.service.EmailService;
 import com.shopee.monolith.modules.user.event.UserRegisteredEvent;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,6 +18,7 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -36,6 +38,9 @@ class NotificationModuleIT extends BasePostgresRedisIntegrationTest {
 
     @Autowired
     private EventPayloadCryptoService cryptoService;
+
+    @Autowired
+    private EventPublicationRetryScheduler retryScheduler;
 
     @MockitoSpyBean
     private EmailService emailService;
@@ -152,5 +157,14 @@ class NotificationModuleIT extends BasePostgresRedisIntegrationTest {
 
         assertFalse(eventStr.contains("crypto.payload"));
         assertTrue(eventStr.contains("[REDACTED]"));
+    }
+
+    @Test
+    void retrySchedulerWhenNoIncompletePublicationsShouldNotThrow() {
+        // Regression test for P1: verifies @EntityScan includes org.springframework.modulith.events.jpa
+        // so Hibernate can resolve DefaultJpaEventPublication without UnknownEntityException.
+        assertThatCode(() -> retryScheduler.retryFailedPublications())
+                .as("retryFailedPublications must not throw — UnknownEntityException would indicate missing @EntityScan")
+                .doesNotThrowAnyException();
     }
 }
