@@ -333,4 +333,40 @@ class ProductControllerIT extends BasePostgresRedisIntegrationTest {
                 .andExpect(jsonPath("$.data.name").value("128GB Titanium"))
                 .andExpect(jsonPath("$.data.price").value(949.00));
     }
+
+    @Test
+    void listProductsWhenInvalidPageShouldReturn400() throws Exception {
+        mockMvc.perform(get("/api/products")
+                        .param("page", "-1")
+                        .param("size", "20"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+    }
+
+    @Test
+    void listProductsWhenInvalidSizeShouldReturn400() throws Exception {
+        mockMvc.perform(get("/api/products")
+                        .param("page", "0")
+                        .param("size", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+    }
+
+    @Test
+    void listProductsByShopWhenInvalidPageShouldReturn400() throws Exception {
+        mockMvc.perform(get("/api/shops/" + shop.getId() + "/products")
+                        .param("page", "-1")
+                        .param("size", "20"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+    }
+
+    @Test
+    void listProductsByShopWhenInvalidSizeShouldReturn400() throws Exception {
+        mockMvc.perform(get("/api/shops/" + shop.getId() + "/products")
+                        .param("page", "0")
+                        .param("size", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+    }
 }

@@ -367,4 +367,22 @@ class ProductServiceImplTest {
         assertEquals(1, result.items().size());
         assertEquals(productResponse, result.items().get(0));
     }
+
+    @Test
+    void listProductsWithInvalidParamsShouldThrowException() {
+        AppException ex1 = assertThrows(AppException.class, () -> productService.listProducts(-1, 20));
+        assertEquals(ErrorCode.INVALID_REQUEST, ex1.getErrorCode());
+
+        AppException ex2 = assertThrows(AppException.class, () -> productService.listProducts(0, 0));
+        assertEquals(ErrorCode.INVALID_REQUEST, ex2.getErrorCode());
+    }
+
+    @Test
+    void listProductsByShopWithInvalidParamsShouldThrowException() {
+        AppException ex1 = assertThrows(AppException.class, () -> productService.listProductsByShop(shopId, -1, 20));
+        assertEquals(ErrorCode.INVALID_REQUEST, ex1.getErrorCode());
+
+        AppException ex2 = assertThrows(AppException.class, () -> productService.listProductsByShop(shopId, 0, 0));
+        assertEquals(ErrorCode.INVALID_REQUEST, ex2.getErrorCode());
+    }
 }

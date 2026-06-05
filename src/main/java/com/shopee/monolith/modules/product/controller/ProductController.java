@@ -22,8 +22,11 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -37,6 +40,7 @@ import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
+@Validated
 @Tag(name = "Products", description = "Product categories, catalog, and seller product variant management APIs")
 public class ProductController {
 
@@ -55,12 +59,18 @@ public class ProductController {
     @Operation(summary = "List all products", description = "Retrieves all products in the e-commerce catalog.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "200",
-            description = "Products list retrieved successfully."
+            description = "Products list retrieved successfully.",
+            content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponsePagedProductResponse.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "400",
+            description = "Invalid page or size parameters.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @GetMapping("/api/products")
     public ApiResponse<PagedResponse<ProductResponse>> listProducts(
-            @Parameter(description = "Page index (0-indexed)") @RequestParam(defaultValue = "0") int page,
-            @Parameter(description = "Page size (max 100)") @RequestParam(defaultValue = "20") int size) {
+            @Parameter(description = "Page index (0-indexed)") @RequestParam(defaultValue = "0") @Min(0) int page,
+            @Parameter(description = "Page size (max 100)") @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         return ApiResponse.success(productService.listProducts(page, size));
     }
 
@@ -84,13 +94,19 @@ public class ProductController {
     @Operation(summary = "List shop products", description = "Retrieves all catalog products owned by a specific seller shop.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "200",
-            description = "Shop products list retrieved successfully."
+            description = "Shop products list retrieved successfully.",
+            content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponsePagedProductResponse.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "400",
+            description = "Invalid page or size parameters.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @GetMapping("/api/shops/{shopId}/products")
     public ApiResponse<PagedResponse<ProductResponse>> listProductsByShop(
             @Parameter(description = "Shop unique ID") @PathVariable UUID shopId,
-            @Parameter(description = "Page index (0-indexed)") @RequestParam(defaultValue = "0") int page,
-            @Parameter(description = "Page size (max 100)") @RequestParam(defaultValue = "20") int size) {
+            @Parameter(description = "Page index (0-indexed)") @RequestParam(defaultValue = "0") @Min(0) int page,
+            @Parameter(description = "Page size (max 100)") @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         return ApiResponse.success(productService.listProductsByShop(shopId, page, size));
     }
 

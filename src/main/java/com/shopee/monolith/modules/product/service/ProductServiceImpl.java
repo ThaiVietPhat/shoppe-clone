@@ -106,6 +106,9 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public PagedResponse<ProductResponse> listProducts(int page, int size) {
+        if (page < 0 || size < 1) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
         int boundedSize = Math.min(size, 100);
         Pageable pageable = PageRequest.of(page, boundedSize, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<Product> productPage = productRepository.findAll(pageable);
@@ -114,6 +117,9 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public PagedResponse<ProductResponse> listProductsByShop(UUID shopId, int page, int size) {
+        if (page < 0 || size < 1) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
         int boundedSize = Math.min(size, 100);
         Pageable pageable = PageRequest.of(page, boundedSize, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<Product> productPage = productRepository.findAllByShopId(shopId, pageable);

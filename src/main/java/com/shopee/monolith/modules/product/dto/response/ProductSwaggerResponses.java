@@ -1,5 +1,6 @@
 package com.shopee.monolith.modules.product.dto.response;
 
+import com.shopee.monolith.common.response.PagedResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.List;
@@ -34,6 +35,13 @@ public final class ProductSwaggerResponses {
             int code,
             String message,
             List<ProductResponse> data
+    ) {}
+
+    @Schema(name = "ApiResponsePagedProductResponse", description = "API response wrapper containing PagedResponse of ProductResponse")
+    public record ApiResponsePagedProductResponse(
+            int code,
+            String message,
+            PagedResponse<ProductResponse> data
     ) {}
 
     @Schema(name = "ApiResponseProductVariantResponse", description = "API response wrapper containing ProductVariantResponse")
