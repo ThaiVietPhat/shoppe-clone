@@ -52,17 +52,19 @@ public class OrderServiceImpl implements OrderService {
         Optional<IdempotencyKey> existingKeyOpt = idempotencyKeyRepository.findByActorIdAndOperationAndIdempotencyKey(buyerId, "CHECKOUT", idempotencyKey);
         if (existingKeyOpt.isPresent()) {
             IdempotencyKey existing = existingKeyOpt.get();
-            if (!existing.getRequestHash().equals(requestHash)) {
-                throw new AppException(ErrorCode.IDEMPOTENCY_KEY_CONFLICT);
-            }
-            if (existing.getStatus() == IdempotencyStatus.PROCESSING) {
-                throw new AppException(ErrorCode.IDEMPOTENCY_REQUEST_PROCESSING);
-            }
-            try {
-                return objectMapper.readValue(existing.getResponseBody(), CheckoutResponse.class);
-            } catch (Exception e) {
-                log.error("Failed to deserialize cached checkout response in pre-check", e);
-                throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR);
+            if (existing.getExpiresAt().isAfter(Instant.now())) {
+                if (!existing.getRequestHash().equals(requestHash)) {
+                    throw new AppException(ErrorCode.IDEMPOTENCY_KEY_CONFLICT);
+                }
+                if (existing.getStatus() == IdempotencyStatus.PROCESSING) {
+                    throw new AppException(ErrorCode.IDEMPOTENCY_REQUEST_PROCESSING);
+                }
+                try {
+                    return objectMapper.readValue(existing.getResponseBody(), CheckoutResponse.class);
+                } catch (Exception e) {
+                    log.error("Failed to deserialize cached checkout response in pre-check", e);
+                    throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR);
+                }
             }
         }
 
