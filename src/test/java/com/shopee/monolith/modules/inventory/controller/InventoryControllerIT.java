@@ -70,6 +70,11 @@ class InventoryControllerIT extends BasePostgresRedisIntegrationTest {
 
     private User sellerUser;
     private String sellerToken;
+    private User nonOwnerUser;
+    private String nonOwnerToken;
+    private User adminUser;
+    private String adminToken;
+
     private Shop shop;
     private Category category;
     private Product product;
@@ -82,11 +87,29 @@ class InventoryControllerIT extends BasePostgresRedisIntegrationTest {
         sellerUser = User.builder()
                 .email("seller.inventory.rest@shoppe.local")
                 .normalizedEmail("seller.inventory.rest@shoppe.local")
-                .role(Role.BUYER)
+                .role(Role.SELLER)
                 .status(UserStatus.ACTIVE)
                 .build();
         sellerUser = userRepository.save(sellerUser);
         sellerToken = jwtTokenProvider.generateAccessToken(sellerUser.getId(), sellerUser.getRole());
+
+        nonOwnerUser = User.builder()
+                .email("buyer.inventory.rest@shoppe.local")
+                .normalizedEmail("buyer.inventory.rest@shoppe.local")
+                .role(Role.BUYER)
+                .status(UserStatus.ACTIVE)
+                .build();
+        nonOwnerUser = userRepository.save(nonOwnerUser);
+        nonOwnerToken = jwtTokenProvider.generateAccessToken(nonOwnerUser.getId(), nonOwnerUser.getRole());
+
+        adminUser = User.builder()
+                .email("admin.inventory.rest@shoppe.local")
+                .normalizedEmail("admin.inventory.rest@shoppe.local")
+                .role(Role.ADMIN)
+                .status(UserStatus.ACTIVE)
+                .build();
+        adminUser = userRepository.save(adminUser);
+        adminToken = jwtTokenProvider.generateAccessToken(adminUser.getId(), adminUser.getRole());
 
         shop = Shop.builder()
                 .ownerId(sellerUser.getId())
@@ -145,7 +168,6 @@ class InventoryControllerIT extends BasePostgresRedisIntegrationTest {
 
     @Test
     void createInventoryWhenValidShouldSucceed() throws Exception {
-        // Create another variant without inventory
         ProductVariant variant2 = ProductVariant.builder()
                 .productId(product.getId())
                 .sku("TOAST-02")
@@ -165,6 +187,47 @@ class InventoryControllerIT extends BasePostgresRedisIntegrationTest {
                 .andExpect(jsonPath("$.data.variantId").value(variant2.getId().toString()))
                 .andExpect(jsonPath("$.data.availableStock").value(20))
                 .andExpect(jsonPath("$.data.reservedStock").value(0));
+    }
+
+    @Test
+    void createInventoryWhenAdminShouldSucceed() throws Exception {
+        ProductVariant variant2 = ProductVariant.builder()
+                .productId(product.getId())
+                .sku("TOAST-02")
+                .name("Premium Toaster")
+                .price(BigDecimal.valueOf(49.99))
+                .build();
+        variant2 = productVariantRepository.save(variant2);
+
+        CreateInventoryRequest request = new CreateInventoryRequest(variant2.getId(), 20);
+
+        mockMvc.perform(post("/api/inventories")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.variantId").value(variant2.getId().toString()));
+    }
+
+    @Test
+    void createInventoryWhenNonOwnerShouldReturn403() throws Exception {
+        ProductVariant variant2 = ProductVariant.builder()
+                .productId(product.getId())
+                .sku("TOAST-02")
+                .name("Premium Toaster")
+                .price(BigDecimal.valueOf(49.99))
+                .build();
+        variant2 = productVariantRepository.save(variant2);
+
+        CreateInventoryRequest request = new CreateInventoryRequest(variant2.getId(), 20);
+
+        mockMvc.perform(post("/api/inventories")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + nonOwnerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(ErrorCode.SHOP_OWNER_REQUIRED.getHttpStatus()));
     }
 
     @Test
@@ -214,11 +277,27 @@ class InventoryControllerIT extends BasePostgresRedisIntegrationTest {
     }
 
     @Test
+    void getInventoryByVariantIdWhenAdminShouldSucceed() throws Exception {
+        mockMvc.perform(get("/api/inventories/variants/" + variant.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+    }
+
+    @Test
+    void getInventoryByVariantIdWhenNonOwnerShouldReturn403() throws Exception {
+        mockMvc.perform(get("/api/inventories/variants/" + variant.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + nonOwnerToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(ErrorCode.SHOP_OWNER_REQUIRED.getHttpStatus()));
+    }
+
+    @Test
     void getInventoryByVariantIdWhenNotFoundShouldReturn404() throws Exception {
         mockMvc.perform(get("/api/inventories/variants/" + UUID.randomUUID())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + sellerToken))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value(ErrorCode.INVENTORY_NOT_FOUND.getHttpStatus()));
+                .andExpect(jsonPath("$.code").value(ErrorCode.VARIANT_NOT_FOUND.getHttpStatus()));
     }
 
     @Test
@@ -232,6 +311,30 @@ class InventoryControllerIT extends BasePostgresRedisIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.availableStock").value(150));
+    }
+
+    @Test
+    void updateAvailableStockWhenAdminShouldSucceed() throws Exception {
+        UpdateStockRequest request = new UpdateStockRequest(150);
+
+        mockMvc.perform(patch("/api/inventories/variants/" + variant.getId() + "/stock")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+    }
+
+    @Test
+    void updateAvailableStockWhenNonOwnerShouldReturn403() throws Exception {
+        UpdateStockRequest request = new UpdateStockRequest(150);
+
+        mockMvc.perform(patch("/api/inventories/variants/" + variant.getId() + "/stock")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + nonOwnerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(ErrorCode.SHOP_OWNER_REQUIRED.getHttpStatus()));
     }
 
     @Test
@@ -255,6 +358,6 @@ class InventoryControllerIT extends BasePostgresRedisIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value(ErrorCode.INVENTORY_NOT_FOUND.getHttpStatus()));
+                .andExpect(jsonPath("$.code").value(ErrorCode.VARIANT_NOT_FOUND.getHttpStatus()));
     }
 }

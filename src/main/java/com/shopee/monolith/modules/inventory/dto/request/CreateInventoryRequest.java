@@ -4,8 +4,11 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 
+import lombok.Builder;
+
 import java.util.UUID;
 
+@Builder
 @Schema(description = "Payload to initialize stock for a product variant")
 public record CreateInventoryRequest(
         @Schema(description = "UUID of the product variant", requiredMode = Schema.RequiredMode.REQUIRED)

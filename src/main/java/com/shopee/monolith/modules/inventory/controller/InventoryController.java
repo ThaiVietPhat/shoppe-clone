@@ -69,7 +69,7 @@ public class InventoryController {
         if (claims == null) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
-        return ApiResponse.success(inventoryService.createInventory(request.variantId(), request.initialStock()));
+        return ApiResponse.success(inventoryService.createInventory(request.variantId(), request.initialStock(), claims.userId(), claims.role()));
     }
 
     @Operation(
@@ -99,7 +99,7 @@ public class InventoryController {
         if (claims == null) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
-        return ApiResponse.success(inventoryService.getInventoryByVariantId(variantId));
+        return ApiResponse.success(inventoryService.getInventoryByVariantId(variantId, claims.userId(), claims.role()));
     }
 
     @Operation(
@@ -135,6 +135,6 @@ public class InventoryController {
         if (claims == null) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
-        return ApiResponse.success(inventoryService.updateAvailableStock(variantId, request.availableStock()));
+        return ApiResponse.success(inventoryService.updateAvailableStock(variantId, request.availableStock(), claims.userId(), claims.role()));
     }
 }

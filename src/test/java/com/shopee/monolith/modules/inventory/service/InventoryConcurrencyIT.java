@@ -26,6 +26,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -258,5 +260,66 @@ class InventoryConcurrencyIT extends BasePostgresRedisIntegrationTest {
 
         assertEquals(3, updated2.getAvailableStock()); // 10 - 3 - 4
         assertEquals(7, updated2.getReservedStock());  // 0 + 3 + 4
+    }
+
+    @Test
+    void createInventoryConcurrencyOnlyOneShouldSucceed() throws Exception {
+        // Create another variant without inventory
+        ProductVariant variant3 = ProductVariant.builder()
+                .productId(product.getId())
+                .sku("COFFEE-M-3")
+                .name("Ultra Espresso")
+                .price(BigDecimal.valueOf(349.99))
+                .build();
+        variant3 = productVariantRepository.save(variant3);
+
+        final UUID targetVariantId = variant3.getId();
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch doneLatch = new CountDownLatch(2);
+
+        AtomicInteger successCount = new AtomicInteger(0);
+        AtomicInteger conflictCount = new AtomicInteger(0);
+
+        executor.submit(() -> {
+            try {
+                startLatch.await();
+                inventoryService.createInventory(targetVariantId, 10, user.getId(), Role.SELLER);
+                successCount.incrementAndGet();
+            } catch (Exception e) {
+                if (e instanceof AppException && ((AppException) e).getErrorCode() == ErrorCode.INVENTORY_ALREADY_EXISTS) {
+                    conflictCount.incrementAndGet();
+                }
+            } finally {
+                doneLatch.countDown();
+            }
+        });
+
+        executor.submit(() -> {
+            try {
+                startLatch.await();
+                inventoryService.createInventory(targetVariantId, 20, user.getId(), Role.SELLER);
+                successCount.incrementAndGet();
+            } catch (Exception e) {
+                if (e instanceof AppException && ((AppException) e).getErrorCode() == ErrorCode.INVENTORY_ALREADY_EXISTS) {
+                    conflictCount.incrementAndGet();
+                }
+            } finally {
+                doneLatch.countDown();
+            }
+        });
+
+        startLatch.countDown();
+        assertTrue(doneLatch.await(5, TimeUnit.SECONDS));
+        executor.shutdown();
+
+        // One must succeed, one must fail with 409 (INVENTORY_ALREADY_EXISTS)
+        assertEquals(1, successCount.get());
+        assertEquals(1, conflictCount.get());
+
+        // Verify that only one inventory row exists in DB
+        Optional<Inventory> opt = inventoryRepository.findByVariantId(targetVariantId);
+        assertTrue(opt.isPresent());
     }
 }

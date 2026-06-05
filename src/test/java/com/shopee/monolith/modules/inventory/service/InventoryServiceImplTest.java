@@ -9,8 +9,12 @@ import com.shopee.monolith.modules.inventory.dto.response.InventoryResponse;
 import com.shopee.monolith.modules.inventory.entity.Inventory;
 import com.shopee.monolith.modules.inventory.mapper.InventoryMapper;
 import com.shopee.monolith.modules.inventory.repository.InventoryRepository;
+import com.shopee.monolith.modules.product.dto.internal.ProductLookupData;
 import com.shopee.monolith.modules.product.dto.internal.VariantLookupData;
 import com.shopee.monolith.modules.product.service.ProductService;
+import com.shopee.monolith.modules.user.dto.internal.ShopLookupData;
+import com.shopee.monolith.modules.user.model.Role;
+import com.shopee.monolith.modules.user.service.ShopService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,14 +48,24 @@ class InventoryServiceImplTest {
     @Mock
     private ProductService productService;
 
+    @Mock
+    private ShopService shopService;
+
     @InjectMocks
     private InventoryServiceImpl inventoryService;
 
     private final UUID variantId = UUID.randomUUID();
     private final UUID otherVariantId = UUID.randomUUID();
+    private final UUID productId = UUID.randomUUID();
+    private final UUID shopId = UUID.randomUUID();
+    private final UUID userId = UUID.randomUUID();
+    private final UUID otherUserId = UUID.randomUUID();
+
     private Inventory inventory;
     private InventoryResponse inventoryResponse;
     private VariantLookupData variantLookup;
+    private ProductLookupData productLookup;
+    private ShopLookupData shopLookup;
 
     @BeforeEach
     void setUp() {
@@ -75,73 +89,154 @@ class InventoryServiceImplTest {
 
         variantLookup = VariantLookupData.builder()
                 .id(variantId)
-                .productId(UUID.randomUUID())
+                .productId(productId)
                 .sku("VAR-123")
                 .name("Standard Variant")
                 .price(BigDecimal.TEN)
                 .build();
+
+        productLookup = ProductLookupData.builder()
+                .id(productId)
+                .shopId(shopId)
+                .categoryId(UUID.randomUUID())
+                .name("Demo Product")
+                .build();
+
+        shopLookup = ShopLookupData.builder()
+                .id(shopId)
+                .ownerId(userId)
+                .name("Demo Shop")
+                .build();
+    }
+
+    private void stubOwnershipSuccess() {
+        when(productService.findVariantLookupDataById(variantId)).thenReturn(Optional.of(variantLookup));
+        when(productService.findProductLookupDataById(productId)).thenReturn(Optional.of(productLookup));
+        when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
     }
 
     @Test
     void getInventoryByVariantIdWhenExistsShouldReturnResponse() {
+        stubOwnershipSuccess();
         when(inventoryRepository.findByVariantId(variantId)).thenReturn(Optional.of(inventory));
         when(inventoryMapper.toResponse(inventory)).thenReturn(inventoryResponse);
 
-        InventoryResponse result = inventoryService.getInventoryByVariantId(variantId);
+        InventoryResponse result = inventoryService.getInventoryByVariantId(variantId, userId, Role.SELLER);
 
         assertEquals(inventoryResponse, result);
     }
 
     @Test
+    void getInventoryByVariantIdWhenAdminShouldBypassValidation() {
+        when(inventoryRepository.findByVariantId(variantId)).thenReturn(Optional.of(inventory));
+        when(inventoryMapper.toResponse(inventory)).thenReturn(inventoryResponse);
+
+        InventoryResponse result = inventoryService.getInventoryByVariantId(variantId, otherUserId, Role.ADMIN);
+
+        assertEquals(inventoryResponse, result);
+    }
+
+    @Test
+    void getInventoryByVariantIdWhenNonOwnerShouldThrowException() {
+        when(productService.findVariantLookupDataById(variantId)).thenReturn(Optional.of(variantLookup));
+        when(productService.findProductLookupDataById(productId)).thenReturn(Optional.of(productLookup));
+        when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
+
+        AppException ex = assertThrows(AppException.class, () ->
+                inventoryService.getInventoryByVariantId(variantId, otherUserId, Role.SELLER));
+        assertEquals(ErrorCode.SHOP_OWNER_REQUIRED, ex.getErrorCode());
+    }
+
+    @Test
+    void getInventoryByVariantIdWhenVariantNotFoundShouldThrowException() {
+        when(productService.findVariantLookupDataById(variantId)).thenReturn(Optional.empty());
+
+        AppException ex = assertThrows(AppException.class, () ->
+                inventoryService.getInventoryByVariantId(variantId, userId, Role.SELLER));
+        assertEquals(ErrorCode.VARIANT_NOT_FOUND, ex.getErrorCode());
+    }
+
+    @Test
+    void getInventoryByVariantIdWhenProductNotFoundShouldThrowException() {
+        when(productService.findVariantLookupDataById(variantId)).thenReturn(Optional.of(variantLookup));
+        when(productService.findProductLookupDataById(productId)).thenReturn(Optional.empty());
+
+        AppException ex = assertThrows(AppException.class, () ->
+                inventoryService.getInventoryByVariantId(variantId, userId, Role.SELLER));
+        assertEquals(ErrorCode.PRODUCT_NOT_FOUND, ex.getErrorCode());
+    }
+
+    @Test
+    void getInventoryByVariantIdWhenShopNotFoundShouldThrowException() {
+        when(productService.findVariantLookupDataById(variantId)).thenReturn(Optional.of(variantLookup));
+        when(productService.findProductLookupDataById(productId)).thenReturn(Optional.of(productLookup));
+        when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.empty());
+
+        AppException ex = assertThrows(AppException.class, () ->
+                inventoryService.getInventoryByVariantId(variantId, userId, Role.SELLER));
+        assertEquals(ErrorCode.SHOP_NOT_FOUND, ex.getErrorCode());
+    }
+
+    @Test
     void getInventoryByVariantIdWhenNotExistsShouldThrowException() {
+        stubOwnershipSuccess();
         when(inventoryRepository.findByVariantId(variantId)).thenReturn(Optional.empty());
 
-        AppException ex = assertThrows(AppException.class, () -> inventoryService.getInventoryByVariantId(variantId));
+        AppException ex = assertThrows(AppException.class, () ->
+                inventoryService.getInventoryByVariantId(variantId, userId, Role.SELLER));
         assertEquals(ErrorCode.INVENTORY_NOT_FOUND, ex.getErrorCode());
     }
 
     @Test
     void createInventoryWhenValidShouldCreateAndReturnResponse() {
-        when(productService.findVariantLookupDataById(variantId)).thenReturn(Optional.of(variantLookup));
+        stubOwnershipSuccess();
         when(inventoryRepository.findByVariantId(variantId)).thenReturn(Optional.empty());
-        when(inventoryRepository.save(any(Inventory.class))).thenReturn(inventory);
+        when(inventoryRepository.saveAndFlush(any(Inventory.class))).thenReturn(inventory);
         when(inventoryMapper.toResponse(inventory)).thenReturn(inventoryResponse);
 
-        InventoryResponse result = inventoryService.createInventory(variantId, 50);
+        InventoryResponse result = inventoryService.createInventory(variantId, 50, userId, Role.SELLER);
 
         assertEquals(inventoryResponse, result);
     }
 
     @Test
     void createInventoryWhenNegativeStockShouldThrowException() {
-        AppException ex = assertThrows(AppException.class, () -> inventoryService.createInventory(variantId, -1));
+        AppException ex = assertThrows(AppException.class, () ->
+                inventoryService.createInventory(variantId, -1, userId, Role.SELLER));
         assertEquals(ErrorCode.INVALID_STOCK_QUANTITY, ex.getErrorCode());
     }
 
     @Test
-    void createInventoryWhenVariantNotExistsShouldThrowException() {
-        when(productService.findVariantLookupDataById(variantId)).thenReturn(Optional.empty());
+    void createInventoryWhenInventoryAlreadyExistsShouldThrowException() {
+        stubOwnershipSuccess();
+        when(inventoryRepository.findByVariantId(variantId)).thenReturn(Optional.of(inventory));
 
-        AppException ex = assertThrows(AppException.class, () -> inventoryService.createInventory(variantId, 50));
-        assertEquals(ErrorCode.VARIANT_NOT_FOUND, ex.getErrorCode());
+        AppException ex = assertThrows(AppException.class, () ->
+                inventoryService.createInventory(variantId, 50, userId, Role.SELLER));
+        assertEquals(ErrorCode.INVENTORY_ALREADY_EXISTS, ex.getErrorCode());
     }
 
     @Test
-    void createInventoryWhenInventoryAlreadyExistsShouldThrowException() {
-        when(productService.findVariantLookupDataById(variantId)).thenReturn(Optional.of(variantLookup));
-        when(inventoryRepository.findByVariantId(variantId)).thenReturn(Optional.of(inventory));
+    void createInventoryWhenConstraintViolationShouldThrowAlreadyExists() {
+        stubOwnershipSuccess();
+        when(inventoryRepository.findByVariantId(variantId)).thenReturn(Optional.empty());
+        when(inventoryRepository.saveAndFlush(any(Inventory.class))).thenThrow(
+                new org.springframework.dao.DataIntegrityViolationException("unique constraint")
+        );
 
-        AppException ex = assertThrows(AppException.class, () -> inventoryService.createInventory(variantId, 50));
+        AppException ex = assertThrows(AppException.class, () ->
+                inventoryService.createInventory(variantId, 50, userId, Role.SELLER));
         assertEquals(ErrorCode.INVENTORY_ALREADY_EXISTS, ex.getErrorCode());
     }
 
     @Test
     void updateAvailableStockWhenValidShouldUpdateAndReturnResponse() {
+        stubOwnershipSuccess();
         when(inventoryRepository.findByVariantIdForUpdate(variantId)).thenReturn(Optional.of(inventory));
         when(inventoryRepository.save(inventory)).thenReturn(inventory);
         when(inventoryMapper.toResponse(inventory)).thenReturn(inventoryResponse);
 
-        InventoryResponse result = inventoryService.updateAvailableStock(variantId, 100);
+        InventoryResponse result = inventoryService.updateAvailableStock(variantId, 100, userId, Role.SELLER);
 
         assertEquals(100, inventory.getAvailableStock());
         assertEquals(inventoryResponse, result);
@@ -149,15 +244,18 @@ class InventoryServiceImplTest {
 
     @Test
     void updateAvailableStockWhenNegativeStockShouldThrowException() {
-        AppException ex = assertThrows(AppException.class, () -> inventoryService.updateAvailableStock(variantId, -5));
+        AppException ex = assertThrows(AppException.class, () ->
+                inventoryService.updateAvailableStock(variantId, -5, userId, Role.SELLER));
         assertEquals(ErrorCode.INVALID_STOCK_QUANTITY, ex.getErrorCode());
     }
 
     @Test
     void updateAvailableStockWhenNotFoundShouldThrowException() {
+        stubOwnershipSuccess();
         when(inventoryRepository.findByVariantIdForUpdate(variantId)).thenReturn(Optional.empty());
 
-        AppException ex = assertThrows(AppException.class, () -> inventoryService.updateAvailableStock(variantId, 10));
+        AppException ex = assertThrows(AppException.class, () ->
+                inventoryService.updateAvailableStock(variantId, 10, userId, Role.SELLER));
         assertEquals(ErrorCode.INVENTORY_NOT_FOUND, ex.getErrorCode());
     }
 
@@ -169,14 +267,12 @@ class InventoryServiceImplTest {
                 .reservedStock(0)
                 .build();
 
-        // Pass duplicate variantIds to test consolidation
         List<ReserveInventoryCommand> commands = Arrays.asList(
                 new ReserveInventoryCommand(variantId, 10),
                 new ReserveInventoryCommand(otherVariantId, 5),
-                new ReserveInventoryCommand(variantId, 5) // total 15 for variantId
+                new ReserveInventoryCommand(variantId, 5)
         );
 
-        // Sorting expectation: otherVariantId vs variantId
         List<UUID> expectedSortedIds = Arrays.asList(variantId, otherVariantId).stream()
                 .sorted(java.util.Comparator.comparing(UUID::toString))
                 .toList();
@@ -186,10 +282,10 @@ class InventoryServiceImplTest {
 
         inventoryService.reserve(commands);
 
-        assertEquals(35, inventory.getAvailableStock()); // 50 - 15
-        assertEquals(20, inventory.getReservedStock());   // 5 + 15
-        assertEquals(25, otherInventory.getAvailableStock()); // 30 - 5
-        assertEquals(5, otherInventory.getReservedStock());   // 0 + 5
+        assertEquals(35, inventory.getAvailableStock());
+        assertEquals(20, inventory.getReservedStock());
+        assertEquals(25, otherInventory.getAvailableStock());
+        assertEquals(5, otherInventory.getReservedStock());
 
         verify(inventoryRepository).saveAll(any());
     }
@@ -220,7 +316,7 @@ class InventoryServiceImplTest {
     @Test
     void reserveWhenInsufficientStockShouldThrowException() {
         List<ReserveInventoryCommand> commands = Collections.singletonList(
-                new ReserveInventoryCommand(variantId, 100) // exceeds 50 available
+                new ReserveInventoryCommand(variantId, 100)
         );
 
         when(inventoryRepository.findAllByVariantIdInForUpdate(Collections.singletonList(variantId)))
@@ -241,15 +337,15 @@ class InventoryServiceImplTest {
 
         inventoryService.confirm(commands);
 
-        assertEquals(2, inventory.getReservedStock()); // 5 - 3
-        assertEquals(50, inventory.getAvailableStock()); // unchanged
+        assertEquals(2, inventory.getReservedStock());
+        assertEquals(50, inventory.getAvailableStock());
         verify(inventoryRepository).saveAll(any());
     }
 
     @Test
     void confirmWhenReservedInsufficientShouldThrowException() {
         List<ConfirmInventoryCommand> commands = Collections.singletonList(
-                new ConfirmInventoryCommand(variantId, 10) // exceeds 5 reserved
+                new ConfirmInventoryCommand(variantId, 10)
         );
 
         when(inventoryRepository.findAllByVariantIdInForUpdate(Collections.singletonList(variantId)))
@@ -270,15 +366,15 @@ class InventoryServiceImplTest {
 
         inventoryService.release(commands);
 
-        assertEquals(2, inventory.getReservedStock()); // 5 - 3
-        assertEquals(53, inventory.getAvailableStock()); // 50 + 3
+        assertEquals(2, inventory.getReservedStock());
+        assertEquals(53, inventory.getAvailableStock());
         verify(inventoryRepository).saveAll(any());
     }
 
     @Test
     void releaseWhenReservedInsufficientShouldThrowException() {
         List<ReleaseInventoryCommand> commands = Collections.singletonList(
-                new ReleaseInventoryCommand(variantId, 10) // exceeds 5 reserved
+                new ReleaseInventoryCommand(variantId, 10)
         );
 
         when(inventoryRepository.findAllByVariantIdInForUpdate(Collections.singletonList(variantId)))

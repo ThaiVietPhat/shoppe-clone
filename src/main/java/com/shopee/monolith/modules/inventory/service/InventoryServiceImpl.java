@@ -9,7 +9,12 @@ import com.shopee.monolith.modules.inventory.dto.response.InventoryResponse;
 import com.shopee.monolith.modules.inventory.entity.Inventory;
 import com.shopee.monolith.modules.inventory.mapper.InventoryMapper;
 import com.shopee.monolith.modules.inventory.repository.InventoryRepository;
+import com.shopee.monolith.modules.product.dto.internal.ProductLookupData;
+import com.shopee.monolith.modules.product.dto.internal.VariantLookupData;
 import com.shopee.monolith.modules.product.service.ProductService;
+import com.shopee.monolith.modules.user.dto.internal.ShopLookupData;
+import com.shopee.monolith.modules.user.model.Role;
+import com.shopee.monolith.modules.user.service.ShopService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,9 +33,31 @@ public class InventoryServiceImpl implements InventoryService {
     private final InventoryRepository inventoryRepository;
     private final InventoryMapper inventoryMapper;
     private final ProductService productService;
+    private final ShopService shopService;
+
+    private void validateOwnership(UUID variantId, UUID currentUserId, Role currentRole) {
+        if (currentRole == Role.ADMIN) {
+            return;
+        }
+
+        VariantLookupData variant = productService.findVariantLookupDataById(variantId)
+                .orElseThrow(() -> new AppException(ErrorCode.VARIANT_NOT_FOUND));
+
+        ProductLookupData product = productService.findProductLookupDataById(variant.productId())
+                .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
+
+        ShopLookupData shop = shopService.findShopLookupDataById(product.shopId())
+                .orElseThrow(() -> new AppException(ErrorCode.SHOP_NOT_FOUND));
+
+        if (!shop.ownerId().equals(currentUserId)) {
+            throw new AppException(ErrorCode.SHOP_OWNER_REQUIRED);
+        }
+    }
 
     @Override
-    public InventoryResponse getInventoryByVariantId(UUID variantId) {
+    public InventoryResponse getInventoryByVariantId(UUID variantId, UUID currentUserId, Role currentRole) {
+        validateOwnership(variantId, currentUserId, currentRole);
+
         Inventory inventory = inventoryRepository.findByVariantId(variantId)
                 .orElseThrow(() -> new AppException(ErrorCode.INVENTORY_NOT_FOUND));
         return inventoryMapper.toResponse(inventory);
@@ -38,37 +65,40 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Override
     @Transactional
-    public InventoryResponse createInventory(UUID variantId, int initialStock) {
+    public InventoryResponse createInventory(UUID variantId, int initialStock, UUID currentUserId, Role currentRole) {
         if (initialStock < 0) {
             throw new AppException(ErrorCode.INVALID_STOCK_QUANTITY);
         }
 
-        // Validate variant exists
-        if (productService.findVariantLookupDataById(variantId).isEmpty()) {
-            throw new AppException(ErrorCode.VARIANT_NOT_FOUND);
-        }
+        validateOwnership(variantId, currentUserId, currentRole);
 
         // Check if inventory already exists
         if (inventoryRepository.findByVariantId(variantId).isPresent()) {
             throw new AppException(ErrorCode.INVENTORY_ALREADY_EXISTS);
         }
 
-        Inventory inventory = Inventory.builder()
-                .variantId(variantId)
-                .availableStock(initialStock)
-                .reservedStock(0)
-                .build();
+        try {
+            Inventory inventory = Inventory.builder()
+                    .variantId(variantId)
+                    .availableStock(initialStock)
+                    .reservedStock(0)
+                    .build();
 
-        inventory = inventoryRepository.save(inventory);
-        return inventoryMapper.toResponse(inventory);
+            inventory = inventoryRepository.saveAndFlush(inventory);
+            return inventoryMapper.toResponse(inventory);
+        } catch (org.springframework.dao.DataIntegrityViolationException ex) {
+            throw new AppException(ErrorCode.INVENTORY_ALREADY_EXISTS);
+        }
     }
 
     @Override
     @Transactional
-    public InventoryResponse updateAvailableStock(UUID variantId, int availableStock) {
+    public InventoryResponse updateAvailableStock(UUID variantId, int availableStock, UUID currentUserId, Role currentRole) {
         if (availableStock < 0) {
             throw new AppException(ErrorCode.INVALID_STOCK_QUANTITY);
         }
+
+        validateOwnership(variantId, currentUserId, currentRole);
 
         Inventory inventory = inventoryRepository.findByVariantIdForUpdate(variantId)
                 .orElseThrow(() -> new AppException(ErrorCode.INVENTORY_NOT_FOUND));
