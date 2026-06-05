@@ -2,6 +2,7 @@ package com.shopee.monolith.modules.product.service;
 
 import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
+import com.shopee.monolith.common.response.PagedResponse;
 import com.shopee.monolith.modules.product.dto.request.CreateProductRequest;
 import com.shopee.monolith.modules.product.dto.request.CreateProductVariantRequest;
 import com.shopee.monolith.modules.product.dto.request.UpdateProductRequest;
@@ -27,6 +28,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -326,5 +331,40 @@ class ProductServiceImplTest {
         AppException ex = assertThrows(AppException.class, () -> productService.updateVariant(ownerId, UUID.randomUUID(), variantId, req));
 
         assertEquals(ErrorCode.INVALID_REQUEST, ex.getErrorCode());
+    }
+
+    @Test
+    void listProductsShouldReturnPagedResponse() {
+        Pageable pageable = PageRequest.of(0, 20, org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"));
+        Page<Product> page = new PageImpl<>(List.of(product), pageable, 1);
+
+        when(productRepository.findAll(pageable)).thenReturn(page);
+        when(productVariantRepository.findAllByProductIdIn(List.of(productId))).thenReturn(List.of(variant));
+        when(productMapper.toResponse(variant)).thenReturn(variantResponse);
+        when(productMapper.toResponse(product, List.of(variantResponse))).thenReturn(productResponse);
+
+        PagedResponse<ProductResponse> result = productService.listProducts(0, 20);
+
+        assertEquals(1, result.items().size());
+        assertEquals(productResponse, result.items().get(0));
+        assertEquals(0, result.page());
+        assertEquals(20, result.size());
+        assertEquals(1, result.totalElements());
+    }
+
+    @Test
+    void listProductsByShopShouldReturnPagedResponse() {
+        Pageable pageable = PageRequest.of(0, 20, org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"));
+        Page<Product> page = new PageImpl<>(List.of(product), pageable, 1);
+
+        when(productRepository.findAllByShopId(shopId, pageable)).thenReturn(page);
+        when(productVariantRepository.findAllByProductIdIn(List.of(productId))).thenReturn(List.of(variant));
+        when(productMapper.toResponse(variant)).thenReturn(variantResponse);
+        when(productMapper.toResponse(product, List.of(variantResponse))).thenReturn(productResponse);
+
+        PagedResponse<ProductResponse> result = productService.listProductsByShop(shopId, 0, 20);
+
+        assertEquals(1, result.items().size());
+        assertEquals(productResponse, result.items().get(0));
     }
 }

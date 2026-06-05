@@ -10,6 +10,8 @@ import com.shopee.monolith.modules.product.dto.response.CategoryResponse;
 import com.shopee.monolith.modules.product.dto.response.ProductResponse;
 import com.shopee.monolith.modules.product.dto.response.ProductVariantResponse;
 
+import com.shopee.monolith.common.response.PagedResponse;
+
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,9 +22,9 @@ public interface ProductService {
 
     ProductResponse getProductById(UUID productId);
 
-    List<ProductResponse> listProducts();
+    PagedResponse<ProductResponse> listProducts(int page, int size);
 
-    List<ProductResponse> listProductsByShop(UUID shopId);
+    PagedResponse<ProductResponse> listProductsByShop(UUID shopId, int page, int size);
 
     ProductResponse createProduct(UUID ownerId, CreateProductRequest request);
 

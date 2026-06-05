@@ -2,6 +2,7 @@ package com.shopee.monolith.modules.product.service;
 
 import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
+import com.shopee.monolith.common.response.PagedResponse;
 import com.shopee.monolith.modules.product.dto.internal.ProductLookupData;
 import com.shopee.monolith.modules.product.dto.internal.VariantLookupData;
 import com.shopee.monolith.modules.product.dto.request.CreateProductRequest;
@@ -24,13 +25,20 @@ import com.shopee.monolith.modules.user.service.ShopService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -70,28 +78,46 @@ public class ProductServiceImpl implements ProductService {
         return productMapper.toResponse(product, variants);
     }
 
-    @Override
-    public List<ProductResponse> listProducts() {
-        return productRepository.findAll().stream()
+    private PagedResponse<ProductResponse> toPagedResponse(Page<Product> productPage) {
+        List<Product> products = productPage.getContent();
+        if (products.isEmpty()) {
+            return PagedResponse.from(productPage, Collections.emptyList());
+        }
+
+        List<UUID> productIds = products.stream()
+                .map(Product::getId)
+                .toList();
+
+        List<ProductVariant> allVariants = productVariantRepository.findAllByProductIdIn(productIds);
+
+        Map<UUID, List<ProductVariantResponse>> variantsByProductId = allVariants.stream()
+                .map(productMapper::toResponse)
+                .collect(Collectors.groupingBy(ProductVariantResponse::productId));
+
+        List<ProductResponse> productResponses = products.stream()
                 .map(product -> {
-                    List<ProductVariantResponse> variants = productVariantRepository.findAllByProductId(product.getId()).stream()
-                            .map(productMapper::toResponse)
-                            .toList();
-                    return productMapper.toResponse(product, variants);
+                    List<ProductVariantResponse> productVariants = variantsByProductId.getOrDefault(product.getId(), Collections.emptyList());
+                    return productMapper.toResponse(product, productVariants);
                 })
                 .toList();
+
+        return PagedResponse.from(productPage, productResponses);
     }
 
     @Override
-    public List<ProductResponse> listProductsByShop(UUID shopId) {
-        return productRepository.findAllByShopId(shopId).stream()
-                .map(product -> {
-                    List<ProductVariantResponse> variants = productVariantRepository.findAllByProductId(product.getId()).stream()
-                            .map(productMapper::toResponse)
-                            .toList();
-                    return productMapper.toResponse(product, variants);
-                })
-                .toList();
+    public PagedResponse<ProductResponse> listProducts(int page, int size) {
+        int boundedSize = Math.min(size, 100);
+        Pageable pageable = PageRequest.of(page, boundedSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Product> productPage = productRepository.findAll(pageable);
+        return toPagedResponse(productPage);
+    }
+
+    @Override
+    public PagedResponse<ProductResponse> listProductsByShop(UUID shopId, int page, int size) {
+        int boundedSize = Math.min(size, 100);
+        Pageable pageable = PageRequest.of(page, boundedSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Product> productPage = productRepository.findAllByShopId(shopId, pageable);
+        return toPagedResponse(productPage);
     }
 
     @Override

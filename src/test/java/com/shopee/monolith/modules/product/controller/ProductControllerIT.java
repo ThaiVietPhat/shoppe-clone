@@ -142,11 +142,16 @@ class ProductControllerIT extends BasePostgresRedisIntegrationTest {
 
     @Test
     void listProductsWhenPublicShouldSucceed() throws Exception {
-        mockMvc.perform(get("/api/products"))
+        mockMvc.perform(get("/api/products")
+                        .param("page", "0")
+                        .param("size", "10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data[0].name").value("iPhone 15 Pro"))
-                .andExpect(jsonPath("$.data[0].variants[0].sku").value("IPHONE15PRO-128"));
+                .andExpect(jsonPath("$.data.items[0].name").value("iPhone 15 Pro"))
+                .andExpect(jsonPath("$.data.items[0].variants[0].sku").value("IPHONE15PRO-128"))
+                .andExpect(jsonPath("$.data.page").value(0))
+                .andExpect(jsonPath("$.data.size").value(10))
+                .andExpect(jsonPath("$.data.totalElements").value(1));
     }
 
     @Test
@@ -167,10 +172,13 @@ class ProductControllerIT extends BasePostgresRedisIntegrationTest {
 
     @Test
     void listProductsByShopWhenPublicShouldSucceed() throws Exception {
-        mockMvc.perform(get("/api/shops/" + shop.getId() + "/products"))
+        mockMvc.perform(get("/api/shops/" + shop.getId() + "/products")
+                        .param("page", "0")
+                        .param("size", "10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data[0].name").value("iPhone 15 Pro"));
+                .andExpect(jsonPath("$.data.items[0].name").value("iPhone 15 Pro"))
+                .andExpect(jsonPath("$.data.page").value(0));
     }
 
     @Test

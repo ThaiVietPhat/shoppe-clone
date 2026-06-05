@@ -3,6 +3,7 @@ package com.shopee.monolith.modules.product.controller;
 import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.common.response.ApiResponse;
+import com.shopee.monolith.common.response.PagedResponse;
 import com.shopee.monolith.common.response.SwaggerResponses;
 import com.shopee.monolith.modules.auth.dto.internal.AccessTokenClaims;
 import com.shopee.monolith.modules.product.dto.request.CreateProductRequest;
@@ -28,6 +29,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -43,8 +45,7 @@ public class ProductController {
     @Operation(summary = "List all categories", description = "Retrieves a list of all active categories.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "200",
-            description = "Categories list retrieved successfully.",
-            content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponseCategoryList.class))
+            description = "Categories list retrieved successfully."
     )
     @GetMapping("/api/categories")
     public ApiResponse<List<CategoryResponse>> listCategories() {
@@ -54,12 +55,13 @@ public class ProductController {
     @Operation(summary = "List all products", description = "Retrieves all products in the e-commerce catalog.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "200",
-            description = "Products list retrieved successfully.",
-            content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponseProductList.class))
+            description = "Products list retrieved successfully."
     )
     @GetMapping("/api/products")
-    public ApiResponse<List<ProductResponse>> listProducts() {
-        return ApiResponse.success(productService.listProducts());
+    public ApiResponse<PagedResponse<ProductResponse>> listProducts(
+            @Parameter(description = "Page index (0-indexed)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size (max 100)") @RequestParam(defaultValue = "20") int size) {
+        return ApiResponse.success(productService.listProducts(page, size));
     }
 
     @Operation(summary = "Get product by ID", description = "Retrieves detailed product profile and variants by product ID.")
@@ -82,13 +84,14 @@ public class ProductController {
     @Operation(summary = "List shop products", description = "Retrieves all catalog products owned by a specific seller shop.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "200",
-            description = "Shop products list retrieved successfully.",
-            content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponseProductList.class))
+            description = "Shop products list retrieved successfully."
     )
     @GetMapping("/api/shops/{shopId}/products")
-    public ApiResponse<List<ProductResponse>> listProductsByShop(
-            @Parameter(description = "Shop unique ID") @PathVariable UUID shopId) {
-        return ApiResponse.success(productService.listProductsByShop(shopId));
+    public ApiResponse<PagedResponse<ProductResponse>> listProductsByShop(
+            @Parameter(description = "Shop unique ID") @PathVariable UUID shopId,
+            @Parameter(description = "Page index (0-indexed)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size (max 100)") @RequestParam(defaultValue = "20") int size) {
+        return ApiResponse.success(productService.listProductsByShop(shopId, page, size));
     }
 
     @Operation(
