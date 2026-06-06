@@ -71,7 +71,7 @@ SELECT
     id, -- Use old order ID as checkout session ID to map 1:1 deterministically
     buyer_id,
     'EXPIRED',
-    0.00,
+    total_amount, -- Use old order's total_amount instead of 0.00
     'Unknown',
     'Unknown',
     NOW(),
