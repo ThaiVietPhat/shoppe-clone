@@ -53,4 +53,11 @@ public class IdempotencyKey extends BaseEntity {
         this.status = IdempotencyStatus.COMPLETED;
         this.responseBody = responseBody;
     }
+
+    public void reset(String requestHash, Instant expiresAt) {
+        this.status = IdempotencyStatus.PROCESSING;
+        this.requestHash = requestHash;
+        this.responseBody = null;
+        this.expiresAt = expiresAt;
+    }
 }

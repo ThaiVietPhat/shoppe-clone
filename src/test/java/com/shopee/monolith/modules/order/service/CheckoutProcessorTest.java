@@ -97,6 +97,7 @@ class CheckoutProcessorTest {
                 .requestHash(requestHash)
                 .status(IdempotencyStatus.COMPLETED)
                 .responseBody(responseBody)
+                .expiresAt(Instant.now().plus(java.time.Duration.ofDays(1)))
                 .build();
 
         when(idempotencyKeyRepository.tryInsert(any(), any(), any(), any(), any(), any(), any()))
@@ -121,6 +122,7 @@ class CheckoutProcessorTest {
                 .idempotencyKey(idempotencyKey)
                 .requestHash("different_hash")
                 .status(IdempotencyStatus.COMPLETED)
+                .expiresAt(Instant.now().plus(java.time.Duration.ofDays(1)))
                 .build();
 
         when(idempotencyKeyRepository.tryInsert(any(), any(), any(), any(), any(), any(), any()))
@@ -142,6 +144,7 @@ class CheckoutProcessorTest {
                 .idempotencyKey(idempotencyKey)
                 .requestHash(requestHash)
                 .status(IdempotencyStatus.PROCESSING)
+                .expiresAt(Instant.now().plus(java.time.Duration.ofDays(1)))
                 .build();
 
         when(idempotencyKeyRepository.tryInsert(any(), any(), any(), any(), any(), any(), any()))

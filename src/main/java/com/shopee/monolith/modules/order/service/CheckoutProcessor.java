@@ -71,20 +71,26 @@ public class CheckoutProcessor {
             IdempotencyKey existing = idempotencyKeyRepository.findByKeysForUpdate(buyerId, "CHECKOUT", idempotencyKey)
                     .orElseThrow(() -> new AppException(ErrorCode.IDEMPOTENCY_KEY_CONFLICT));
 
-            if (!existing.getRequestHash().equals(requestHash)) {
-                throw new AppException(ErrorCode.IDEMPOTENCY_KEY_CONFLICT);
-            }
+            if (existing.getExpiresAt().isBefore(Instant.now())) {
+                // Key has expired: reset to PROCESSING and continue checkout normally
+                existing.reset(requestHash, expiresAt);
+                idempotencyKeyRepository.save(existing);
+            } else {
+                if (!existing.getRequestHash().equals(requestHash)) {
+                    throw new AppException(ErrorCode.IDEMPOTENCY_KEY_CONFLICT);
+                }
 
-            if (existing.getStatus() == IdempotencyStatus.PROCESSING) {
-                throw new AppException(ErrorCode.IDEMPOTENCY_REQUEST_PROCESSING);
-            }
+                if (existing.getStatus() == IdempotencyStatus.PROCESSING) {
+                    throw new AppException(ErrorCode.IDEMPOTENCY_REQUEST_PROCESSING);
+                }
 
-            // COMPLETED: deserialize cached response
-            try {
-                return objectMapper.readValue(existing.getResponseBody(), CheckoutResponse.class);
-            } catch (Exception e) {
-                log.error("Failed to deserialize cached checkout response", e);
-                throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR);
+                // COMPLETED: deserialize cached response
+                try {
+                    return objectMapper.readValue(existing.getResponseBody(), CheckoutResponse.class);
+                } catch (Exception e) {
+                    log.error("Failed to deserialize cached checkout response", e);
+                    throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR);
+                }
             }
         }
 
