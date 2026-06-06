@@ -51,4 +51,8 @@ public class Order extends BaseEntity {
     @Column(name = "version", nullable = false)
     @lombok.Builder.Default
     private int version = 0;
+
+    public void cancel() {
+        this.status = OrderStatus.CANCELLED;
+    }
 }

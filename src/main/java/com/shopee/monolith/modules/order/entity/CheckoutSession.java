@@ -43,4 +43,8 @@ public class CheckoutSession extends BaseEntity {
 
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
+
+    public void expire() {
+        this.status = CheckoutSessionStatus.EXPIRED;
+    }
 }
