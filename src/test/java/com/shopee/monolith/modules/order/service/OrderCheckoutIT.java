@@ -87,6 +87,9 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
+    @Autowired
+    private com.shopee.monolith.modules.order.repository.IdempotencyKeyRepository idempotencyKeyRepository;
+
     private User buyer;
     private User seller1;
     private User seller2;
@@ -263,5 +266,53 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
         assertEquals(2, cart.items().size());
         assertTrue(cart.items().stream().anyMatch(i -> i.variantId().equals(variant1.getId())));
         assertTrue(cart.items().stream().anyMatch(i -> i.variantId().equals(variant2.getId())));
+    }
+
+    @Test
+    void checkoutWithExpiredIdempotencyKeyShouldSucceedAndResetKey() {
+        cartService.addItem(buyer.getId(), new AddCartItemRequest(variant1.getId(), 2));
+
+        CheckoutRequest request = new CheckoutRequest("123 Street", "Hanoi");
+        String idempotencyKey = UUID.randomUUID().toString();
+
+        // 1. First checkout attempt with the key
+        CheckoutResponse response1 = orderService.checkout(buyer.getId(), request, idempotencyKey);
+        assertNotNull(response1);
+
+        // 2. Fetch the created idempotency key and set its expiration in the past
+        var dbKey = idempotencyKeyRepository.findByActorIdAndOperationAndIdempotencyKey(buyer.getId(), "CHECKOUT", idempotencyKey)
+                .orElseThrow();
+
+        // Manually expire the key in DB by saving it with past expiresAt
+        com.shopee.monolith.modules.order.entity.IdempotencyKey expiredKey = com.shopee.monolith.modules.order.entity.IdempotencyKey.builder()
+                .id(dbKey.getId())
+                .actorId(dbKey.getActorId())
+                .operation(dbKey.getOperation())
+                .idempotencyKey(dbKey.getIdempotencyKey())
+                .requestHash(dbKey.getRequestHash())
+                .status(dbKey.getStatus())
+                .responseBody(dbKey.getResponseBody())
+                .expiresAt(java.time.Instant.now().minus(java.time.Duration.ofHours(1)))
+                .createdAt(dbKey.getCreatedAt())
+                .updatedAt(dbKey.getUpdatedAt())
+                .build();
+        idempotencyKeyRepository.save(expiredKey);
+
+        // 3. Add items to cart again since checkout cleared it
+        cartService.addItem(buyer.getId(), new AddCartItemRequest(variant1.getId(), 3));
+
+        // 4. Run second checkout with the SAME idempotency key but a different cart (different request/data)
+        CheckoutResponse response2 = orderService.checkout(buyer.getId(), request, idempotencyKey);
+        assertNotNull(response2);
+
+        // Assert it did not replay the old response, but ran a new one with correct amount
+        assertEquals(new BigDecimal("30.00"), response2.totalAmount());
+
+        // Verify key is updated in DB to the new expiration and response
+        var updatedKey = idempotencyKeyRepository.findByActorIdAndOperationAndIdempotencyKey(buyer.getId(), "CHECKOUT", idempotencyKey)
+                .orElseThrow();
+        assertTrue(updatedKey.getExpiresAt().isAfter(java.time.Instant.now()));
+        assertTrue(updatedKey.getResponseBody().contains("30.00"));
+        assertEquals(dbKey.getId(), updatedKey.getId()); // verify the UUID remains identical (same row updated)
     }
 }

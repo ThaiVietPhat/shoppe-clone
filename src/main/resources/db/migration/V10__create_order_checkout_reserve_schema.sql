@@ -65,9 +65,10 @@ CREATE TABLE orders (
 );
 
 -- Backfill: Create expired checkout sessions for existing orders (per buyer)
+-- Backfill: Create expired checkout sessions for existing orders (1:1 with old orders to prevent join multiplication)
 INSERT INTO checkout_sessions (id, buyer_id, status, total_amount, shipping_street, shipping_city, expires_at, created_at, updated_at)
-SELECT DISTINCT
-    gen_random_uuid(),
+SELECT 
+    id, -- Use old order ID as checkout session ID to map 1:1 deterministically
     buyer_id,
     'EXPIRED',
     0.00,
@@ -78,13 +79,13 @@ SELECT DISTINCT
     NOW()
 FROM orders_old;
 
--- Populate new orders table from old partitioned orders table, joining on backfilled checkout sessions
+-- Populate new orders table from old partitioned orders table, joining on backfilled checkout sessions 1:1
 INSERT INTO orders (id, buyer_id, shop_id, checkout_session_id, status, total_amount, shipping_street, shipping_city, version, created_at, updated_at)
 SELECT 
     o.id,
     o.buyer_id,
     o.shop_id,
-    cs.id,
+    o.id, -- matches checkout_session_id 1:1
     o.status,
     o.total_amount,
     'Unknown',
@@ -92,8 +93,7 @@ SELECT
     o.version,
     o.created_at,
     o.updated_at
-FROM orders_old o
-JOIN checkout_sessions cs ON cs.buyer_id = o.buyer_id AND cs.status = 'EXPIRED' AND cs.shipping_street = 'Unknown';
+FROM orders_old o;
 
 -- Ensure new columns are NOT NULL and add foreign key
 ALTER TABLE orders ALTER COLUMN checkout_session_id SET NOT NULL;
@@ -198,12 +198,12 @@ ALTER TABLE reviews DROP CONSTRAINT IF EXISTS reviews_order_item_id_fkey;
 ALTER TABLE reviews ADD CONSTRAINT fk_reviews_order_item FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE CASCADE;
 
 
--- Drop old partitioned tables
-DROP TABLE IF EXISTS order_items_old CASCADE;
-DROP TABLE IF EXISTS payments_old CASCADE;
-DROP TABLE IF EXISTS voucher_usages_old CASCADE;
-DROP TABLE IF EXISTS returns_old CASCADE;
-DROP TABLE IF EXISTS orders_old CASCADE;
+-- Keep old partitioned tables for safety (non-destructive expand phase)
+-- DROP TABLE IF EXISTS order_items_old CASCADE;
+-- DROP TABLE IF EXISTS payments_old CASCADE;
+-- DROP TABLE IF EXISTS voucher_usages_old CASCADE;
+-- DROP TABLE IF EXISTS returns_old CASCADE;
+-- DROP TABLE IF EXISTS orders_old CASCADE;
 
 
 -- 4. Create inventory_reservations table (new table)

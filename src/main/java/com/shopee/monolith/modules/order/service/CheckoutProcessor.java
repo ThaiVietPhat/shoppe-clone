@@ -66,27 +66,38 @@ public class CheckoutProcessor {
                 expiresAt
         );
 
-        if (inserted == 0) {
+        IdempotencyKey activeKey;
+        if (inserted > 0) {
+            activeKey = IdempotencyKey.builder()
+                    .id(keyId)
+                    .actorId(buyerId)
+                    .operation("CHECKOUT")
+                    .idempotencyKey(idempotencyKey)
+                    .requestHash(requestHash)
+                    .status(IdempotencyStatus.PROCESSING)
+                    .expiresAt(expiresAt)
+                    .build();
+        } else {
             // Duplicate key: lock and inspect
-            IdempotencyKey existing = idempotencyKeyRepository.findByKeysForUpdate(buyerId, "CHECKOUT", idempotencyKey)
+            activeKey = idempotencyKeyRepository.findByKeysForUpdate(buyerId, "CHECKOUT", idempotencyKey)
                     .orElseThrow(() -> new AppException(ErrorCode.IDEMPOTENCY_KEY_CONFLICT));
 
-            if (existing.getExpiresAt().isBefore(Instant.now())) {
+            if (activeKey.getExpiresAt().isBefore(Instant.now())) {
                 // Key has expired: reset to PROCESSING and continue checkout normally
-                existing.reset(requestHash, expiresAt);
-                idempotencyKeyRepository.save(existing);
+                activeKey.reset(requestHash, expiresAt);
+                idempotencyKeyRepository.save(activeKey);
             } else {
-                if (!existing.getRequestHash().equals(requestHash)) {
+                if (!activeKey.getRequestHash().equals(requestHash)) {
                     throw new AppException(ErrorCode.IDEMPOTENCY_KEY_CONFLICT);
                 }
 
-                if (existing.getStatus() == IdempotencyStatus.PROCESSING) {
+                if (activeKey.getStatus() == IdempotencyStatus.PROCESSING) {
                     throw new AppException(ErrorCode.IDEMPOTENCY_REQUEST_PROCESSING);
                 }
 
                 // COMPLETED: deserialize cached response
                 try {
-                    return objectMapper.readValue(existing.getResponseBody(), CheckoutResponse.class);
+                    return objectMapper.readValue(activeKey.getResponseBody(), CheckoutResponse.class);
                 } catch (Exception e) {
                     log.error("Failed to deserialize cached checkout response", e);
                     throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR);
@@ -202,17 +213,8 @@ public class CheckoutProcessor {
         // Save Response and complete IdempotencyKey
         try {
             String responseBody = objectMapper.writeValueAsString(response);
-            IdempotencyKey completedKey = IdempotencyKey.builder()
-                    .id(keyId)
-                    .actorId(buyerId)
-                    .operation("CHECKOUT")
-                    .idempotencyKey(idempotencyKey)
-                    .requestHash(requestHash)
-                    .status(IdempotencyStatus.COMPLETED)
-                    .responseBody(responseBody)
-                    .expiresAt(expiresAt)
-                    .build();
-            idempotencyKeyRepository.save(completedKey);
+            activeKey.complete(responseBody);
+            idempotencyKeyRepository.save(activeKey);
         } catch (Exception e) {
             log.error("Failed to serialize checkout response for idempotency caching", e);
             throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR);
