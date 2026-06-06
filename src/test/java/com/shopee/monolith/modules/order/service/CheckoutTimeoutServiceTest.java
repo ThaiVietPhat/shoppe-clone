@@ -55,11 +55,11 @@ class CheckoutTimeoutServiceTest {
 
     @Test
     void processExpiredCheckoutsWhenExpiredSessionsExistShouldCallProcessorForEach() {
-        when(checkoutSessionRepository.findExpiredForUpdate(
-                eq(CheckoutSessionStatus.PENDING_PAYMENT.name()),
+        when(checkoutSessionRepository.findExpiredIds(
+                eq(CheckoutSessionStatus.PENDING_PAYMENT),
                 any(Instant.class),
-                eq(10)
-        )).thenReturn(Arrays.asList(session1, session2));
+                any(org.springframework.data.domain.Pageable.class)
+        )).thenReturn(Arrays.asList(session1.getId(), session2.getId()));
 
         checkoutTimeoutService.processExpiredCheckouts(10);
 
@@ -69,10 +69,10 @@ class CheckoutTimeoutServiceTest {
 
     @Test
     void processExpiredCheckoutsWhenNoExpiredSessionsShouldNotCallProcessor() {
-        when(checkoutSessionRepository.findExpiredForUpdate(
-                eq(CheckoutSessionStatus.PENDING_PAYMENT.name()),
+        when(checkoutSessionRepository.findExpiredIds(
+                eq(CheckoutSessionStatus.PENDING_PAYMENT),
                 any(Instant.class),
-                eq(10)
+                any(org.springframework.data.domain.Pageable.class)
         )).thenReturn(Collections.emptyList());
 
         checkoutTimeoutService.processExpiredCheckouts(10);
@@ -82,11 +82,11 @@ class CheckoutTimeoutServiceTest {
 
     @Test
     void processExpiredCheckoutsWhenProcessorThrowsExceptionShouldContinueProcessingOthers() {
-        when(checkoutSessionRepository.findExpiredForUpdate(
-                eq(CheckoutSessionStatus.PENDING_PAYMENT.name()),
+        when(checkoutSessionRepository.findExpiredIds(
+                eq(CheckoutSessionStatus.PENDING_PAYMENT),
                 any(Instant.class),
-                eq(10)
-        )).thenReturn(Arrays.asList(session1, session2));
+                any(org.springframework.data.domain.Pageable.class)
+        )).thenReturn(Arrays.asList(session1.getId(), session2.getId()));
 
         doThrow(new RuntimeException("Lock conflict or general error"))
                 .when(timeoutProcessor).processTimeout(eq(session1.getId()), any(Instant.class));

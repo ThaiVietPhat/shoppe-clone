@@ -41,6 +41,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CheckoutTimeoutIT extends BasePostgresRedisIntegrationTest {
 
@@ -337,9 +338,15 @@ class CheckoutTimeoutIT extends BasePostgresRedisIntegrationTest {
         }
 
         // Fire all threads simultaneously
-        startLatch.countDown();
-        doneLatch.await();
-        executor.shutdown();
+        try {
+            startLatch.countDown();
+            assertTrue(doneLatch.await(10, java.util.concurrent.TimeUnit.SECONDS), "Concurrency test timed out!");
+        } finally {
+            executor.shutdown();
+            if (!executor.isTerminated()) {
+                executor.shutdownNow();
+            }
+        }
 
         // Verify that all 5 sessions were processed correctly and stock is returned exactly 5 times (not more)
         for (CheckoutSession s : sessions) {

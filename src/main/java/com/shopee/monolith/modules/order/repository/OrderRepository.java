@@ -15,6 +15,6 @@ import java.util.UUID;
 public interface OrderRepository extends JpaRepository<Order, UUID> {
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select o from Order o where o.checkoutSessionId = :checkoutSessionId")
+    @Query("select o from Order o where o.checkoutSessionId = :checkoutSessionId order by o.id asc")
     List<Order> findAllByCheckoutSessionIdForUpdate(@Param("checkoutSessionId") UUID checkoutSessionId);
 }

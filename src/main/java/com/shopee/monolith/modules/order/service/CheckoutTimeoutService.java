@@ -1,14 +1,15 @@
 package com.shopee.monolith.modules.order.service;
 
-import com.shopee.monolith.modules.order.entity.CheckoutSession;
 import com.shopee.monolith.modules.order.model.CheckoutSessionStatus;
 import com.shopee.monolith.modules.order.repository.CheckoutSessionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import org.springframework.data.domain.PageRequest;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -20,23 +21,23 @@ public class CheckoutTimeoutService {
 
     public void processExpiredCheckouts(int batchSize) {
         Instant now = Instant.now();
-        List<CheckoutSession> expiredSessions = checkoutSessionRepository.findExpiredForUpdate(
-                CheckoutSessionStatus.PENDING_PAYMENT.name(),
+        List<UUID> expiredSessionIds = checkoutSessionRepository.findExpiredIds(
+                CheckoutSessionStatus.PENDING_PAYMENT,
                 now,
-                batchSize
+                PageRequest.of(0, batchSize)
         );
 
-        if (expiredSessions.isEmpty()) {
+        if (expiredSessionIds.isEmpty()) {
             return;
         }
 
-        log.info("Found {} expired checkout sessions to process", expiredSessions.size());
+        log.info("Found {} expired checkout sessions to process", expiredSessionIds.size());
 
-        for (CheckoutSession session : expiredSessions) {
+        for (UUID sessionId : expiredSessionIds) {
             try {
-                timeoutProcessor.processTimeout(session.getId(), now);
+                timeoutProcessor.processTimeout(sessionId, now);
             } catch (Exception e) {
-                log.error("Failed to process timeout for session: " + session.getId(), e);
+                log.error("Failed to process timeout for session: " + sessionId, e);
             }
         }
     }

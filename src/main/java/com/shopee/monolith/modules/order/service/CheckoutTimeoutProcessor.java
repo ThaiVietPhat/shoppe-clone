@@ -35,16 +35,19 @@ public class CheckoutTimeoutProcessor {
     public void processTimeout(UUID sessionId, Instant now) {
         log.info("Processing checkout timeout for session: {}", sessionId);
 
-        // 1. Lock checkout session
-        CheckoutSession session = checkoutSessionRepository.findByIdForUpdate(sessionId).orElse(null);
+        // 1. Lock checkout session using SKIP LOCKED
+        CheckoutSession session = checkoutSessionRepository.findByIdAndStatusForUpdateSkipLocked(
+                sessionId,
+                CheckoutSessionStatus.PENDING_PAYMENT.name()
+        ).orElse(null);
         if (session == null) {
-            log.warn("Checkout session not found: {}", sessionId);
+            log.info("Checkout session {} not found, already locked, or not in PENDING_PAYMENT status", sessionId);
             return;
         }
 
-        if (session.getStatus() != CheckoutSessionStatus.PENDING_PAYMENT || session.getExpiresAt().isAfter(now)) {
-            log.info("Checkout session {} is not in PENDING_PAYMENT or has not expired yet", sessionId);
-            return; // Already processed or not yet expired
+        if (session.getExpiresAt().isAfter(now)) {
+            log.info("Checkout session {} has not expired yet", sessionId);
+            return; // Not yet expired
         }
 
         // 2. Lock reservations & release stock
