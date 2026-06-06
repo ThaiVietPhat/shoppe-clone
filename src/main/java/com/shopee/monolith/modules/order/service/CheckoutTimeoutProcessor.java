@@ -51,7 +51,7 @@ public class CheckoutTimeoutProcessor {
         }
 
         // 2. Lock reservations & release stock
-        List<InventoryReservation> reservations = inventoryReservationRepository.findAllByCheckoutSessionIdAndStatusForUpdate(sessionId, InventoryReservationStatus.RESERVED);
+        List<InventoryReservation> reservations = inventoryReservationRepository.findAllByCheckoutSessionIdAndStatusForUpdate(sessionId, InventoryReservationStatus.RESERVED.name());
         if (!reservations.isEmpty()) {
             List<ReleaseInventoryCommand> releaseCommands = reservations.stream()
                     .collect(Collectors.groupingBy(InventoryReservation::getVariantId, Collectors.summingInt(InventoryReservation::getQuantity)))

@@ -156,8 +156,15 @@ class CheckoutTimeoutIT extends BasePostgresRedisIntegrationTest {
                 .buyerId(buyer.getId())
                 .status(CheckoutSessionStatus.PENDING_PAYMENT)
                 .totalAmount(BigDecimal.valueOf(20.00))
-                .shippingStreet("Street")
-                .shippingCity("City")
+                .shippingRecipientName("John Buyer")
+                .shippingPhone("0987654321")
+                .shippingAddressLine("123 Street")
+                .shippingWardCode("W1")
+                .shippingWardName("Ward 1")
+                .shippingDistrictCode("D1")
+                .shippingDistrictName("District 1")
+                .shippingProvinceCode("P1")
+                .shippingProvinceName("Province 1")
                 .expiresAt(Instant.now().minusSeconds(5)) // Expired
                 .build();
         session = checkoutSessionRepository.save(session);
@@ -168,8 +175,15 @@ class CheckoutTimeoutIT extends BasePostgresRedisIntegrationTest {
                 .checkoutSessionId(session.getId())
                 .status(OrderStatus.PENDING_PAYMENT)
                 .totalAmount(BigDecimal.valueOf(20.00))
-                .shippingStreet("Street")
-                .shippingCity("City")
+                .shippingRecipientName("John Buyer")
+                .shippingPhone("0987654321")
+                .shippingAddressLine("123 Street")
+                .shippingWardCode("W1")
+                .shippingWardName("Ward 1")
+                .shippingDistrictCode("D1")
+                .shippingDistrictName("District 1")
+                .shippingProvinceCode("P1")
+                .shippingProvinceName("Province 1")
                 .build();
         order = orderRepository.save(order);
 
@@ -228,8 +242,15 @@ class CheckoutTimeoutIT extends BasePostgresRedisIntegrationTest {
                 .buyerId(buyer.getId())
                 .status(CheckoutSessionStatus.PENDING_PAYMENT)
                 .totalAmount(BigDecimal.valueOf(20.00))
-                .shippingStreet("Street")
-                .shippingCity("City")
+                .shippingRecipientName("John Buyer")
+                .shippingPhone("0987654321")
+                .shippingAddressLine("123 Street")
+                .shippingWardCode("W1")
+                .shippingWardName("Ward 1")
+                .shippingDistrictCode("D1")
+                .shippingDistrictName("District 1")
+                .shippingProvinceCode("P1")
+                .shippingProvinceName("Province 1")
                 .expiresAt(Instant.now().plusSeconds(60)) // Active / Not expired
                 .build();
         session = checkoutSessionRepository.save(session);
@@ -240,8 +261,15 @@ class CheckoutTimeoutIT extends BasePostgresRedisIntegrationTest {
                 .checkoutSessionId(session.getId())
                 .status(OrderStatus.PENDING_PAYMENT)
                 .totalAmount(BigDecimal.valueOf(20.00))
-                .shippingStreet("Street")
-                .shippingCity("City")
+                .shippingRecipientName("John Buyer")
+                .shippingPhone("0987654321")
+                .shippingAddressLine("123 Street")
+                .shippingWardCode("W1")
+                .shippingWardName("Ward 1")
+                .shippingDistrictCode("D1")
+                .shippingDistrictName("District 1")
+                .shippingProvinceCode("P1")
+                .shippingProvinceName("Province 1")
                 .build();
         order = orderRepository.save(order);
 
@@ -284,8 +312,15 @@ class CheckoutTimeoutIT extends BasePostgresRedisIntegrationTest {
                     .buyerId(buyer.getId())
                     .status(CheckoutSessionStatus.PENDING_PAYMENT)
                     .totalAmount(BigDecimal.valueOf(10.00))
-                    .shippingStreet("Street")
-                    .shippingCity("City")
+                    .shippingRecipientName("John Buyer")
+                    .shippingPhone("0987654321")
+                    .shippingAddressLine("123 Street")
+                    .shippingWardCode("W1")
+                    .shippingWardName("Ward 1")
+                    .shippingDistrictCode("D1")
+                    .shippingDistrictName("District 1")
+                    .shippingProvinceCode("P1")
+                    .shippingProvinceName("Province 1")
                     .expiresAt(Instant.now().minusSeconds(10))
                     .build();
             session = checkoutSessionRepository.save(session);
@@ -296,8 +331,15 @@ class CheckoutTimeoutIT extends BasePostgresRedisIntegrationTest {
                     .checkoutSessionId(session.getId())
                     .status(OrderStatus.PENDING_PAYMENT)
                     .totalAmount(BigDecimal.valueOf(10.00))
-                    .shippingStreet("Street")
-                    .shippingCity("City")
+                    .shippingRecipientName("John Buyer")
+                    .shippingPhone("0987654321")
+                    .shippingAddressLine("123 Street")
+                    .shippingWardCode("W1")
+                    .shippingWardName("Ward 1")
+                    .shippingDistrictCode("D1")
+                    .shippingDistrictName("District 1")
+                    .shippingProvinceCode("P1")
+                    .shippingProvinceName("Province 1")
                     .build();
             order = orderRepository.save(order);
 

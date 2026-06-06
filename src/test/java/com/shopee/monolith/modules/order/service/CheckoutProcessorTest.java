@@ -5,7 +5,6 @@ import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.modules.cart.dto.internal.CartSnapshotItem;
 import com.shopee.monolith.modules.inventory.service.InventoryService;
-import com.shopee.monolith.modules.order.dto.request.CheckoutRequest;
 import com.shopee.monolith.modules.order.dto.response.CheckoutResponse;
 import com.shopee.monolith.modules.order.entity.CheckoutSession;
 import com.shopee.monolith.modules.order.entity.IdempotencyKey;
@@ -18,6 +17,7 @@ import com.shopee.monolith.modules.order.repository.OrderItemRepository;
 import com.shopee.monolith.modules.order.repository.OrderRepository;
 import com.shopee.monolith.modules.product.dto.internal.ProductLookupData;
 import com.shopee.monolith.modules.product.dto.internal.VariantLookupData;
+import com.shopee.monolith.modules.user.dto.response.AddressResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -62,7 +62,7 @@ class CheckoutProcessorTest {
     private CheckoutProcessor checkoutProcessor;
 
     private UUID buyerId;
-    private CheckoutRequest request;
+    private AddressResponse address;
     private String idempotencyKey;
     private String requestHash;
     private UUID keyId;
@@ -71,7 +71,20 @@ class CheckoutProcessorTest {
     @BeforeEach
     void setUp() {
         buyerId = UUID.randomUUID();
-        request = new CheckoutRequest("123 Street", "Hanoi");
+        address = AddressResponse.builder()
+                .id(UUID.randomUUID())
+                .userId(buyerId)
+                .recipientName("John Doe")
+                .phone("0987654321")
+                .addressLine("123 Street")
+                .wardCode("W1")
+                .wardName("Ward 1")
+                .districtCode("D1")
+                .districtName("District 1")
+                .provinceCode("P1")
+                .provinceName("Province 1")
+                .isDefault(true)
+                .build();
         idempotencyKey = UUID.randomUUID().toString();
         requestHash = "hash123";
         keyId = UUID.randomUUID();
@@ -106,7 +119,7 @@ class CheckoutProcessorTest {
                 .thenReturn(Optional.of(completedKey));
 
         CheckoutResponse actualResponse = checkoutProcessor.processCheckout(
-                buyerId, request, idempotencyKey, requestHash, keyId, expiresAt, List.of(), () -> {}
+                buyerId, address, idempotencyKey, requestHash, keyId, expiresAt, List.of(), () -> {}
         );
 
         assertNotNull(actualResponse);
@@ -131,7 +144,7 @@ class CheckoutProcessorTest {
                 .thenReturn(Optional.of(existingKey));
 
         AppException exception = assertThrows(AppException.class, () ->
-                checkoutProcessor.processCheckout(buyerId, request, idempotencyKey, requestHash, keyId, expiresAt, List.of(), () -> {})
+                checkoutProcessor.processCheckout(buyerId, address, idempotencyKey, requestHash, keyId, expiresAt, List.of(), () -> {})
         );
         assertEquals(ErrorCode.IDEMPOTENCY_KEY_CONFLICT, exception.getErrorCode());
     }
@@ -153,7 +166,7 @@ class CheckoutProcessorTest {
                 .thenReturn(Optional.of(existingKey));
 
         AppException exception = assertThrows(AppException.class, () ->
-                checkoutProcessor.processCheckout(buyerId, request, idempotencyKey, requestHash, keyId, expiresAt, List.of(), () -> {})
+                checkoutProcessor.processCheckout(buyerId, address, idempotencyKey, requestHash, keyId, expiresAt, List.of(), () -> {})
         );
         assertEquals(ErrorCode.IDEMPOTENCY_REQUEST_PROCESSING, exception.getErrorCode());
     }
@@ -185,15 +198,22 @@ class CheckoutProcessorTest {
                 .buyerId(buyerId)
                 .status(CheckoutSessionStatus.PENDING_PAYMENT)
                 .totalAmount(BigDecimal.TEN)
-                .shippingStreet(request.shippingStreet())
-                .shippingCity(request.shippingCity())
+                .shippingRecipientName(address.recipientName())
+                .shippingPhone(address.phone())
+                .shippingAddressLine(address.addressLine())
+                .shippingWardCode(address.wardCode())
+                .shippingWardName(address.wardName())
+                .shippingDistrictCode(address.districtCode())
+                .shippingDistrictName(address.districtName())
+                .shippingProvinceCode(address.provinceCode())
+                .shippingProvinceName(address.provinceName())
                 .expiresAt(Instant.now())
                 .build();
         when(checkoutSessionRepository.save(any())).thenReturn(session);
         when(orderRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         CheckoutResponse response = checkoutProcessor.processCheckout(
-                buyerId, request, idempotencyKey, requestHash, keyId, expiresAt, List.of(item), () -> {}
+                buyerId, address, idempotencyKey, requestHash, keyId, expiresAt, List.of(item), () -> {}
         );
 
         assertNotNull(response);

@@ -14,10 +14,12 @@ import com.shopee.monolith.modules.product.entity.ProductVariant;
 import com.shopee.monolith.modules.product.repository.CategoryRepository;
 import com.shopee.monolith.modules.product.repository.ProductRepository;
 import com.shopee.monolith.modules.product.repository.ProductVariantRepository;
+import com.shopee.monolith.modules.user.entity.Address;
 import com.shopee.monolith.modules.user.entity.Shop;
 import com.shopee.monolith.modules.user.entity.User;
 import com.shopee.monolith.modules.user.model.Role;
 import com.shopee.monolith.modules.user.model.UserStatus;
+import com.shopee.monolith.modules.user.repository.AddressRepository;
 import com.shopee.monolith.modules.user.repository.ShopRepository;
 import com.shopee.monolith.modules.user.repository.UserRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -61,6 +63,9 @@ class OrderControllerIT extends BasePostgresRedisIntegrationTest {
     private ProductVariantRepository productVariantRepository;
 
     @Autowired
+    private AddressRepository addressRepository;
+
+    @Autowired
     private com.shopee.monolith.modules.inventory.repository.InventoryRepository inventoryRepository;
 
     @Autowired
@@ -90,6 +95,7 @@ class OrderControllerIT extends BasePostgresRedisIntegrationTest {
     private User buyer;
     private String buyerToken;
     private ProductVariant variant;
+    private Address defaultAddress;
 
     @BeforeEach
     void setUp() {
@@ -103,6 +109,21 @@ class OrderControllerIT extends BasePostgresRedisIntegrationTest {
                 .build();
         buyer = userRepository.save(buyer);
         buyerToken = jwtTokenProvider.generateAccessToken(buyer.getId(), buyer.getRole());
+
+        defaultAddress = Address.builder()
+                .userId(buyer.getId())
+                .recipientName("John Doe")
+                .phone("0987654321")
+                .addressLine("123 Street")
+                .wardCode("W1")
+                .wardName("Ward 1")
+                .districtCode("D1")
+                .districtName("District 1")
+                .provinceCode("P1")
+                .provinceName("Province 1")
+                .isDefault(true)
+                .build();
+        defaultAddress = addressRepository.save(defaultAddress);
 
         User seller = User.builder()
                 .email("seller.order.ctrl@shoppe.local")
@@ -152,6 +173,7 @@ class OrderControllerIT extends BasePostgresRedisIntegrationTest {
         orderItemRepository.deleteAll();
         orderRepository.deleteAll();
         checkoutSessionRepository.deleteAll();
+        addressRepository.deleteAll();
         inventoryRepository.deleteAll();
         productVariantRepository.deleteAll();
         productRepository.deleteAll();
@@ -162,7 +184,7 @@ class OrderControllerIT extends BasePostgresRedisIntegrationTest {
 
     @Test
     void checkoutWhenUnauthenticatedShouldReturn401() throws Exception {
-        CheckoutRequest request = new CheckoutRequest("123 Street", "Hanoi");
+        CheckoutRequest request = CheckoutRequest.builder().addressId(defaultAddress.getId()).build();
         mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request))
@@ -172,7 +194,7 @@ class OrderControllerIT extends BasePostgresRedisIntegrationTest {
 
     @Test
     void checkoutWhenMissingIdempotencyKeyHeaderShouldReturn400() throws Exception {
-        CheckoutRequest request = new CheckoutRequest("123 Street", "Hanoi");
+        CheckoutRequest request = CheckoutRequest.builder().addressId(defaultAddress.getId()).build();
         mockMvc.perform(post("/api/orders")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + buyerToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -184,7 +206,7 @@ class OrderControllerIT extends BasePostgresRedisIntegrationTest {
 
     @Test
     void checkoutWhenCartIsEmptyShouldReturn400() throws Exception {
-        CheckoutRequest request = new CheckoutRequest("123 Street", "Hanoi");
+        CheckoutRequest request = CheckoutRequest.builder().addressId(defaultAddress.getId()).build();
         mockMvc.perform(post("/api/orders")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + buyerToken)
                         .header("Idempotency-Key", UUID.randomUUID().toString())
@@ -200,7 +222,7 @@ class OrderControllerIT extends BasePostgresRedisIntegrationTest {
         // Prepare cart
         cartService.addItem(buyer.getId(), new AddCartItemRequest(variant.getId(), 2));
 
-        CheckoutRequest request = new CheckoutRequest("123 Street", "Hanoi");
+        CheckoutRequest request = CheckoutRequest.builder().addressId(defaultAddress.getId()).build();
         String idempotencyKey = UUID.randomUUID().toString();
 
         mockMvc.perform(post("/api/orders")
@@ -224,7 +246,7 @@ class OrderControllerIT extends BasePostgresRedisIntegrationTest {
                 .andExpect(jsonPath("$.code").value(200));
 
         // Duplicate call with different request should return conflict
-        CheckoutRequest request2 = new CheckoutRequest("456 Different Street", "Hanoi");
+        CheckoutRequest request2 = CheckoutRequest.builder().addressId(UUID.randomUUID()).build();
         mockMvc.perform(post("/api/orders")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + buyerToken)
                         .header("Idempotency-Key", idempotencyKey)

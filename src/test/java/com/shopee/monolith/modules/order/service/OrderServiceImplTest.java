@@ -12,6 +12,8 @@ import com.shopee.monolith.modules.product.dto.internal.VariantLookupData;
 import com.shopee.monolith.modules.product.service.ProductService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shopee.monolith.modules.order.repository.IdempotencyKeyRepository;
+import com.shopee.monolith.modules.user.dto.response.AddressResponse;
+import com.shopee.monolith.modules.user.service.AddressService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,6 +48,8 @@ class OrderServiceImplTest {
     @Mock
     private IdempotencyKeyRepository idempotencyKeyRepository;
     @Mock
+    private AddressService addressService;
+    @Mock
     private ObjectMapper objectMapper;
 
     @InjectMocks
@@ -54,12 +58,29 @@ class OrderServiceImplTest {
     private UUID buyerId;
     private CheckoutRequest request;
     private String idempotencyKey;
+    private AddressResponse address;
 
     @BeforeEach
     void setUp() {
         buyerId = UUID.randomUUID();
-        request = new CheckoutRequest("123 Street", "Hanoi");
+        UUID addressId = UUID.randomUUID();
+        request = CheckoutRequest.builder().addressId(addressId).build();
         idempotencyKey = UUID.randomUUID().toString();
+
+        address = AddressResponse.builder()
+                .id(addressId)
+                .userId(buyerId)
+                .recipientName("John Doe")
+                .phone("0987654321")
+                .addressLine("123 Street")
+                .wardCode("W1")
+                .wardName("Ward 1")
+                .districtCode("D1")
+                .districtName("District 1")
+                .provinceCode("P1")
+                .provinceName("Province 1")
+                .isDefault(true)
+                .build();
 
         lenient().when(idempotencyKeyRepository.findByActorIdAndOperationAndIdempotencyKey(any(), any(), any()))
                 .thenReturn(Optional.empty());
@@ -75,6 +96,7 @@ class OrderServiceImplTest {
 
     @Test
     void checkoutWhenCartIsEmptyShouldThrowException() {
+        when(addressService.findAddressByIdAndUserId(request.addressId(), buyerId)).thenReturn(Optional.of(address));
         when(cartService.getSnapshot(buyerId)).thenReturn(new CartSnapshot(buyerId, Collections.emptyList(), 1L));
 
         AppException exception = assertThrows(AppException.class, () ->
@@ -85,6 +107,8 @@ class OrderServiceImplTest {
 
     @Test
     void checkoutWhenValidShouldCallProcessor() {
+        when(addressService.findAddressByIdAndUserId(request.addressId(), buyerId)).thenReturn(Optional.of(address));
+        
         UUID variantId = UUID.randomUUID();
         CartSnapshotItem item = new CartSnapshotItem(variantId, 2);
         when(cartService.getSnapshot(buyerId)).thenReturn(new CartSnapshot(buyerId, List.of(item), 1L));

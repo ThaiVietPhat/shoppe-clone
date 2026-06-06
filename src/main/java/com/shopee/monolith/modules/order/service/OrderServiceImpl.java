@@ -14,6 +14,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shopee.monolith.modules.order.entity.IdempotencyKey;
 import com.shopee.monolith.modules.order.model.IdempotencyStatus;
 import com.shopee.monolith.modules.order.repository.IdempotencyKeyRepository;
+import com.shopee.monolith.modules.user.dto.response.AddressResponse;
+import com.shopee.monolith.modules.user.service.AddressService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -36,6 +38,7 @@ public class OrderServiceImpl implements OrderService {
     private final CartService cartService;
     private final ProductService productService;
     private final IdempotencyKeyRepository idempotencyKeyRepository;
+    private final AddressService addressService;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -68,6 +71,22 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
+        // Resolve address details OUTSIDE DB transaction
+        AddressResponse address;
+        if (request.addressId() != null) {
+            address = addressService.findAddressByIdAndUserId(request.addressId(), buyerId)
+                    .orElseThrow(() -> new AppException(ErrorCode.ADDRESS_NOT_FOUND));
+        } else {
+            address = addressService.findDefaultAddress(buyerId)
+                    .orElseThrow(() -> new AppException(ErrorCode.ADDRESS_NOT_FOUND));
+        }
+
+        if (address.wardCode() == null || address.wardCode().isBlank() ||
+                address.districtCode() == null || address.districtCode().isBlank() ||
+                address.provinceCode() == null || address.provinceCode().isBlank()) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
         // Proceed with checkout - Read cart snapshot from Redis OUTSIDE the DB transaction
         CartSnapshot cartSnapshot = cartService.getSnapshot(buyerId);
         if (cartSnapshot == null || cartSnapshot.items().isEmpty()) {
@@ -90,7 +109,7 @@ public class OrderServiceImpl implements OrderService {
         long cartVersion = cartSnapshot.version();
         CheckoutResponse response = checkoutProcessor.processCheckout(
                 buyerId,
-                request,
+                address,
                 idempotencyKey,
                 requestHash,
                 keyId,
@@ -104,8 +123,7 @@ public class OrderServiceImpl implements OrderService {
 
     private String computeRequestHash(CheckoutRequest request) {
         try {
-            String canonical = (request.shippingStreet() != null ? request.shippingStreet().trim() : "")
-                    + "|" + (request.shippingCity() != null ? request.shippingCity().trim() : "");
+            String canonical = request.addressId() != null ? request.addressId().toString() : "null";
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(canonical.getBytes(StandardCharsets.UTF_8));
             StringBuilder hexString = new StringBuilder();

@@ -41,11 +41,32 @@ public class Order extends BaseEntity {
     @Column(name = "total_amount", nullable = false, precision = 15, scale = 2)
     private BigDecimal totalAmount;
 
-    @Column(name = "shipping_street", nullable = false)
-    private String shippingStreet;
+    @Column(name = "shipping_recipient_name", nullable = false)
+    private String shippingRecipientName;
 
-    @Column(name = "shipping_city", nullable = false)
-    private String shippingCity;
+    @Column(name = "shipping_phone", nullable = false)
+    private String shippingPhone;
+
+    @Column(name = "shipping_address_line", nullable = false)
+    private String shippingAddressLine;
+
+    @Column(name = "shipping_ward_code", nullable = false)
+    private String shippingWardCode;
+
+    @Column(name = "shipping_ward_name", nullable = false)
+    private String shippingWardName;
+
+    @Column(name = "shipping_district_code", nullable = false)
+    private String shippingDistrictCode;
+
+    @Column(name = "shipping_district_name", nullable = false)
+    private String shippingDistrictName;
+
+    @Column(name = "shipping_province_code", nullable = false)
+    private String shippingProvinceCode;
+
+    @Column(name = "shipping_province_name", nullable = false)
+    private String shippingProvinceName;
 
     @Version
     @Column(name = "version", nullable = false)

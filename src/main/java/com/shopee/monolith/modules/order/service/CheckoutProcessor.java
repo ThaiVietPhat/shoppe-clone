@@ -5,7 +5,6 @@ import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.modules.inventory.dto.command.ReserveInventoryCommand;
 import com.shopee.monolith.modules.inventory.service.InventoryService;
-import com.shopee.monolith.modules.order.dto.request.CheckoutRequest;
 import com.shopee.monolith.modules.order.dto.response.CheckoutResponse;
 import com.shopee.monolith.modules.order.entity.CheckoutSession;
 import com.shopee.monolith.modules.order.entity.IdempotencyKey;
@@ -21,6 +20,7 @@ import com.shopee.monolith.modules.order.repository.IdempotencyKeyRepository;
 import com.shopee.monolith.modules.order.repository.InventoryReservationRepository;
 import com.shopee.monolith.modules.order.repository.OrderItemRepository;
 import com.shopee.monolith.modules.order.repository.OrderRepository;
+import com.shopee.monolith.modules.user.dto.response.AddressResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -51,7 +51,7 @@ public class CheckoutProcessor {
     private final ObjectMapper objectMapper;
 
     @Transactional
-    public CheckoutResponse processCheckout(UUID buyerId, CheckoutRequest request, String idempotencyKey,
+    public CheckoutResponse processCheckout(UUID buyerId, AddressResponse address, String idempotencyKey,
                                             String requestHash, UUID keyId, Instant expiresAt,
                                             List<OrderServiceImpl.CartItemWithDetails> resolvedItems,
                                             Runnable postCommitAction) {
@@ -120,8 +120,15 @@ public class CheckoutProcessor {
                 .buyerId(buyerId)
                 .status(CheckoutSessionStatus.PENDING_PAYMENT)
                 .totalAmount(BigDecimal.ZERO) // temporary
-                .shippingStreet(request.shippingStreet())
-                .shippingCity(request.shippingCity())
+                .shippingRecipientName(address.recipientName())
+                .shippingPhone(address.phone())
+                .shippingAddressLine(address.addressLine())
+                .shippingWardCode(address.wardCode())
+                .shippingWardName(address.wardName())
+                .shippingDistrictCode(address.districtCode())
+                .shippingDistrictName(address.districtName())
+                .shippingProvinceCode(address.provinceCode())
+                .shippingProvinceName(address.provinceName())
                 .expiresAt(Instant.now().plus(Duration.ofMinutes(15)))
                 .build();
         session = checkoutSessionRepository.save(session);
@@ -144,8 +151,15 @@ public class CheckoutProcessor {
                     .checkoutSessionId(session.getId())
                     .status(OrderStatus.PENDING_PAYMENT)
                     .totalAmount(shopTotal)
-                    .shippingStreet(request.shippingStreet())
-                    .shippingCity(request.shippingCity())
+                    .shippingRecipientName(address.recipientName())
+                    .shippingPhone(address.phone())
+                    .shippingAddressLine(address.addressLine())
+                    .shippingWardCode(address.wardCode())
+                    .shippingWardName(address.wardName())
+                    .shippingDistrictCode(address.districtCode())
+                    .shippingDistrictName(address.districtName())
+                    .shippingProvinceCode(address.provinceCode())
+                    .shippingProvinceName(address.provinceName())
                     .build();
             order = orderRepository.save(order);
             orderIds.add(order.getId());
@@ -175,8 +189,15 @@ public class CheckoutProcessor {
                 .buyerId(session.getBuyerId())
                 .status(session.getStatus())
                 .totalAmount(totalAmount)
-                .shippingStreet(session.getShippingStreet())
-                .shippingCity(session.getShippingCity())
+                .shippingRecipientName(session.getShippingRecipientName())
+                .shippingPhone(session.getShippingPhone())
+                .shippingAddressLine(session.getShippingAddressLine())
+                .shippingWardCode(session.getShippingWardCode())
+                .shippingWardName(session.getShippingWardName())
+                .shippingDistrictCode(session.getShippingDistrictCode())
+                .shippingDistrictName(session.getShippingDistrictName())
+                .shippingProvinceCode(session.getShippingProvinceCode())
+                .shippingProvinceName(session.getShippingProvinceName())
                 .expiresAt(session.getExpiresAt())
                 .createdAt(session.getCreatedAt())
                 .updatedAt(session.getUpdatedAt())

@@ -35,6 +35,7 @@ public enum ErrorCode {
     // ==================== User ====================
     USER_NOT_FOUND(404, "User not found"),
     EMAIL_ALREADY_EXISTS(409, "Email is already registered"),
+    ADDRESS_NOT_FOUND(404, "Address not found"),
 
     // ==================== Shop ====================
     SHOP_NOT_FOUND(404, "Shop not found"),

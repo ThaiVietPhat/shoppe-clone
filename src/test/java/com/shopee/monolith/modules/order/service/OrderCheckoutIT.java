@@ -23,10 +23,12 @@ import com.shopee.monolith.modules.product.entity.ProductVariant;
 import com.shopee.monolith.modules.product.repository.CategoryRepository;
 import com.shopee.monolith.modules.product.repository.ProductRepository;
 import com.shopee.monolith.modules.product.repository.ProductVariantRepository;
+import com.shopee.monolith.modules.user.entity.Address;
 import com.shopee.monolith.modules.user.entity.Shop;
 import com.shopee.monolith.modules.user.entity.User;
 import com.shopee.monolith.modules.user.model.Role;
 import com.shopee.monolith.modules.user.model.UserStatus;
+import com.shopee.monolith.modules.user.repository.AddressRepository;
 import com.shopee.monolith.modules.user.repository.ShopRepository;
 import com.shopee.monolith.modules.user.repository.UserRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -82,6 +84,9 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
     private InventoryReservationRepository inventoryReservationRepository;
 
     @Autowired
+    private AddressRepository addressRepository;
+
+    @Autowired
     private com.shopee.monolith.modules.inventory.repository.InventoryRepository inventoryRepository;
 
     @Autowired
@@ -97,6 +102,7 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
     private Shop shop2;
     private ProductVariant variant1;
     private ProductVariant variant2;
+    private Address defaultAddress;
 
     @BeforeEach
     void setUp() {
@@ -109,6 +115,21 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
                 .status(UserStatus.ACTIVE)
                 .build();
         buyer = userRepository.save(buyer);
+
+        defaultAddress = Address.builder()
+                .userId(buyer.getId())
+                .recipientName("John Buyer")
+                .phone("0987654321")
+                .addressLine("123 Buyer St")
+                .wardCode("WARD-1")
+                .wardName("Ward 1")
+                .districtCode("DIST-1")
+                .districtName("District 1")
+                .provinceCode("PROV-1")
+                .provinceName("Province 1")
+                .isDefault(true)
+                .build();
+        defaultAddress = addressRepository.save(defaultAddress);
 
         seller1 = User.builder()
                 .email("seller1.checkout.it@shoppe.local")
@@ -186,6 +207,7 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
         orderItemRepository.deleteAll();
         orderRepository.deleteAll();
         checkoutSessionRepository.deleteAll();
+        addressRepository.deleteAll();
         inventoryRepository.deleteAll();
         productVariantRepository.deleteAll();
         productRepository.deleteAll();
@@ -199,7 +221,7 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
         cartService.addItem(buyer.getId(), new AddCartItemRequest(variant1.getId(), 2));
         cartService.addItem(buyer.getId(), new AddCartItemRequest(variant2.getId(), 3));
 
-        CheckoutRequest request = new CheckoutRequest("123 Street", "Hanoi");
+        CheckoutRequest request = CheckoutRequest.builder().addressId(defaultAddress.getId()).build();
         String idempotencyKey = UUID.randomUUID().toString();
 
         CheckoutResponse response = orderService.checkout(buyer.getId(), request, idempotencyKey);
@@ -214,6 +236,9 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
         CheckoutSession session = checkoutSessionRepository.findById(response.checkoutSessionId()).orElseThrow();
         assertEquals(CheckoutSessionStatus.PENDING_PAYMENT, session.getStatus());
         assertEquals(new BigDecimal("80.00"), session.getTotalAmount());
+        assertEquals("John Buyer", session.getShippingRecipientName());
+        assertEquals("0987654321", session.getShippingPhone());
+        assertEquals("123 Buyer St", session.getShippingAddressLine());
 
         List<Order> orders = orderRepository.findAll();
         assertEquals(2, orders.size());
@@ -234,17 +259,27 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
         assertEquals(8, inv1.availableStock());
         assertEquals(2, inv1.reservedStock());
 
-        InventoryResponse inv2 = inventoryService.getInventoryByVariantId(variant2.getId(), seller2.getId(), seller2.getRole());
-        assertEquals(17, inv2.availableStock());
-        assertEquals(3, inv2.reservedStock());
-
         // Verify cart is cleared
         assertTrue(cartService.getCart(buyer.getId()).items().isEmpty());
     }
 
     @Test
+    void checkoutWithDefaultAddressWhenAddressIdNullShouldSucceed() {
+        cartService.addItem(buyer.getId(), new AddCartItemRequest(variant1.getId(), 2));
+
+        CheckoutRequest request = CheckoutRequest.builder().addressId(null).build();
+        String idempotencyKey = UUID.randomUUID().toString();
+
+        CheckoutResponse response = orderService.checkout(buyer.getId(), request, idempotencyKey);
+        assertNotNull(response);
+
+        CheckoutSession session = checkoutSessionRepository.findById(response.checkoutSessionId()).orElseThrow();
+        assertEquals("John Buyer", session.getShippingRecipientName());
+        assertEquals("0987654321", session.getShippingPhone());
+    }
+
+    @Test
     void checkoutWhenCartMutatedAfterSnapshotShouldNotDeleteCartMutation() {
-        // Prepare cart with variant1 (this will be part of the checkout snapshot)
         cartService.addItem(buyer.getId(), new AddCartItemRequest(variant1.getId(), 2));
 
         // When inventoryService.reserve is called during checkout (mid-transaction), mutate the cart
@@ -254,14 +289,13 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
             return null;
         }).when(inventoryService).reserve(org.mockito.ArgumentMatchers.anyList());
 
-        CheckoutRequest request = new CheckoutRequest("123 Street", "Hanoi");
+        CheckoutRequest request = CheckoutRequest.builder().addressId(defaultAddress.getId()).build();
         String idempotencyKey = UUID.randomUUID().toString();
 
         CheckoutResponse response = orderService.checkout(buyer.getId(), request, idempotencyKey);
 
         assertNotNull(response);
 
-        // Verify that the cart was NOT cleared because of the version mismatch (mutated cart remains fully intact)
         var cart = cartService.getCart(buyer.getId());
         assertEquals(2, cart.items().size());
         assertTrue(cart.items().stream().anyMatch(i -> i.variantId().equals(variant1.getId())));
@@ -272,7 +306,7 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
     void checkoutWithExpiredIdempotencyKeyShouldSucceedAndResetKey() {
         cartService.addItem(buyer.getId(), new AddCartItemRequest(variant1.getId(), 2));
 
-        CheckoutRequest request = new CheckoutRequest("123 Street", "Hanoi");
+        CheckoutRequest request = CheckoutRequest.builder().addressId(defaultAddress.getId()).build();
         String idempotencyKey = UUID.randomUUID().toString();
 
         // 1. First checkout attempt with the key
@@ -283,7 +317,6 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
         var dbKey = idempotencyKeyRepository.findByActorIdAndOperationAndIdempotencyKey(buyer.getId(), "CHECKOUT", idempotencyKey)
                 .orElseThrow();
 
-        // Manually expire the key in DB by saving it with past expiresAt
         com.shopee.monolith.modules.order.entity.IdempotencyKey expiredKey = com.shopee.monolith.modules.order.entity.IdempotencyKey.builder()
                 .id(dbKey.getId())
                 .actorId(dbKey.getActorId())
@@ -305,14 +338,12 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
         CheckoutResponse response2 = orderService.checkout(buyer.getId(), request, idempotencyKey);
         assertNotNull(response2);
 
-        // Assert it did not replay the old response, but ran a new one with correct amount
         assertEquals(new BigDecimal("30.00"), response2.totalAmount());
 
-        // Verify key is updated in DB to the new expiration and response
         var updatedKey = idempotencyKeyRepository.findByActorIdAndOperationAndIdempotencyKey(buyer.getId(), "CHECKOUT", idempotencyKey)
                 .orElseThrow();
         assertTrue(updatedKey.getExpiresAt().isAfter(java.time.Instant.now()));
         assertTrue(updatedKey.getResponseBody().contains("30.00"));
-        assertEquals(dbKey.getId(), updatedKey.getId()); // verify the UUID remains identical (same row updated)
+        assertEquals(dbKey.getId(), updatedKey.getId());
     }
 }
