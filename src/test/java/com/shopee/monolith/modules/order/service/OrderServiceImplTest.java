@@ -96,7 +96,7 @@ class OrderServiceImplTest {
 
     @Test
     void checkoutWhenCartIsEmptyShouldThrowException() {
-        when(addressService.findAddressByIdAndUserId(request.addressId(), buyerId)).thenReturn(Optional.of(address));
+        when(addressService.resolveCheckoutAddress(buyerId, request.addressId())).thenReturn(address);
         when(cartService.getSnapshot(buyerId)).thenReturn(new CartSnapshot(buyerId, Collections.emptyList(), 1L));
 
         AppException exception = assertThrows(AppException.class, () ->
@@ -107,7 +107,7 @@ class OrderServiceImplTest {
 
     @Test
     void checkoutWhenValidShouldCallProcessor() {
-        when(addressService.findAddressByIdAndUserId(request.addressId(), buyerId)).thenReturn(Optional.of(address));
+        when(addressService.resolveCheckoutAddress(buyerId, request.addressId())).thenReturn(address);
         
         UUID variantId = UUID.randomUUID();
         CartSnapshotItem item = new CartSnapshotItem(variantId, 2);

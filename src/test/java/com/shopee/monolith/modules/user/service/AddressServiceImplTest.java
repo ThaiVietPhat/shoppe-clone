@@ -1,6 +1,7 @@
 package com.shopee.monolith.modules.user.service;
 
 import com.shopee.monolith.common.exception.AppException;
+import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.modules.user.dto.internal.UserAuthenticationData;
 import com.shopee.monolith.modules.user.dto.request.AddressRequest;
 import com.shopee.monolith.modules.user.dto.response.AddressResponse;
@@ -24,8 +25,10 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -175,6 +178,48 @@ class AddressServiceImplTest {
         AddressResponse result = addressService.updateAddress(userId, addressId, request);
 
         assertEquals(response, result);
+    }
+
+    @Test
+    void updateAddressWhenCurrentDefaultAndMultipleAddressesShouldKeepDefault() {
+        Address otherAddress = Address.builder()
+                .id(UUID.randomUUID())
+                .userId(userId)
+                .recipientName("Jane Doe")
+                .phone("0987654322")
+                .isDefault(false)
+                .build();
+
+        when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(activeUser));
+        when(addressRepository.findByIdAndUserId(addressId, userId)).thenReturn(Optional.of(address));
+        when(addressRepository.findAllByUserIdOrderByIsDefaultDesc(userId))
+                .thenReturn(List.of(address, otherAddress));
+        when(addressRepository.save(address)).thenReturn(address);
+        when(addressMapper.toResponse(address)).thenReturn(response);
+
+        AddressResponse result = addressService.updateAddress(userId, addressId, request);
+
+        assertEquals(response, result);
+        assertTrue(address.isDefault());
+        verify(addressRepository, never()).resetDefaultAddresses(userId);
+    }
+
+    @Test
+    void resolveCheckoutAddressWhenUserInactiveShouldThrowAccountNotActive() {
+        UserAuthenticationData inactiveUser = UserAuthenticationData.builder()
+                .id(userId)
+                .email("buyer@shoppe.local")
+                .role(Role.BUYER)
+                .status(UserStatus.LOCKED)
+                .build();
+        when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(inactiveUser));
+
+        AppException exception = assertThrows(AppException.class, () ->
+                addressService.resolveCheckoutAddress(userId, addressId)
+        );
+
+        assertEquals(ErrorCode.ACCOUNT_NOT_ACTIVE, exception.getErrorCode());
+        verify(addressRepository, never()).findByIdAndUserId(addressId, userId);
     }
 
     @Test

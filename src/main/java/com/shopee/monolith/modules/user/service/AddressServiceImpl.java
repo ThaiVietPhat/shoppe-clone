@@ -72,7 +72,10 @@ public class AddressServiceImpl implements AddressService {
                 .orElseThrow(() -> new AppException(ErrorCode.ADDRESS_NOT_FOUND));
 
         List<Address> existing = addressRepository.findAllByUserIdOrderByIsDefaultDesc(userId);
-        boolean shouldBeDefault = (existing.size() == 1) || request.isDefault();
+        // Invariant: at least one address must always be default.
+        // If the address being updated is currently default, ignore isDefault=false from request.
+        boolean keepDefault = address.isDefault() && !request.isDefault();
+        boolean shouldBeDefault = keepDefault || (existing.size() == 1) || request.isDefault();
 
         if (shouldBeDefault && !address.isDefault()) {
             addressRepository.resetDefaultAddresses(userId);
@@ -131,6 +134,20 @@ public class AddressServiceImpl implements AddressService {
         }
 
         return addressMapper.toResponse(address);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AddressResponse resolveCheckoutAddress(UUID userId, UUID addressId) {
+        verifyUserActive(userId);
+        if (addressId != null) {
+            return addressRepository.findByIdAndUserId(addressId, userId)
+                    .map(addressMapper::toResponse)
+                    .orElseThrow(() -> new AppException(ErrorCode.ADDRESS_NOT_FOUND));
+        }
+        return addressRepository.findDefaultByUserId(userId)
+                .map(addressMapper::toResponse)
+                .orElseThrow(() -> new AppException(ErrorCode.ADDRESS_NOT_FOUND));
     }
 
     @Override

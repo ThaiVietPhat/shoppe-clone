@@ -71,15 +71,9 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
-        // Resolve address details OUTSIDE DB transaction
-        AddressResponse address;
-        if (request.addressId() != null) {
-            address = addressService.findAddressByIdAndUserId(request.addressId(), buyerId)
-                    .orElseThrow(() -> new AppException(ErrorCode.ADDRESS_NOT_FOUND));
-        } else {
-            address = addressService.findDefaultAddress(buyerId)
-                    .orElseThrow(() -> new AppException(ErrorCode.ADDRESS_NOT_FOUND));
-        }
+        // Resolve address details OUTSIDE DB transaction.
+        // resolveCheckoutAddress verifies user is ACTIVE before returning the address.
+        AddressResponse address = addressService.resolveCheckoutAddress(buyerId, request.addressId());
 
         if (address.wardCode() == null || address.wardCode().isBlank() ||
                 address.districtCode() == null || address.districtCode().isBlank() ||

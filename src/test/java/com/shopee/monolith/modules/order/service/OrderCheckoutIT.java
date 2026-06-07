@@ -1,6 +1,8 @@
 package com.shopee.monolith.modules.order.service;
 
 import com.shopee.monolith.BasePostgresRedisIntegrationTest;
+import com.shopee.monolith.common.exception.AppException;
+import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.modules.cart.dto.request.AddCartItemRequest;
 import com.shopee.monolith.modules.cart.service.CartService;
 import com.shopee.monolith.modules.inventory.dto.response.InventoryResponse;
@@ -43,6 +45,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
@@ -276,6 +279,46 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
         CheckoutSession session = checkoutSessionRepository.findById(response.checkoutSessionId()).orElseThrow();
         assertEquals("John Buyer", session.getShippingRecipientName());
         assertEquals("0987654321", session.getShippingPhone());
+    }
+
+    @Test
+    void checkoutWhenUserNotActiveShouldFailBeforeUsingAddress() {
+        User lockedBuyer = User.builder()
+                .email("locked.checkout.it@shoppe.local")
+                .normalizedEmail("locked.checkout.it@shoppe.local")
+                .role(Role.BUYER)
+                .status(UserStatus.LOCKED)
+                .build();
+        lockedBuyer = userRepository.save(lockedBuyer);
+        UUID lockedBuyerId = lockedBuyer.getId();
+
+        Address lockedAddress = Address.builder()
+                .userId(lockedBuyerId)
+                .recipientName("Locked Buyer")
+                .phone("0987654321")
+                .addressLine("456 Locked St")
+                .wardCode("WARD-2")
+                .wardName("Ward 2")
+                .districtCode("DIST-2")
+                .districtName("District 2")
+                .provinceCode("PROV-2")
+                .provinceName("Province 2")
+                .isDefault(true)
+                .build();
+        lockedAddress = addressRepository.save(lockedAddress);
+        cartService.addItem(lockedBuyerId, new AddCartItemRequest(variant1.getId(), 1));
+
+        CheckoutRequest request = CheckoutRequest.builder().addressId(lockedAddress.getId()).build();
+
+        try {
+            AppException exception = assertThrows(AppException.class, () ->
+                    orderService.checkout(lockedBuyerId, request, UUID.randomUUID().toString())
+            );
+
+            assertEquals(ErrorCode.ACCOUNT_NOT_ACTIVE, exception.getErrorCode());
+        } finally {
+            cartService.clearCart(lockedBuyerId);
+        }
     }
 
     @Test

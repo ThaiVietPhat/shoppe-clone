@@ -19,6 +19,12 @@ public interface AddressService {
 
     AddressResponse setDefaultAddress(UUID userId, UUID addressId);
 
+    /**
+     * Resolves the shipping address for checkout: looks up by addressId or falls back to default.
+     * Verifies that the user account is ACTIVE before returning the address.
+     */
+    AddressResponse resolveCheckoutAddress(UUID userId, UUID addressId);
+
     Optional<AddressResponse> findDefaultAddress(UUID userId);
 
     Optional<AddressResponse> findAddressByIdAndUserId(UUID addressId, UUID userId);
