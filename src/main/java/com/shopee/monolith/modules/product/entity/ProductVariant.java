@@ -11,6 +11,7 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
 import java.math.BigDecimal;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -33,9 +34,28 @@ public class ProductVariant extends BaseEntity {
     @Column(name = "price", nullable = false, precision = 15, scale = 2)
     private BigDecimal price;
 
-    public void update(String sku, String name, BigDecimal price) {
+    @Column(name = "option_labels", columnDefinition = "jsonb")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    private Map<String, String> optionLabels;
+
+    @Column(name = "active", nullable = false)
+    @lombok.Builder.Default
+    private boolean active = true;
+
+    public void update(String sku, String name, BigDecimal price,
+                       Map<String, String> optionLabels, boolean active) {
         this.sku = sku;
         this.name = name;
         this.price = price;
+        this.optionLabels = optionLabels;
+        this.active = active;
+    }
+
+    public void deactivate() {
+        this.active = false;
+    }
+
+    public void activate() {
+        this.active = true;
     }
 }

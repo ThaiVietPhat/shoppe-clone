@@ -48,6 +48,8 @@ public enum ErrorCode {
     CATEGORY_NOT_FOUND(404, "Category not found"),
     INVALID_PRODUCT_PRICE(400, "Invalid product price"),
     SKU_ALREADY_EXISTS(409, "SKU already exists"),
+    PRODUCT_CANNOT_BE_PUBLISHED(409, "Product cannot be published in its current state"),
+    PRODUCT_HAS_NO_ACTIVE_VARIANT(422, "Product must have at least one active variant with a positive price to be published"),
 
     // ==================== Inventory ====================
     INSUFFICIENT_STOCK(409, "Insufficient stock available"),
@@ -77,7 +79,9 @@ public enum ErrorCode {
 
     // ==================== Media ====================
     INVALID_FILE_TYPE(400, "File type is not allowed"),
-    FILE_TOO_LARGE(400, "File size exceeds the maximum allowed limit");
+    FILE_TOO_LARGE(400, "File size exceeds the maximum allowed limit"),
+    MEDIA_NOT_FOUND(404, "Media asset not found"),
+    MEDIA_OWNERSHIP_VIOLATION(403, "Media asset does not belong to this shop");
 
     private final int httpStatus;
     private final String message;

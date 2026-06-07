@@ -16,6 +16,8 @@ public interface InventoryRepository extends JpaRepository<Inventory, UUID> {
 
     Optional<Inventory> findByVariantId(UUID variantId);
 
+    List<Inventory> findAllByVariantIdIn(Collection<UUID> variantIds);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT i FROM Inventory i WHERE i.variantId = :variantId")
     Optional<Inventory> findByVariantIdForUpdate(@Param("variantId") UUID variantId);
@@ -24,3 +26,4 @@ public interface InventoryRepository extends JpaRepository<Inventory, UUID> {
     @Query("SELECT i FROM Inventory i WHERE i.variantId IN :variantIds ORDER BY i.variantId ASC")
     List<Inventory> findAllByVariantIdInForUpdate(@Param("variantIds") Collection<UUID> variantIds);
 }
+

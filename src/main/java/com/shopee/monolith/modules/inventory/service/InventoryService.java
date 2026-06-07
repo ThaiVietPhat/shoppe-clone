@@ -3,10 +3,12 @@ package com.shopee.monolith.modules.inventory.service;
 import com.shopee.monolith.modules.inventory.dto.command.ConfirmInventoryCommand;
 import com.shopee.monolith.modules.inventory.dto.command.ReleaseInventoryCommand;
 import com.shopee.monolith.modules.inventory.dto.command.ReserveInventoryCommand;
+import com.shopee.monolith.modules.inventory.dto.internal.InventoryStockSummary;
 import com.shopee.monolith.modules.inventory.dto.response.InventoryResponse;
 import com.shopee.monolith.modules.user.model.Role;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public interface InventoryService {
@@ -22,4 +24,15 @@ public interface InventoryService {
     void confirm(List<ConfirmInventoryCommand> commands);
 
     void release(List<ReleaseInventoryCommand> commands);
+
+    /**
+     * Batch load stock summaries by variant IDs. Read-only, no locks.
+     * Used by ProductService to build checkout eligibility hints.
+     * Checkout MUST revalidate this at reservation time — do not trust this value for correctness.
+     *
+     * @param variantIds list of variant IDs to query
+     * @return map of variantId → InventoryStockSummary; missing keys = inventory not found
+     */
+    Map<UUID, InventoryStockSummary> getStockSummariesByVariantIds(List<UUID> variantIds);
 }
+

@@ -3,6 +3,7 @@ package com.shopee.monolith.modules.product.service;
 import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.common.response.PagedResponse;
+import com.shopee.monolith.modules.media.service.MediaService;
 import com.shopee.monolith.modules.product.dto.request.CreateProductRequest;
 import com.shopee.monolith.modules.product.dto.request.CreateProductVariantRequest;
 import com.shopee.monolith.modules.product.dto.request.UpdateProductRequest;
@@ -13,6 +14,7 @@ import com.shopee.monolith.modules.product.dto.response.ProductVariantResponse;
 import com.shopee.monolith.modules.product.entity.Category;
 import com.shopee.monolith.modules.product.entity.Product;
 import com.shopee.monolith.modules.product.entity.ProductVariant;
+import com.shopee.monolith.modules.product.event.ProductCatalogSnapshotEvent;
 import com.shopee.monolith.modules.product.event.ProductCreatedEvent;
 import com.shopee.monolith.modules.product.event.ProductUpdatedEvent;
 import com.shopee.monolith.modules.product.mapper.ProductMapper;
@@ -25,6 +27,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
@@ -35,6 +38,7 @@ import org.springframework.data.domain.Pageable;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -42,6 +46,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -62,6 +67,12 @@ class ProductServiceImplTest {
 
     @Mock
     private ShopService shopService;
+
+    @Mock
+    private ProductStockSummaryProvider stockSummaryProvider;
+
+    @Mock
+    private MediaService mediaService;
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
@@ -94,6 +105,7 @@ class ProductServiceImplTest {
         category = Category.builder()
                 .id(categoryId)
                 .name("Electronics")
+                .path("Electronics")
                 .build();
 
         categoryResponse = CategoryResponse.builder()
@@ -107,6 +119,8 @@ class ProductServiceImplTest {
                 .categoryId(categoryId)
                 .name("iPhone 15")
                 .description("Titanium")
+                .brand("Apple")
+                .attributes(Map.of("storage", "256GB"))
                 .createdAt(Instant.now())
                 .updatedAt(Instant.now())
                 .build();
@@ -139,6 +153,8 @@ class ProductServiceImplTest {
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
                 .build();
+
+        lenient().when(mediaService.listProductMedia(any())).thenReturn(List.of());
     }
 
     @Test
@@ -180,10 +196,13 @@ class ProductServiceImplTest {
                 .categoryId(categoryId)
                 .name("iPhone 15")
                 .description("Titanium")
+                .brand("Apple")
+                .attributes(Map.of("storage", "256GB"))
                 .build();
 
         when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
         when(categoryRepository.existsById(categoryId)).thenReturn(true);
+        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
         when(productRepository.save(any(Product.class))).thenReturn(product);
         when(productMapper.toResponse(any(Product.class), any())).thenReturn(productResponse);
 
@@ -191,6 +210,15 @@ class ProductServiceImplTest {
 
         assertEquals(productResponse, result);
         verify(eventPublisher).publishEvent(any(ProductCreatedEvent.class));
+        ArgumentCaptor<ProductCatalogSnapshotEvent> snapshotCaptor =
+                ArgumentCaptor.forClass(ProductCatalogSnapshotEvent.class);
+        verify(eventPublisher).publishEvent(snapshotCaptor.capture());
+        ProductCatalogSnapshotEvent snapshot = snapshotCaptor.getValue();
+        assertEquals(productId, snapshot.productId());
+        assertEquals(shopId, snapshot.shopId());
+        assertEquals("Electronics", snapshot.categoryPath());
+        assertEquals("Apple", snapshot.brand());
+        assertEquals(Map.of("storage", "256GB"), snapshot.attributes());
     }
 
     @Test

@@ -44,6 +44,27 @@ public final class ProductSwaggerResponses {
             PagedResponse<ProductResponse> data
     ) {}
 
+    @Schema(name = "ApiResponseProductDetailResponse", description = "API response wrapper containing ProductDetailResponse")
+    public record ApiResponseProductDetailResponse(
+            int code,
+            String message,
+            ProductDetailResponse data
+    ) {}
+
+    @Schema(name = "ApiResponsePagedProductCardResponse", description = "API response wrapper containing PagedResponse of ProductCardResponse")
+    public record ApiResponsePagedProductCardResponse(
+            int code,
+            String message,
+            PagedResponse<ProductCardResponse> data
+    ) {}
+
+    @Schema(name = "ApiResponsePagedProductDetailResponse", description = "API response wrapper containing PagedResponse of ProductDetailResponse")
+    public record ApiResponsePagedProductDetailResponse(
+            int code,
+            String message,
+            PagedResponse<ProductDetailResponse> data
+    ) {}
+
     @Schema(name = "ApiResponseProductVariantResponse", description = "API response wrapper containing ProductVariantResponse")
     public record ApiResponseProductVariantResponse(
             int code,

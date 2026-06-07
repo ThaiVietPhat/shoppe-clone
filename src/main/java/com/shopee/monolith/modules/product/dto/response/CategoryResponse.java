@@ -18,6 +18,9 @@ public record CategoryResponse(
         @Schema(description = "Category name", example = "Electronics")
         String name,
 
+        @Schema(description = "Materialized category path", example = "Electronics/Mobile Phones")
+        String path,
+
         @Schema(description = "Timestamp when the category was created")
         Instant createdAt,
 

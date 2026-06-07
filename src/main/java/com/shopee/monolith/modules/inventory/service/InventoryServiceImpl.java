@@ -5,6 +5,7 @@ import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.modules.inventory.dto.command.ConfirmInventoryCommand;
 import com.shopee.monolith.modules.inventory.dto.command.ReleaseInventoryCommand;
 import com.shopee.monolith.modules.inventory.dto.command.ReserveInventoryCommand;
+import com.shopee.monolith.modules.inventory.dto.internal.InventoryStockSummary;
 import com.shopee.monolith.modules.inventory.dto.response.InventoryResponse;
 import com.shopee.monolith.modules.inventory.entity.Inventory;
 import com.shopee.monolith.modules.inventory.mapper.InventoryMapper;
@@ -264,5 +265,21 @@ public class InventoryServiceImpl implements InventoryService {
         }
 
         inventoryRepository.saveAll(inventories);
+    }
+
+    @Override
+    public Map<UUID, InventoryStockSummary> getStockSummariesByVariantIds(List<UUID> variantIds) {
+        if (variantIds == null || variantIds.isEmpty()) {
+            return Map.of();
+        }
+        return inventoryRepository.findAllByVariantIdIn(variantIds).stream()
+                .collect(Collectors.toMap(
+                        Inventory::getVariantId,
+                        inv -> InventoryStockSummary.builder()
+                                .variantId(inv.getVariantId())
+                                .availableStock(inv.getAvailableStock())
+                                .reservedStock(inv.getReservedStock())
+                                .build()
+                ));
     }
 }

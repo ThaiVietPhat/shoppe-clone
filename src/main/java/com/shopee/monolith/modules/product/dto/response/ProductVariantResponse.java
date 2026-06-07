@@ -5,6 +5,7 @@ import lombok.Builder;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 @Builder
@@ -24,6 +25,12 @@ public record ProductVariantResponse(
 
         @Schema(description = "Variant price", example = "1099.00")
         BigDecimal price,
+
+        @Schema(description = "Option labels for display", example = "{\"color\": \"Black\", \"storage\": \"256GB\"}")
+        Map<String, String> optionLabels,
+
+        @Schema(description = "Whether this variant is active", example = "true")
+        boolean active,
 
         @Schema(description = "Timestamp when the variant was created")
         Instant createdAt,

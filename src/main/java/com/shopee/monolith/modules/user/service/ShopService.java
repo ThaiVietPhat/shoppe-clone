@@ -19,4 +19,6 @@ public interface ShopService {
     ShopResponse updateShop(UUID ownerId, UpdateShopRequest request);
 
     Optional<ShopLookupData> findShopLookupDataById(UUID shopId);
+
+    Optional<ShopLookupData> findShopLookupDataByOwnerId(UUID ownerId);
 }

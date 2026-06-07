@@ -11,6 +11,8 @@ import com.shopee.monolith.modules.product.dto.request.CreateProductVariantReque
 import com.shopee.monolith.modules.product.dto.request.UpdateProductRequest;
 import com.shopee.monolith.modules.product.dto.request.UpdateProductVariantRequest;
 import com.shopee.monolith.modules.product.dto.response.CategoryResponse;
+import com.shopee.monolith.modules.product.dto.response.ProductCardResponse;
+import com.shopee.monolith.modules.product.dto.response.ProductDetailResponse;
 import com.shopee.monolith.modules.product.dto.response.ProductResponse;
 import com.shopee.monolith.modules.product.dto.response.ProductSwaggerResponses;
 import com.shopee.monolith.modules.product.dto.response.ProductVariantResponse;
@@ -27,6 +29,7 @@ import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -57,11 +60,11 @@ public class ProductController {
         return ApiResponse.success(productService.listCategories());
     }
 
-    @Operation(summary = "List all products", description = "Retrieves all products in the e-commerce catalog.")
+    @Operation(summary = "List active product cards", description = "Retrieves ACTIVE products for public catalog browsing.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "200",
-            description = "Products list retrieved successfully.",
-            content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponsePagedProductResponse.class))
+            description = "Product cards retrieved successfully.",
+            content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponsePagedProductCardResponse.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "400",
@@ -69,17 +72,17 @@ public class ProductController {
             content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @GetMapping("/api/products")
-    public ApiResponse<PagedResponse<ProductResponse>> listProducts(
+    public ApiResponse<PagedResponse<ProductCardResponse>> listProducts(
             @Parameter(description = "Page index (0-indexed)") @RequestParam(defaultValue = "0") @Min(0) int page,
             @Parameter(description = "Page size (max 100)") @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return ApiResponse.success(productService.listProducts(page, size));
+        return ApiResponse.success(productService.listActiveProducts(page, size));
     }
 
-    @Operation(summary = "Get product by ID", description = "Retrieves detailed product profile and variants by product ID.")
+    @Operation(summary = "Get active product detail", description = "Retrieves public product detail for an ACTIVE product.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "200",
             description = "Product details retrieved successfully.",
-            content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponseProductResponse.class))
+            content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponseProductDetailResponse.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "404",
@@ -87,16 +90,16 @@ public class ProductController {
             content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @GetMapping("/api/products/{productId}")
-    public ApiResponse<ProductResponse> getProductById(
+    public ApiResponse<ProductDetailResponse> getProductById(
             @Parameter(description = "Product unique ID") @PathVariable UUID productId) {
-        return ApiResponse.success(productService.getProductById(productId));
+        return ApiResponse.success(productService.getProductDetailById(productId));
     }
 
-    @Operation(summary = "List shop products", description = "Retrieves all catalog products owned by a specific seller shop.")
+    @Operation(summary = "List active shop product cards", description = "Retrieves ACTIVE product cards owned by a seller shop.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "200",
             description = "Shop products list retrieved successfully.",
-            content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponsePagedProductResponse.class))
+            content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponsePagedProductCardResponse.class))
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "400",
@@ -104,11 +107,52 @@ public class ProductController {
             content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @GetMapping("/api/shops/{shopId}/products")
-    public ApiResponse<PagedResponse<ProductResponse>> listProductsByShop(
+    public ApiResponse<PagedResponse<ProductCardResponse>> listProductsByShop(
             @Parameter(description = "Shop unique ID") @PathVariable UUID shopId,
             @Parameter(description = "Page index (0-indexed)") @RequestParam(defaultValue = "0") @Min(0) int page,
             @Parameter(description = "Page size (max 100)") @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return ApiResponse.success(productService.listProductsByShop(shopId, page, size));
+        return ApiResponse.success(productService.listActiveProductsByShop(shopId, page, size));
+    }
+
+    @Operation(
+            summary = "List current seller products",
+            description = "Retrieves non-deleted seller products with status, media, variants and stock summary.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "Seller product list retrieved successfully.",
+            content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponsePagedProductDetailResponse.class))
+    )
+    @GetMapping("/api/seller/products")
+    public ApiResponse<PagedResponse<ProductDetailResponse>> listSellerProducts(
+            @Parameter(description = "Page index (0-indexed)") @RequestParam(defaultValue = "0") @Min(0) int page,
+            @Parameter(description = "Page size (max 100)") @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            @AuthenticationPrincipal AccessTokenClaims claims) {
+        if (claims == null) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+        return ApiResponse.success(productService.listSellerProducts(claims.userId(), page, size));
+    }
+
+    @Operation(
+            summary = "Get current seller product detail",
+            description = "Retrieves a non-deleted product owned by the authenticated seller.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "Seller product detail retrieved successfully.",
+            content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponseProductDetailResponse.class))
+    )
+    @GetMapping("/api/seller/products/{productId}")
+    public ApiResponse<ProductDetailResponse> getSellerProduct(
+            @Parameter(description = "Product unique ID") @PathVariable UUID productId,
+            @AuthenticationPrincipal AccessTokenClaims claims) {
+        if (claims == null) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+        return ApiResponse.success(productService.getProductDetailForSeller(claims.userId(), productId));
     }
 
     @Operation(
@@ -273,5 +317,67 @@ public class ProductController {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
         return ApiResponse.success(productService.updateVariant(claims.userId(), productId, variantId, request));
+    }
+
+    @Operation(
+            summary = "Publish product",
+            description = "Transitions a seller product from DRAFT or INACTIVE to ACTIVE when it has an active priced variant.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "Product published successfully.",
+            content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponseProductDetailResponse.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "409",
+            description = "Product cannot be published in its current state.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @PostMapping("/api/products/{productId}/publish")
+    public ApiResponse<ProductDetailResponse> publishProduct(
+            @Parameter(description = "Product unique ID") @PathVariable UUID productId,
+            @AuthenticationPrincipal AccessTokenClaims claims) {
+        if (claims == null) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+        return ApiResponse.success(productService.publishProduct(claims.userId(), productId));
+    }
+
+    @Operation(
+            summary = "Unpublish product",
+            description = "Transitions an ACTIVE seller product to INACTIVE.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "Product unpublished successfully.",
+            content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponseProductDetailResponse.class))
+    )
+    @PostMapping("/api/products/{productId}/unpublish")
+    public ApiResponse<ProductDetailResponse> unpublishProduct(
+            @Parameter(description = "Product unique ID") @PathVariable UUID productId,
+            @AuthenticationPrincipal AccessTokenClaims claims) {
+        if (claims == null) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+        return ApiResponse.success(productService.unpublishProduct(claims.userId(), productId));
+    }
+
+    @Operation(
+            summary = "Delete product",
+            description = "Soft-deletes a seller product by setting status to DELETED.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Product deleted successfully.")
+    @DeleteMapping("/api/products/{productId}")
+    public ApiResponse<Void> deleteProduct(
+            @Parameter(description = "Product unique ID") @PathVariable UUID productId,
+            @AuthenticationPrincipal AccessTokenClaims claims) {
+        if (claims == null) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+        productService.deleteProduct(claims.userId(), productId);
+        return ApiResponse.success(null);
     }
 }

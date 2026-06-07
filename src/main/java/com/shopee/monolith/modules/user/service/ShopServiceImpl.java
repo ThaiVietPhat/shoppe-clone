@@ -86,4 +86,10 @@ public class ShopServiceImpl implements ShopService {
         return shopRepository.findById(shopId)
                 .map(shopMapper::toLookupData);
     }
+
+    @Override
+    public Optional<ShopLookupData> findShopLookupDataByOwnerId(UUID ownerId) {
+        return shopRepository.findByOwnerId(ownerId)
+                .map(shopMapper::toLookupData);
+    }
 }

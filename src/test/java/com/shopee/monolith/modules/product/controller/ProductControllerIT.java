@@ -10,6 +10,7 @@ import com.shopee.monolith.modules.product.dto.request.UpdateProductRequest;
 import com.shopee.monolith.modules.product.dto.request.UpdateProductVariantRequest;
 import com.shopee.monolith.modules.product.entity.Category;
 import com.shopee.monolith.modules.product.entity.Product;
+import com.shopee.monolith.modules.product.entity.ProductStatus;
 import com.shopee.monolith.modules.product.entity.ProductVariant;
 import com.shopee.monolith.modules.product.repository.CategoryRepository;
 import com.shopee.monolith.modules.product.repository.ProductRepository;
@@ -32,6 +33,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.math.BigDecimal;
 import java.util.UUID;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -111,6 +113,9 @@ class ProductControllerIT extends BasePostgresRedisIntegrationTest {
                 .categoryId(category.getId())
                 .name("iPhone 15 Pro")
                 .description("Titanium body")
+                .status(ProductStatus.ACTIVE)
+                .minPrice(BigDecimal.valueOf(999.00))
+                .maxPrice(BigDecimal.valueOf(999.00))
                 .build();
         product = productRepository.save(product);
 
@@ -148,7 +153,7 @@ class ProductControllerIT extends BasePostgresRedisIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.items[0].name").value("iPhone 15 Pro"))
-                .andExpect(jsonPath("$.data.items[0].variants[0].sku").value("IPHONE15PRO-128"))
+                .andExpect(jsonPath("$.data.items[0].status").value("ACTIVE"))
                 .andExpect(jsonPath("$.data.page").value(0))
                 .andExpect(jsonPath("$.data.size").value(10))
                 .andExpect(jsonPath("$.data.totalElements").value(1));
@@ -332,6 +337,70 @@ class ProductControllerIT extends BasePostgresRedisIntegrationTest {
                 .andExpect(jsonPath("$.data.sku").value("IPHONE15PRO-128-UPD"))
                 .andExpect(jsonPath("$.data.name").value("128GB Titanium"))
                 .andExpect(jsonPath("$.data.price").value(949.00));
+    }
+
+    @Test
+    void publishProductWhenDraftHasActivePricedVariantShouldSucceed() throws Exception {
+        Product draft = productRepository.save(Product.builder()
+                .shopId(shop.getId())
+                .categoryId(category.getId())
+                .name("Draft Phone")
+                .description("Draft description")
+                .status(ProductStatus.DRAFT)
+                .build());
+        productVariantRepository.save(ProductVariant.builder()
+                .productId(draft.getId())
+                .sku("DRAFT-PHONE-128")
+                .name("128GB")
+                .price(BigDecimal.valueOf(499.00))
+                .build());
+
+        mockMvc.perform(post("/api/products/" + draft.getId() + "/publish")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.data.minPrice").value(499.00))
+                .andExpect(jsonPath("$.data.maxPrice").value(499.00));
+    }
+
+    @Test
+    void publishProductWhenNoActiveVariantShouldReturn422() throws Exception {
+        Product draft = productRepository.save(Product.builder()
+                .shopId(shop.getId())
+                .categoryId(category.getId())
+                .name("Draft Without Variant")
+                .description("Draft description")
+                .status(ProductStatus.DRAFT)
+                .build());
+
+        mockMvc.perform(post("/api/products/" + draft.getId() + "/publish")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value(ErrorCode.PRODUCT_HAS_NO_ACTIVE_VARIANT.getHttpStatus()));
+    }
+
+    @Test
+    void unpublishProductWhenActiveShouldHideFromPublicCatalog() throws Exception {
+        mockMvc.perform(post("/api/products/" + product.getId() + "/unpublish")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("INACTIVE"));
+
+        mockMvc.perform(get("/api/products/" + product.getId()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deleteProductWhenShopOwnerShouldSoftDeleteAndHideFromSeller() throws Exception {
+        mockMvc.perform(delete("/api/products/" + product.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        mockMvc.perform(get("/api/seller/products/" + product.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
+                .andExpect(status().isNotFound());
     }
 
     @Test

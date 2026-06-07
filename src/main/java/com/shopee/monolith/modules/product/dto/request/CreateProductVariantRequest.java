@@ -8,22 +8,38 @@ import jakarta.validation.constraints.Size;
 import lombok.Builder;
 
 import java.math.BigDecimal;
+import java.util.Map;
 
 @Builder
 @Schema(description = "Request payload for creating a product variant")
 public record CreateProductVariantRequest(
         @NotBlank(message = "SKU is required")
         @Size(min = 3, max = 100, message = "SKU must be between 3 and 100 characters")
-        @Schema(description = "Stock keeping unit unique identifier", example = "IPHONE15-PRO-256-BLK", requiredMode = Schema.RequiredMode.REQUIRED)
+        @Schema(description = "Stock keeping unit unique identifier", example = "IPHONE15-PRO-256-BLK",
+                requiredMode = Schema.RequiredMode.REQUIRED)
         String sku,
 
         @NotBlank(message = "Variant name is required")
-        @Size(min = 3, max = 255, message = "Variant name must be between 3 and 255 characters")
-        @Schema(description = "Name of the variant", example = "256GB Black Titanium", requiredMode = Schema.RequiredMode.REQUIRED)
+        @Size(min = 1, max = 255, message = "Variant name must be between 1 and 255 characters")
+        @Schema(description = "Name of the variant", example = "256GB Black Titanium",
+                requiredMode = Schema.RequiredMode.REQUIRED)
         String name,
 
         @NotNull(message = "Price is required")
         @DecimalMin(value = "0.00", message = "Price cannot be negative")
-        @Schema(description = "Price of this variant", example = "1099.00", requiredMode = Schema.RequiredMode.REQUIRED)
-        BigDecimal price
-) {}
+        @Schema(description = "Price of this variant", example = "1099.00",
+                requiredMode = Schema.RequiredMode.REQUIRED)
+        BigDecimal price,
+
+        @Schema(description = "Option labels for display (e.g. {\"color\": \"Black\", \"storage\": \"256GB\"})",
+                example = "{\"color\": \"Black Titanium\", \"storage\": \"256GB\"}")
+        Map<String, String> optionLabels,
+
+        @Schema(description = "Whether this variant is active and eligible for checkout",
+                example = "true", defaultValue = "true")
+        Boolean active
+) {
+    public boolean isActiveOrDefault() {
+        return active == null || active;
+    }
+}
