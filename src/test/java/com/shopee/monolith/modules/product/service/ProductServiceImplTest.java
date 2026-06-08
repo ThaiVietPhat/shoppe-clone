@@ -3,7 +3,9 @@ package com.shopee.monolith.modules.product.service;
 import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.common.response.PagedResponse;
+import com.shopee.monolith.modules.media.dto.response.ProductMediaSummary;
 import com.shopee.monolith.modules.media.service.MediaService;
+import com.shopee.monolith.modules.product.dto.internal.ProductStockSummaryDto;
 import com.shopee.monolith.modules.product.dto.request.CreateProductRequest;
 import com.shopee.monolith.modules.product.dto.request.CreateProductVariantRequest;
 import com.shopee.monolith.modules.product.dto.request.UpdateProductRequest;
@@ -11,6 +13,7 @@ import com.shopee.monolith.modules.product.dto.request.UpdateProductVariantReque
 import com.shopee.monolith.modules.product.dto.internal.ProductLookupData;
 import com.shopee.monolith.modules.product.dto.internal.VariantLookupData;
 import com.shopee.monolith.modules.product.dto.response.CategoryResponse;
+import com.shopee.monolith.modules.product.dto.response.ProductCardResponse;
 import com.shopee.monolith.modules.product.dto.response.ProductResponse;
 import com.shopee.monolith.modules.product.dto.response.ProductDetailResponse;
 import com.shopee.monolith.modules.product.dto.response.ProductEligibilityIssue;
@@ -40,6 +43,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -48,6 +52,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -499,6 +504,87 @@ class ProductServiceImplTest {
 
         assertEquals(1, result.items().size());
         assertEquals(productResponse, result.items().get(0));
+    }
+
+    @Test
+    void listActiveProductsShouldReturnCardMetadataAndEligibility() {
+        Product activeProduct = Product.builder()
+                .id(productId)
+                .shopId(shopId)
+                .categoryId(categoryId)
+                .status(ProductStatus.ACTIVE)
+                .name("iPhone 15")
+                .brand("Apple")
+                .minPrice(BigDecimal.valueOf(999.00))
+                .maxPrice(BigDecimal.valueOf(1299.00))
+                .createdAt(Instant.now())
+                .build();
+        ProductMediaSummary cover = ProductMediaSummary.builder()
+                .mediaId(UUID.randomUUID())
+                .publicUrl("http://localhost/media/cover.png")
+                .objectKey("cover.png")
+                .contentType("image/png")
+                .cover(true)
+                .build();
+        ShopLookupData ratedShop = ShopLookupData.builder()
+                .id(shopId)
+                .ownerId(ownerId)
+                .name("Seller Shop")
+                .rating(BigDecimal.valueOf(4.85))
+                .build();
+        Pageable pageable = PageRequest.of(0, 20,
+                Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Product> page = new PageImpl<>(List.of(activeProduct), pageable, 1);
+
+        when(productRepository.findAllByStatus(ProductStatus.ACTIVE, pageable)).thenReturn(page);
+        when(mediaService.listProductMediaByProductIds(List.of(productId))).thenReturn(Map.of(productId, List.of(cover)));
+        when(productVariantRepository.findAllByProductIdIn(List.of(productId))).thenReturn(List.of(variant));
+        when(stockSummaryProvider.getStockSummariesByVariantIds(List.of(variantId))).thenReturn(Map.of(
+                variantId,
+                ProductStockSummaryDto.builder()
+                        .variantId(variantId)
+                        .availableStock(10)
+                        .reservedStock(0)
+                        .build()
+        ));
+        when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(ratedShop));
+        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
+
+        PagedResponse<ProductCardResponse> result = productService.listActiveProducts(0, 20);
+        ProductCardResponse card = result.items().get(0);
+
+        assertEquals(cover.mediaId(), card.coverMediaId());
+        assertEquals("image/png", card.coverContentType());
+        assertEquals(BigDecimal.valueOf(4.85), card.shopRating());
+        assertTrue(card.checkoutEligible());
+        assertTrue(card.eligibilityIssues().isEmpty());
+    }
+
+    @Test
+    void listActiveProductsShouldExposeCardEligibilityIssuesWhenNoStock() {
+        Product activeProduct = Product.builder()
+                .id(productId)
+                .shopId(shopId)
+                .categoryId(categoryId)
+                .status(ProductStatus.ACTIVE)
+                .name("iPhone 15")
+                .build();
+        Pageable pageable = PageRequest.of(0, 20,
+                Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Product> page = new PageImpl<>(List.of(activeProduct), pageable, 1);
+
+        when(productRepository.findAllByStatus(ProductStatus.ACTIVE, pageable)).thenReturn(page);
+        when(mediaService.listProductMediaByProductIds(List.of(productId))).thenReturn(Map.of());
+        when(productVariantRepository.findAllByProductIdIn(List.of(productId))).thenReturn(List.of(variant));
+        when(stockSummaryProvider.getStockSummariesByVariantIds(List.of(variantId))).thenReturn(Map.of());
+        when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
+        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
+
+        PagedResponse<ProductCardResponse> result = productService.listActiveProducts(0, 20);
+        ProductCardResponse card = result.items().get(0);
+
+        assertFalse(card.checkoutEligible());
+        assertTrue(card.eligibilityIssues().contains(ProductEligibilityIssue.NO_STOCK));
     }
 
     @Test

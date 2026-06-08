@@ -630,24 +630,37 @@ public class ProductServiceImpl implements ProductService {
 
         List<UUID> productIds = products.stream().map(Product::getId).toList();
         Map<UUID, List<ProductMediaSummary>> mediaMap = mediaService.listProductMediaByProductIds(productIds);
+        List<ProductVariant> allVariants = productVariantRepository.findAllByProductIdIn(productIds);
+        Map<UUID, List<ProductVariant>> variantsByProductId = allVariants.stream()
+                .collect(Collectors.groupingBy(ProductVariant::getProductId));
+        List<UUID> variantIds = allVariants.stream().map(ProductVariant::getId).toList();
+        Map<UUID, ProductStockSummaryDto> stockMap = stockSummaryProvider.getStockSummariesByVariantIds(variantIds);
 
         List<ProductCardResponse> cards = products.stream().map(p -> {
             List<ProductMediaSummary> media = mediaMap.getOrDefault(p.getId(), List.of());
             ProductMediaSummary cover = media.stream().filter(ProductMediaSummary::cover).findFirst().orElse(null);
             ShopLookupData shop = shopService.findShopLookupDataById(p.getShopId()).orElse(null);
+            List<ProductVariant> variants = variantsByProductId.getOrDefault(p.getId(), List.of());
+            List<ProductEligibilityIssue> eligibilityIssues = buildEligibilityIssues(p, variants, stockMap);
+            boolean checkoutEligible = eligibilityIssues.isEmpty();
 
             return ProductCardResponse.builder()
                     .id(p.getId())
                     .name(p.getName())
                     .brand(p.getBrand())
                     .coverImageUrl(cover != null ? cover.publicUrl() : null)
+                    .coverMediaId(cover != null ? cover.mediaId() : null)
                     .coverObjectKey(cover != null ? cover.objectKey() : null)
+                    .coverContentType(cover != null ? cover.contentType() : null)
                     .minPrice(p.getMinPrice())
                     .maxPrice(p.getMaxPrice())
                     .status(p.getStatus())
                     .shopId(p.getShopId())
                     .shopName(shop != null ? shop.name() : null)
+                    .shopRating(shop != null ? shop.rating() : null)
                     .categoryPath(resolveCategory(p.getCategoryId()))
+                    .checkoutEligible(checkoutEligible)
+                    .eligibilityIssues(eligibilityIssues)
                     .createdAt(p.getCreatedAt())
                     .build();
         }).toList();

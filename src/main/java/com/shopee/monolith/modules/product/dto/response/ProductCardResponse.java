@@ -6,6 +6,7 @@ import lombok.Builder;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Builder
@@ -24,8 +25,14 @@ public record ProductCardResponse(
         @Schema(description = "Public URL of the cover image (null if no cover)")
         String coverImageUrl,
 
+        @Schema(description = "Cover media asset ID (null if no cover)")
+        UUID coverMediaId,
+
         @Schema(description = "Object key of the cover image (null if no cover)")
         String coverObjectKey,
+
+        @Schema(description = "Cover media content type (null if no cover)", example = "image/png")
+        String coverContentType,
 
         @Schema(description = "Minimum price across active variants", example = "999.00")
         BigDecimal minPrice,
@@ -42,8 +49,17 @@ public record ProductCardResponse(
         @Schema(description = "Shop name", example = "Apple Official Store")
         String shopName,
 
+        @Schema(description = "Shop average rating (0.0-5.0)", example = "4.8")
+        BigDecimal shopRating,
+
         @Schema(description = "Category path", example = "Electronics/Mobile Phones")
         String categoryPath,
+
+        @Schema(description = "Whether at least one variant can be added to cart from this card")
+        boolean checkoutEligible,
+
+        @Schema(description = "Structured card-level publish or checkout eligibility issues")
+        List<ProductEligibilityIssue> eligibilityIssues,
 
         @Schema(description = "Timestamp when created")
         Instant createdAt

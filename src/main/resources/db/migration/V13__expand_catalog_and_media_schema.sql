@@ -35,7 +35,7 @@ SET min_price = price_range.min_price,
 FROM (
     SELECT product_id, MIN(price) AS min_price, MAX(price) AS max_price
     FROM product_variants
-    WHERE active = TRUE
+    WHERE active = TRUE AND price > 0
     GROUP BY product_id
 ) price_range
 WHERE p.id = price_range.product_id;
