@@ -35,6 +35,11 @@ spring:
   elasticsearch:
     uris: ${ELASTICSEARCH_URI:http://localhost:9200}
 
+  servlet:
+    multipart:
+      max-file-size: ${MEDIA_MAX_FILE_SIZE:10MB}
+      max-request-size: ${MEDIA_MAX_REQUEST_SIZE:10MB}
+
   jpa:
     hibernate:
       ddl-auto: validate                           # Flyway quản lý schema, Hibernate chỉ validate
@@ -74,14 +79,15 @@ spring:
             enable: true
 
   ai:
-    openai:
-      api-key: ${OPENAI_API_KEY}
+    google:
+      genai:
+        api-key: ${GOOGLE_AI_API_KEY}
       chat:
         options:
-          model: gpt-4o-mini
+          model: gemini-1.5-flash
       embedding:
         options:
-          model: text-embedding-3-small
+          model: text-embedding-004
 
 management:
   endpoints:
@@ -121,7 +127,7 @@ app:
   order:
     timeout:
       batch-size: 50
-      check-delay-ms: 10000
+      check-delay: 10s
   media:
     max-file-size-mb: 10
     allowed-content-types: image/jpeg, image/png, image/webp
@@ -174,4 +180,3 @@ app:
       resend-verification:
         capacity: 3
         window: 1m
-

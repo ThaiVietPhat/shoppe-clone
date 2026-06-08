@@ -3,7 +3,8 @@ package com.shopee.monolith.modules.media.service;
 import com.shopee.monolith.modules.media.dto.response.MediaAssetResponse;
 import com.shopee.monolith.modules.media.dto.response.ProductMediaSummary;
 import com.shopee.monolith.modules.media.dto.internal.MediaFileData;
-import com.shopee.monolith.modules.media.entity.MediaPurpose;
+import com.shopee.monolith.modules.media.dto.internal.MediaOwnerTypeCode;
+import com.shopee.monolith.modules.media.dto.internal.MediaPurposeCode;
 
 import java.util.List;
 import java.util.Map;
@@ -16,14 +17,14 @@ public interface MediaService {
      * Upload and store an image file. Validates MIME bytes, extension and size.
      *
      * @param ownerId   ID of the owning entity (shopId or userId)
-     * @param ownerType "SHOP" or "USER"
+     * @param ownerType owner entity type
      * @param purpose   intended usage (PRODUCT_IMAGE, AVATAR, SHOP_LOGO)
      * @param filename  original client filename (for extension validation only)
      * @param bytes     raw file bytes
      * @param mimeType  declared content-type (verified against bytes magic)
      * @return persisted MediaAssetResponse with publicUrl
      */
-    MediaAssetResponse uploadImage(UUID ownerId, String ownerType, MediaPurpose purpose,
+    MediaAssetResponse uploadImage(UUID ownerId, MediaOwnerTypeCode ownerType, MediaPurposeCode purpose,
                                    String filename, byte[] bytes, String mimeType);
 
     /**
@@ -31,7 +32,7 @@ public interface MediaService {
      */
     MediaAssetResponse getMediaById(UUID mediaId);
 
-    Optional<MediaAssetResponse> findLatestReadyMedia(UUID ownerId, String ownerType, MediaPurpose purpose);
+    Optional<MediaAssetResponse> findLatestReadyMedia(UUID ownerId, MediaOwnerTypeCode ownerType, MediaPurposeCode purpose);
 
     MediaFileData loadFile(String objectKey);
 

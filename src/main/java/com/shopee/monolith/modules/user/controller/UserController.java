@@ -5,8 +5,9 @@ import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.common.response.ApiResponse;
 import com.shopee.monolith.common.response.SwaggerResponses;
 import com.shopee.monolith.modules.auth.dto.internal.AccessTokenClaims;
+import com.shopee.monolith.modules.media.dto.internal.MediaOwnerTypeCode;
+import com.shopee.monolith.modules.media.dto.internal.MediaPurposeCode;
 import com.shopee.monolith.modules.media.dto.response.MediaAssetResponse;
-import com.shopee.monolith.modules.media.entity.MediaPurpose;
 import com.shopee.monolith.modules.media.service.MediaService;
 import com.shopee.monolith.modules.user.dto.internal.ShopLookupData;
 import com.shopee.monolith.modules.user.dto.internal.UserAuthenticationData;
@@ -59,7 +60,7 @@ public class UserController {
         CurrentUserShopResponse shop = shopService.findShopLookupDataByOwnerId(claims.userId())
                 .map(this::toShopResponse)
                 .orElse(null);
-        MediaAssetResponse avatar = mediaService.findLatestReadyMedia(user.id(), "USER", MediaPurpose.AVATAR)
+        MediaAssetResponse avatar = mediaService.findLatestReadyMedia(user.id(), MediaOwnerTypeCode.USER, MediaPurposeCode.AVATAR)
                 .orElse(null);
         return ApiResponse.success(CurrentUserResponse.builder()
                 .id(user.id())
@@ -72,7 +73,7 @@ public class UserController {
     }
 
     private CurrentUserShopResponse toShopResponse(ShopLookupData shop) {
-        MediaAssetResponse logo = mediaService.findLatestReadyMedia(shop.id(), "SHOP", MediaPurpose.SHOP_LOGO)
+        MediaAssetResponse logo = mediaService.findLatestReadyMedia(shop.id(), MediaOwnerTypeCode.SHOP, MediaPurposeCode.SHOP_LOGO)
                 .orElse(null);
         return CurrentUserShopResponse.builder()
                 .id(shop.id())

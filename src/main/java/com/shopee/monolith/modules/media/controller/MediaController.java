@@ -5,9 +5,9 @@ import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.common.response.ApiResponse;
 import com.shopee.monolith.modules.auth.dto.internal.AccessTokenClaims;
 import com.shopee.monolith.modules.media.dto.internal.MediaFileData;
+import com.shopee.monolith.modules.media.dto.internal.MediaOwnerTypeCode;
+import com.shopee.monolith.modules.media.dto.internal.MediaPurposeCode;
 import com.shopee.monolith.modules.media.dto.response.MediaAssetResponse;
-import com.shopee.monolith.modules.media.entity.MediaOwnerType;
-import com.shopee.monolith.modules.media.entity.MediaPurpose;
 import com.shopee.monolith.modules.media.service.MediaService;
 import com.shopee.monolith.modules.user.dto.internal.ShopLookupData;
 import com.shopee.monolith.modules.user.service.ShopService;
@@ -19,6 +19,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -41,6 +42,9 @@ public class MediaController {
 
     private final MediaService mediaService;
     private final ShopService shopService;
+
+    @Value("#{${app.media.max-file-size-mb:10} * 1048576}")
+    private long maxImageSizeBytes;
 
     @Operation(
             summary = "Upload an image",
@@ -68,16 +72,17 @@ public class MediaController {
             @RequestParam("ownerId") UUID ownerId,
 
             @Parameter(description = "Owner type: SHOP or USER", example = "SHOP", required = true)
-            @RequestParam("ownerType") String ownerType,
+            @RequestParam("ownerType") MediaOwnerTypeCode ownerType,
 
             @Parameter(description = "Purpose: PRODUCT_IMAGE, AVATAR, SHOP_LOGO", example = "PRODUCT_IMAGE", required = true)
-            @RequestParam("purpose") MediaPurpose purpose,
+            @RequestParam("purpose") MediaPurposeCode purpose,
 
             @AuthenticationPrincipal AccessTokenClaims claims
     ) throws IOException {
         if (claims == null) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
+        validateUploadSize(file);
         validateOwner(claims, ownerId, ownerType, purpose);
         MediaAssetResponse response = mediaService.uploadImage(
                 ownerId,
@@ -90,31 +95,31 @@ public class MediaController {
         return ApiResponse.success(response);
     }
 
-    private void validateOwner(AccessTokenClaims claims, UUID ownerId, String ownerType, MediaPurpose purpose) {
-        MediaOwnerType parsedOwnerType = parseOwnerType(ownerType);
-        if (parsedOwnerType == MediaOwnerType.USER) {
+    private void validateUploadSize(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new AppException(ErrorCode.INVALID_FILE_TYPE);
+        }
+        if (file.getSize() > maxImageSizeBytes) {
+            throw new AppException(ErrorCode.FILE_TOO_LARGE);
+        }
+    }
+
+    private void validateOwner(AccessTokenClaims claims, UUID ownerId, MediaOwnerTypeCode ownerType, MediaPurposeCode purpose) {
+        if (ownerType == MediaOwnerTypeCode.USER) {
             validateUserOwner(claims, ownerId, purpose);
             return;
         }
         validateShopOwner(claims, ownerId, purpose);
     }
 
-    private MediaOwnerType parseOwnerType(String ownerType) {
-        try {
-            return MediaOwnerType.valueOf(ownerType);
-        } catch (IllegalArgumentException | NullPointerException e) {
-            throw new AppException(ErrorCode.INVALID_REQUEST);
-        }
-    }
-
-    private void validateUserOwner(AccessTokenClaims claims, UUID ownerId, MediaPurpose purpose) {
-        if (purpose != MediaPurpose.AVATAR || !claims.userId().equals(ownerId)) {
+    private void validateUserOwner(AccessTokenClaims claims, UUID ownerId, MediaPurposeCode purpose) {
+        if (purpose != MediaPurposeCode.AVATAR || !claims.userId().equals(ownerId)) {
             throw new AppException(ErrorCode.MEDIA_OWNERSHIP_VIOLATION);
         }
     }
 
-    private void validateShopOwner(AccessTokenClaims claims, UUID ownerId, MediaPurpose purpose) {
-        if (purpose == MediaPurpose.AVATAR) {
+    private void validateShopOwner(AccessTokenClaims claims, UUID ownerId, MediaPurposeCode purpose) {
+        if (purpose == MediaPurposeCode.AVATAR) {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
         ShopLookupData shop = shopService.findShopLookupDataById(ownerId)

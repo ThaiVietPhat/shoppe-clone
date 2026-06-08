@@ -2,8 +2,9 @@ package com.shopee.monolith.modules.user.service;
 
 import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
+import com.shopee.monolith.modules.media.dto.internal.MediaOwnerTypeCode;
+import com.shopee.monolith.modules.media.dto.internal.MediaPurposeCode;
 import com.shopee.monolith.modules.media.dto.response.MediaAssetResponse;
-import com.shopee.monolith.modules.media.entity.MediaPurpose;
 import com.shopee.monolith.modules.media.service.MediaService;
 import com.shopee.monolith.modules.user.dto.internal.ShopLookupData;
 import com.shopee.monolith.modules.user.dto.internal.UserAuthenticationData;
@@ -111,7 +112,7 @@ public class ShopServiceImpl implements ShopService {
     }
 
     private ShopResponse toResponse(Shop shop) {
-        MediaAssetResponse logo = mediaService.findLatestReadyMedia(shop.getId(), "SHOP", MediaPurpose.SHOP_LOGO)
+        MediaAssetResponse logo = mediaService.findLatestReadyMedia(shop.getId(), MediaOwnerTypeCode.SHOP, MediaPurposeCode.SHOP_LOGO)
                 .orElse(null);
         return ShopResponse.builder()
                 .id(shop.getId())

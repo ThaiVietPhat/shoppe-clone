@@ -369,6 +369,7 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
                 .operation(dbKey.getOperation())
                 .idempotencyKey(dbKey.getIdempotencyKey())
                 .requestHash(dbKey.getRequestHash())
+                .requestBodyHash(dbKey.getRequestBodyHash())
                 .status(dbKey.getStatus())
                 .responseBody(dbKey.getResponseBody())
                 .expiresAt(java.time.Instant.now().minus(java.time.Duration.ofHours(1)))

@@ -395,9 +395,7 @@ public class ProductServiceImpl implements ProductService {
         Page<Product> productPage = productRepository.findAllByShopIdAndStatusNot(
                 shop.id(), ProductStatus.DELETED, buildPageable(page, size));
 
-        List<ProductDetailResponse> content = productPage.getContent().stream()
-                .map(p -> buildProductDetail(p, true))
-                .toList();
+        List<ProductDetailResponse> content = buildProductDetails(productPage.getContent());
 
         return PagedResponse.from(productPage, content);
     }
@@ -464,6 +462,53 @@ public class ProductServiceImpl implements ProductService {
         Map<UUID, ProductStockSummaryDto> stockMap = stockSummaryProvider.getStockSummariesByVariantIds(variantIds);
 
         List<ProductMediaSummary> media = mediaService.listProductMedia(product.getId());
+        ShopLookupData shop = shopService.findShopLookupDataById(product.getShopId()).orElse(null);
+        String categoryPath = resolveCategory(product.getCategoryId());
+
+        return buildProductDetail(product, variants, media, stockMap, shop, categoryPath);
+    }
+
+    private List<ProductDetailResponse> buildProductDetails(List<Product> products) {
+        if (products.isEmpty()) {
+            return List.of();
+        }
+        List<UUID> productIds = products.stream().map(Product::getId).toList();
+        Map<UUID, List<ProductVariant>> variantsByProductId = productVariantRepository.findAllByProductIdIn(productIds)
+                .stream()
+                .collect(Collectors.groupingBy(ProductVariant::getProductId));
+        List<UUID> variantIds = variantsByProductId.values().stream()
+                .flatMap(List::stream)
+                .map(ProductVariant::getId)
+                .toList();
+        Map<UUID, ProductStockSummaryDto> stockMap = stockSummaryProvider.getStockSummariesByVariantIds(variantIds);
+        Map<UUID, List<ProductMediaSummary>> mediaMap = mediaService.listProductMediaByProductIds(productIds);
+        Map<UUID, ShopLookupData> shopMap = shopService.findShopLookupDataByIds(products.stream()
+                .map(Product::getShopId)
+                .distinct()
+                .toList());
+        Map<UUID, String> categoryPathMap = resolveCategoryPaths(products.stream()
+                .map(Product::getCategoryId)
+                .distinct()
+                .toList());
+
+        return products.stream()
+                .map(product -> buildProductDetail(
+                        product,
+                        variantsByProductId.getOrDefault(product.getId(), List.of()),
+                        mediaMap.getOrDefault(product.getId(), List.of()),
+                        stockMap,
+                        shopMap.get(product.getShopId()),
+                        categoryPathMap.get(product.getCategoryId())))
+                .toList();
+    }
+
+    private ProductDetailResponse buildProductDetail(
+            Product product,
+            List<ProductVariant> variants,
+            List<ProductMediaSummary> media,
+            Map<UUID, ProductStockSummaryDto> stockMap,
+            ShopLookupData shop,
+            String categoryPath) {
         boolean hasCover = media.stream().anyMatch(ProductMediaSummary::cover);
         ProductMediaSummary coverMedia = media.stream().filter(ProductMediaSummary::cover).findFirst().orElse(null);
 
@@ -501,12 +546,9 @@ public class ProductServiceImpl implements ProductService {
 
         List<ProductEligibilityIssue> eligibilityIssues = buildEligibilityIssues(product, variants, stockMap);
 
-        ShopLookupData shop = shopService.findShopLookupDataById(product.getShopId()).orElse(null);
         ShopSummaryDto shopSummary = shop != null
                 ? ShopSummaryDto.builder().id(shop.id()).name(shop.name()).rating(shop.rating()).build()
                 : null;
-
-        String categoryPath = resolveCategory(product.getCategoryId());
 
         return ProductDetailResponse.builder()
                 .id(product.getId())

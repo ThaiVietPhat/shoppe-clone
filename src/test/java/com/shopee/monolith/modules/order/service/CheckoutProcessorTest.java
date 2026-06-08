@@ -68,6 +68,7 @@ class CheckoutProcessorTest {
     private AddressResponse address;
     private String idempotencyKey;
     private String requestHash;
+    private String requestBodyHash;
     private UUID keyId;
     private Instant expiresAt;
 
@@ -90,6 +91,7 @@ class CheckoutProcessorTest {
                 .build();
         idempotencyKey = UUID.randomUUID().toString();
         requestHash = "hash123";
+        requestBodyHash = "bodyHash123";
         keyId = UUID.randomUUID();
         expiresAt = Instant.now();
     }
@@ -111,18 +113,19 @@ class CheckoutProcessorTest {
                 .operation("CHECKOUT")
                 .idempotencyKey(idempotencyKey)
                 .requestHash(requestHash)
+                .requestBodyHash(requestBodyHash)
                 .status(IdempotencyStatus.COMPLETED)
                 .responseBody(responseBody)
                 .expiresAt(Instant.now().plus(java.time.Duration.ofDays(1)))
                 .build();
 
-        when(idempotencyKeyRepository.tryInsert(any(), any(), any(), any(), any(), any(), any()))
+        when(idempotencyKeyRepository.tryInsert(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(0);
         when(idempotencyKeyRepository.findByKeysForUpdate(buyerId, "CHECKOUT", idempotencyKey))
                 .thenReturn(Optional.of(completedKey));
 
         CheckoutResponse actualResponse = checkoutProcessor.processCheckout(
-                buyerId, address, idempotencyKey, requestHash, keyId, expiresAt, List.of(), () -> {}
+                buyerId, address, idempotencyKey, requestHash, requestBodyHash, keyId, expiresAt, List.of(), () -> {}
         );
 
         assertNotNull(actualResponse);
@@ -137,17 +140,20 @@ class CheckoutProcessorTest {
                 .operation("CHECKOUT")
                 .idempotencyKey(idempotencyKey)
                 .requestHash("different_hash")
+                .requestBodyHash(requestBodyHash)
                 .status(IdempotencyStatus.COMPLETED)
                 .expiresAt(Instant.now().plus(java.time.Duration.ofDays(1)))
                 .build();
 
-        when(idempotencyKeyRepository.tryInsert(any(), any(), any(), any(), any(), any(), any()))
+        when(idempotencyKeyRepository.tryInsert(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(0);
         when(idempotencyKeyRepository.findByKeysForUpdate(buyerId, "CHECKOUT", idempotencyKey))
                 .thenReturn(Optional.of(existingKey));
 
         AppException exception = assertThrows(AppException.class, () ->
-                checkoutProcessor.processCheckout(buyerId, address, idempotencyKey, requestHash, keyId, expiresAt, List.of(), () -> {})
+                checkoutProcessor.processCheckout(
+                        buyerId, address, idempotencyKey, requestHash, requestBodyHash, keyId, expiresAt, List.of(), () -> {}
+                )
         );
         assertEquals(ErrorCode.IDEMPOTENCY_KEY_CONFLICT, exception.getErrorCode());
     }
@@ -159,17 +165,18 @@ class CheckoutProcessorTest {
                 .operation("CHECKOUT")
                 .idempotencyKey(idempotencyKey)
                 .requestHash(requestHash)
+                .requestBodyHash(requestBodyHash)
                 .status(IdempotencyStatus.PROCESSING)
                 .expiresAt(Instant.now().plus(java.time.Duration.ofDays(1)))
                 .build();
 
-        when(idempotencyKeyRepository.tryInsert(any(), any(), any(), any(), any(), any(), any()))
+        when(idempotencyKeyRepository.tryInsert(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(0);
         when(idempotencyKeyRepository.findByKeysForUpdate(buyerId, "CHECKOUT", idempotencyKey))
                 .thenReturn(Optional.of(existingKey));
 
         AppException exception = assertThrows(AppException.class, () ->
-                checkoutProcessor.processCheckout(buyerId, address, idempotencyKey, requestHash, keyId, expiresAt, List.of(), () -> {})
+                checkoutProcessor.processCheckout(buyerId, address, idempotencyKey, requestHash, requestBodyHash, keyId, expiresAt, List.of(), () -> {})
         );
         assertEquals(ErrorCode.IDEMPOTENCY_REQUEST_PROCESSING, exception.getErrorCode());
     }
@@ -191,7 +198,7 @@ class CheckoutProcessorTest {
                 .name("Prod 1")
                 .build();
 
-        when(idempotencyKeyRepository.tryInsert(any(), any(), any(), any(), any(), any(), any()))
+        when(idempotencyKeyRepository.tryInsert(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(1);
         when(productService.findActiveVariantLookupDataByIdForCheckout(variantId)).thenReturn(Optional.of(variant));
         when(productService.findActiveProductLookupDataByIdForCheckout(variant.productId())).thenReturn(Optional.of(product));
@@ -216,7 +223,7 @@ class CheckoutProcessorTest {
         when(orderRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         CheckoutResponse response = checkoutProcessor.processCheckout(
-                buyerId, address, idempotencyKey, requestHash, keyId, expiresAt, List.of(cartItem), () -> {}
+                buyerId, address, idempotencyKey, requestHash, requestBodyHash, keyId, expiresAt, List.of(cartItem), () -> {}
         );
 
         assertNotNull(response);
@@ -230,12 +237,12 @@ class CheckoutProcessorTest {
         UUID variantId = UUID.randomUUID();
         CartSnapshotItem cartItem = new CartSnapshotItem(variantId, 1);
 
-        when(idempotencyKeyRepository.tryInsert(any(), any(), any(), any(), any(), any(), any()))
+        when(idempotencyKeyRepository.tryInsert(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(1);
         when(productService.findActiveVariantLookupDataByIdForCheckout(variantId)).thenReturn(Optional.empty());
 
         AppException exception = assertThrows(AppException.class, () -> checkoutProcessor.processCheckout(
-                buyerId, address, idempotencyKey, requestHash, keyId, expiresAt, List.of(cartItem), () -> {}
+                buyerId, address, idempotencyKey, requestHash, requestBodyHash, keyId, expiresAt, List.of(cartItem), () -> {}
         ));
 
         assertEquals(ErrorCode.VARIANT_NOT_FOUND, exception.getErrorCode());

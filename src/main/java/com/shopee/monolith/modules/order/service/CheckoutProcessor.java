@@ -57,7 +57,7 @@ public class CheckoutProcessor {
 
     @Transactional
     public CheckoutResponse processCheckout(UUID buyerId, AddressResponse address, String idempotencyKey,
-                                            String requestHash, UUID keyId, Instant expiresAt,
+                                            String requestHash, String requestBodyHash, UUID keyId, Instant expiresAt,
                                             List<CartSnapshotItem> cartItems,
                                             Runnable postCommitAction) {
 
@@ -67,6 +67,7 @@ public class CheckoutProcessor {
                 "CHECKOUT",
                 idempotencyKey,
                 requestHash,
+                requestBodyHash,
                 IdempotencyStatus.PROCESSING.name(),
                 expiresAt
         );
@@ -79,6 +80,7 @@ public class CheckoutProcessor {
                     .operation("CHECKOUT")
                     .idempotencyKey(idempotencyKey)
                     .requestHash(requestHash)
+                    .requestBodyHash(requestBodyHash)
                     .status(IdempotencyStatus.PROCESSING)
                     .expiresAt(expiresAt)
                     .build();
@@ -89,9 +91,12 @@ public class CheckoutProcessor {
 
             if (activeKey.getExpiresAt().isBefore(Instant.now())) {
                 // Key has expired: reset to PROCESSING and continue checkout normally
-                activeKey.reset(requestHash, expiresAt);
+                activeKey.reset(requestHash, requestBodyHash, expiresAt);
                 idempotencyKeyRepository.save(activeKey);
             } else {
+                if (!activeKey.getRequestBodyHash().equals(requestBodyHash)) {
+                    throw new AppException(ErrorCode.IDEMPOTENCY_KEY_CONFLICT);
+                }
                 if (!activeKey.getRequestHash().equals(requestHash)) {
                     throw new AppException(ErrorCode.IDEMPOTENCY_KEY_CONFLICT);
                 }

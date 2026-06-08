@@ -39,6 +39,9 @@ public class IdempotencyKey extends BaseEntity {
     @Column(name = "request_hash", nullable = false, length = 64)
     private String requestHash;
 
+    @Column(name = "request_body_hash", nullable = false, length = 64)
+    private String requestBodyHash;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
     private IdempotencyStatus status;
@@ -54,9 +57,10 @@ public class IdempotencyKey extends BaseEntity {
         this.responseBody = responseBody;
     }
 
-    public void reset(String requestHash, Instant expiresAt) {
+    public void reset(String requestHash, String requestBodyHash, Instant expiresAt) {
         this.status = IdempotencyStatus.PROCESSING;
         this.requestHash = requestHash;
+        this.requestBodyHash = requestBodyHash;
         this.responseBody = null;
         this.expiresAt = expiresAt;
     }

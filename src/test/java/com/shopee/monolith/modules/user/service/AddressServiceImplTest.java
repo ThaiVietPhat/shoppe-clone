@@ -242,7 +242,6 @@ class AddressServiceImplTest {
                 .isDefault(false)
                 .build();
 
-        when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(activeUser));
         when(addressRepository.findByIdAndUserId(addressId, userId)).thenReturn(Optional.of(address));
         
         List<Address> remainingList = new ArrayList<>();
@@ -252,7 +251,7 @@ class AddressServiceImplTest {
         addressService.deleteAddress(userId, addressId);
 
         verify(addressRepository).delete(address);
-        verify(addressRepository).save(remainingAddress);
+        verify(addressRepository).saveAndFlush(remainingAddress);
     }
 
     @Test

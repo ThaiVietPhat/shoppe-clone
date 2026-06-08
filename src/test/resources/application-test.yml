@@ -1,15 +1,15 @@
 spring:
-  # Testcontainers tự inject datasource URL, Redis host/port, ES uri
-  # qua @ServiceConnection trong BaseIntegrationTest
+  # Testcontainers inject datasource, Redis, and Elasticsearch connection settings.
   jpa:
-    show-sql: true                    # Bật SQL log khi test để debug
+    show-sql: true
 
   flyway:
-    enabled: true                     # Flyway chạy migration trên DB test
+    enabled: true
 
   ai:
-    openai:
-      api-key: sk-test-placeholder    # Sẽ bị mock trong IT tests
+    google:
+      genai:
+        api-key: test-google-ai-key-placeholder
 
 jwt:
   expiration: 600000

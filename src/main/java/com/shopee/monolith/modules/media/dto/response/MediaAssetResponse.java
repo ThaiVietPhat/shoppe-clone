@@ -1,8 +1,8 @@
 package com.shopee.monolith.modules.media.dto.response;
 
-import com.shopee.monolith.modules.media.entity.MediaOwnerType;
-import com.shopee.monolith.modules.media.entity.MediaPurpose;
-import com.shopee.monolith.modules.media.entity.MediaStatus;
+import com.shopee.monolith.modules.media.dto.internal.MediaOwnerTypeCode;
+import com.shopee.monolith.modules.media.dto.internal.MediaPurposeCode;
+import com.shopee.monolith.modules.media.dto.internal.MediaStatusCode;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 
@@ -19,10 +19,10 @@ public record MediaAssetResponse(
         UUID ownerId,
 
         @Schema(description = "Owner entity type", example = "SHOP")
-        MediaOwnerType ownerType,
+        MediaOwnerTypeCode ownerType,
 
         @Schema(description = "Intended usage of this media asset", example = "PRODUCT_IMAGE")
-        MediaPurpose purpose,
+        MediaPurposeCode purpose,
 
         @Schema(description = "Unique object key in storage (not original filename)", example = "3f1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d.jpg")
         String objectKey,
@@ -43,7 +43,7 @@ public record MediaAssetResponse(
         Integer height,
 
         @Schema(description = "Asset lifecycle status", example = "READY")
-        MediaStatus status,
+        MediaStatusCode status,
 
         @Schema(description = "Timestamp when uploaded")
         Instant createdAt

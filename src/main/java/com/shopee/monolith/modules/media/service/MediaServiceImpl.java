@@ -3,6 +3,8 @@ package com.shopee.monolith.modules.media.service;
 import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.modules.media.dto.internal.MediaFileData;
+import com.shopee.monolith.modules.media.dto.internal.MediaOwnerTypeCode;
+import com.shopee.monolith.modules.media.dto.internal.MediaPurposeCode;
 import com.shopee.monolith.modules.media.dto.response.MediaAssetResponse;
 import com.shopee.monolith.modules.media.dto.response.ProductMediaSummary;
 import com.shopee.monolith.modules.media.entity.MediaAsset;
@@ -60,7 +62,7 @@ public class MediaServiceImpl implements MediaService {
 
     @Override
     @Transactional
-    public MediaAssetResponse uploadImage(UUID ownerId, String ownerType, MediaPurpose purpose,
+    public MediaAssetResponse uploadImage(UUID ownerId, MediaOwnerTypeCode ownerType, MediaPurposeCode purpose,
                                           String filename, byte[] bytes, String mimeType) {
         validateFileSize(bytes);
         String detectedContentType = detectContentType(bytes);
@@ -72,8 +74,8 @@ public class MediaServiceImpl implements MediaService {
 
         MediaAsset asset = MediaAsset.builder()
                 .ownerId(ownerId)
-                .ownerType(MediaOwnerType.valueOf(ownerType))
-                .purpose(purpose)
+                .ownerType(toEntityOwnerType(ownerType))
+                .purpose(toEntityPurpose(purpose))
                 .objectKey(objectKey)
                 .originalFilename(sanitizeFilename(filename))
                 .contentType(detectedContentType)
@@ -103,9 +105,9 @@ public class MediaServiceImpl implements MediaService {
     }
 
     @Override
-    public Optional<MediaAssetResponse> findLatestReadyMedia(UUID ownerId, String ownerType, MediaPurpose purpose) {
+    public Optional<MediaAssetResponse> findLatestReadyMedia(UUID ownerId, MediaOwnerTypeCode ownerType, MediaPurposeCode purpose) {
         return mediaAssetRepository.findFirstByOwnerIdAndOwnerTypeAndPurposeAndStatusOrderByCreatedAtDesc(
-                        ownerId, MediaOwnerType.valueOf(ownerType), purpose, MediaStatus.READY)
+                        ownerId, toEntityOwnerType(ownerType), toEntityPurpose(purpose), MediaStatus.READY)
                 .map(asset -> mediaMapper.toResponse(asset, storageService.getPublicUrl(asset.getObjectKey())));
     }
 
@@ -205,6 +207,14 @@ public class MediaServiceImpl implements MediaService {
         if (bytes.length == 0) {
             throw new AppException(ErrorCode.INVALID_FILE_TYPE);
         }
+    }
+
+    private MediaPurpose toEntityPurpose(MediaPurposeCode purpose) {
+        return MediaPurpose.valueOf(purpose.name());
+    }
+
+    private MediaOwnerType toEntityOwnerType(MediaOwnerTypeCode ownerType) {
+        return MediaOwnerType.valueOf(ownerType.name());
     }
 
     private String detectContentType(byte[] bytes) {

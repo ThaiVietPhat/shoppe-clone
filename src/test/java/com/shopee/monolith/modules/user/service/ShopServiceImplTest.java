@@ -2,7 +2,8 @@ package com.shopee.monolith.modules.user.service;
 
 import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
-import com.shopee.monolith.modules.media.entity.MediaPurpose;
+import com.shopee.monolith.modules.media.dto.internal.MediaOwnerTypeCode;
+import com.shopee.monolith.modules.media.dto.internal.MediaPurposeCode;
 import com.shopee.monolith.modules.media.service.MediaService;
 import com.shopee.monolith.modules.user.dto.internal.ShopLookupData;
 import com.shopee.monolith.modules.user.dto.internal.UserAuthenticationData;
@@ -121,7 +122,7 @@ class ShopServiceImplTest {
                 .build();
 
         org.mockito.Mockito.lenient()
-                .when(mediaService.findLatestReadyMedia(shopId, "SHOP", MediaPurpose.SHOP_LOGO))
+                .when(mediaService.findLatestReadyMedia(shopId, MediaOwnerTypeCode.SHOP, MediaPurposeCode.SHOP_LOGO))
                 .thenReturn(Optional.empty());
     }
 

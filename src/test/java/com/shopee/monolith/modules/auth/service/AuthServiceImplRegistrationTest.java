@@ -7,16 +7,13 @@ import com.shopee.monolith.modules.auth.config.AuthSecurityProperties;
 import com.shopee.monolith.modules.auth.dto.request.RegisterRequest;
 import com.shopee.monolith.modules.auth.dto.request.VerifyRequest;
 import com.shopee.monolith.modules.auth.security.VerificationTokenGenerator;
+import com.shopee.monolith.modules.user.dto.command.CreateVerificationTokenCommand;
 import com.shopee.monolith.modules.user.dto.command.RegisterUserCommand;
 import com.shopee.monolith.modules.user.dto.response.UserResponse;
-import com.shopee.monolith.modules.user.entity.User;
-import com.shopee.monolith.modules.user.entity.VerificationToken;
 import com.shopee.monolith.modules.user.event.UserRegisteredEvent;
 import com.shopee.monolith.modules.user.model.Role;
-import com.shopee.monolith.modules.user.model.UserStatus;
-import com.shopee.monolith.modules.user.repository.UserRepository;
-import com.shopee.monolith.modules.user.repository.VerificationTokenRepository;
 import com.shopee.monolith.modules.user.service.UserService;
+import com.shopee.monolith.modules.user.service.UserVerificationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,13 +24,11 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.Duration;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -51,16 +46,13 @@ class AuthServiceImplRegistrationTest {
     private RefreshTokenService refreshTokenService;
 
     @Mock
-    private VerificationTokenRepository verificationTokenRepository;
+    private UserVerificationService userVerificationService;
 
     @Mock
     private VerificationTokenGenerator verificationTokenGenerator;
 
     @Mock
     private EventPayloadCryptoService eventPayloadCryptoService;
-
-    @Mock
-    private UserRepository userRepository;
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
@@ -83,12 +75,11 @@ class AuthServiceImplRegistrationTest {
         org.mockito.Mockito.when(clock.instant()).thenReturn(fixedInstant);
         authService = new AuthServiceImpl(
                 userService,
+                userVerificationService,
                 passwordEncoder,
                 refreshTokenService,
-                verificationTokenRepository,
                 verificationTokenGenerator,
                 eventPayloadCryptoService,
-                userRepository,
                 eventPublisher,
                 securityProperties,
                 clock,
@@ -131,13 +122,13 @@ class AuthServiceImplRegistrationTest {
         assertEquals(userId, response.id());
         assertEquals(email, response.email());
 
-        // Verify token saved in repository
-        ArgumentCaptor<VerificationToken> tokenCaptor = ArgumentCaptor.forClass(VerificationToken.class);
-        verify(verificationTokenRepository).save(tokenCaptor.capture());
-        VerificationToken savedToken = tokenCaptor.getValue();
-        assertEquals(userId, savedToken.getUserId());
-        assertEquals(tokenHash, savedToken.getTokenHash());
-        assertEquals(fixedInstant.plus(Duration.ofHours(24)), savedToken.getExpiresAt());
+        ArgumentCaptor<CreateVerificationTokenCommand> tokenCaptor =
+                ArgumentCaptor.forClass(CreateVerificationTokenCommand.class);
+        verify(userVerificationService).createVerificationToken(tokenCaptor.capture());
+        CreateVerificationTokenCommand savedToken = tokenCaptor.getValue();
+        assertEquals(userId, savedToken.userId());
+        assertEquals(tokenHash, savedToken.tokenHash());
+        assertEquals(fixedInstant.plus(Duration.ofHours(24)), savedToken.expiresAt());
 
         // Verify event published
         ArgumentCaptor<UserRegisteredEvent> eventCaptor = ArgumentCaptor.forClass(UserRegisteredEvent.class);
@@ -152,54 +143,25 @@ class AuthServiceImplRegistrationTest {
     void verifySuccessShouldActivateUserAndConsumeToken() {
         String rawToken = "rawOpaqueTokenString";
         String tokenHash = "sha256HashedTokenHex";
-        UUID userId = UUID.randomUUID();
-
         VerifyRequest request = new VerifyRequest(rawToken);
 
         when(verificationTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
 
-        VerificationToken verificationToken = VerificationToken.builder()
-                .userId(userId)
-                .tokenHash(tokenHash)
-                .expiresAt(fixedInstant.plus(Duration.ofHours(24)))
-                .build();
-        when(verificationTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(verificationToken));
-
-        User user = User.builder()
-                .id(userId)
-                .email("test@example.com")
-                .role(Role.BUYER)
-                .status(UserStatus.PENDING_VERIFICATION)
-                .build();
-        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
-
         authService.verify(request);
 
-        assertEquals(UserStatus.ACTIVE, user.getStatus());
-        assertTrue(verificationToken.isConsumed());
-        assertEquals(fixedInstant, verificationToken.getConsumedAt());
-
-        verify(userRepository).save(user);
-        verify(verificationTokenRepository).save(verificationToken);
+        verify(userVerificationService).verifyTokenHash(tokenHash, fixedInstant);
     }
 
     @Test
     void verifyWithExpiredTokenShouldThrowException() {
         String rawToken = "expiredTokenString";
         String tokenHash = "sha256ExpiredTokenHash";
-        UUID userId = UUID.randomUUID();
 
         VerifyRequest request = new VerifyRequest(rawToken);
 
         when(verificationTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
-
-        // Created 48 hours ago with TTL 24 hours -> expired
-        VerificationToken verificationToken = VerificationToken.builder()
-                .userId(userId)
-                .tokenHash(tokenHash)
-                .expiresAt(fixedInstant.minus(Duration.ofHours(24)))
-                .build();
-        when(verificationTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(verificationToken));
+        org.mockito.Mockito.doThrow(new AppException(ErrorCode.VERIFICATION_TOKEN_EXPIRED))
+                .when(userVerificationService).verifyTokenHash(tokenHash, fixedInstant);
 
         AppException ex = assertThrows(AppException.class, () -> authService.verify(request));
         assertEquals(ErrorCode.VERIFICATION_TOKEN_EXPIRED, ex.getErrorCode());
@@ -209,19 +171,12 @@ class AuthServiceImplRegistrationTest {
     void verifyWithReusedTokenShouldThrowException() {
         String rawToken = "reusedTokenString";
         String tokenHash = "sha256ReusedTokenHash";
-        UUID userId = UUID.randomUUID();
 
         VerifyRequest request = new VerifyRequest(rawToken);
 
         when(verificationTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
-
-        VerificationToken verificationToken = VerificationToken.builder()
-                .userId(userId)
-                .tokenHash(tokenHash)
-                .expiresAt(fixedInstant.plus(Duration.ofHours(24)))
-                .consumedAt(fixedInstant.minus(Duration.ofHours(1)))
-                .build();
-        when(verificationTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.of(verificationToken));
+        org.mockito.Mockito.doThrow(new AppException(ErrorCode.VERIFICATION_TOKEN_REUSED))
+                .when(userVerificationService).verifyTokenHash(tokenHash, fixedInstant);
 
         AppException ex = assertThrows(AppException.class, () -> authService.verify(request));
         assertEquals(ErrorCode.VERIFICATION_TOKEN_REUSED, ex.getErrorCode());
@@ -235,7 +190,8 @@ class AuthServiceImplRegistrationTest {
         VerifyRequest request = new VerifyRequest(rawToken);
 
         when(verificationTokenGenerator.hash(rawToken)).thenReturn(tokenHash);
-        when(verificationTokenRepository.findByTokenHashForUpdate(tokenHash)).thenReturn(Optional.empty());
+        org.mockito.Mockito.doThrow(new AppException(ErrorCode.INVALID_TOKEN))
+                .when(userVerificationService).verifyTokenHash(tokenHash, fixedInstant);
 
         AppException ex = assertThrows(AppException.class, () -> authService.verify(request));
         assertEquals(ErrorCode.INVALID_TOKEN, ex.getErrorCode());

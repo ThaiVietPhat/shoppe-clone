@@ -2,6 +2,8 @@ package com.shopee.monolith.modules.media.service;
 
 import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
+import com.shopee.monolith.modules.media.dto.internal.MediaOwnerTypeCode;
+import com.shopee.monolith.modules.media.dto.internal.MediaPurposeCode;
 import com.shopee.monolith.modules.media.dto.response.MediaAssetResponse;
 import com.shopee.monolith.modules.media.entity.MediaAsset;
 import com.shopee.monolith.modules.media.entity.MediaOwnerType;
@@ -79,8 +81,8 @@ class MediaServiceImplTest {
 
         MediaAssetResponse result = mediaService.uploadImage(
                 ownerId,
-                "SHOP",
-                MediaPurpose.PRODUCT_IMAGE,
+                MediaOwnerTypeCode.SHOP,
+                MediaPurposeCode.PRODUCT_IMAGE,
                 "product.png",
                 PNG_BYTES,
                 "text/plain"
@@ -97,8 +99,8 @@ class MediaServiceImplTest {
     void uploadImageWhenExtensionDoesNotMatchBytesShouldThrowException() {
         AppException ex = assertThrows(AppException.class, () -> mediaService.uploadImage(
                 UUID.randomUUID(),
-                "SHOP",
-                MediaPurpose.PRODUCT_IMAGE,
+                MediaOwnerTypeCode.SHOP,
+                MediaPurposeCode.PRODUCT_IMAGE,
                 "product.jpg",
                 PNG_BYTES,
                 "image/jpeg"
@@ -115,8 +117,8 @@ class MediaServiceImplTest {
 
         assertThrows(RuntimeException.class, () -> mediaService.uploadImage(
                 UUID.randomUUID(),
-                "SHOP",
-                MediaPurpose.PRODUCT_IMAGE,
+                MediaOwnerTypeCode.SHOP,
+                MediaPurposeCode.PRODUCT_IMAGE,
                 "product.png",
                 PNG_BYTES,
                 "image/png"

@@ -112,21 +112,26 @@ public class AddressServiceImpl implements AddressService {
     @Override
     @Transactional
     public void deleteAddress(UUID userId, UUID addressId) {
-        verifyUserActive(userId);
+        lockActiveUser(userId);
 
-        Address address = addressRepository.findByIdAndUserId(addressId, userId)
-                .orElseThrow(() -> new AppException(ErrorCode.ADDRESS_NOT_FOUND));
+        try {
+            Address address = addressRepository.findByIdAndUserId(addressId, userId)
+                    .orElseThrow(() -> new AppException(ErrorCode.ADDRESS_NOT_FOUND));
 
-        boolean wasDefault = address.isDefault();
-        addressRepository.delete(address);
+            boolean wasDefault = address.isDefault();
+            addressRepository.delete(address);
+            addressRepository.flush();
 
-        if (wasDefault) {
-            List<Address> remaining = addressRepository.findAllByUserIdOrderByIsDefaultDesc(userId);
-            if (!remaining.isEmpty()) {
-                Address newDefault = remaining.get(0);
-                newDefault.setDefault(true);
-                addressRepository.save(newDefault);
+            if (wasDefault) {
+                List<Address> remaining = addressRepository.findAllByUserIdOrderByIsDefaultDesc(userId);
+                if (!remaining.isEmpty()) {
+                    Address newDefault = remaining.get(0);
+                    newDefault.setDefault(true);
+                    addressRepository.saveAndFlush(newDefault);
+                }
             }
+        } catch (DataIntegrityViolationException e) {
+            throw new AppException(ErrorCode.CONFLICT);
         }
     }
 

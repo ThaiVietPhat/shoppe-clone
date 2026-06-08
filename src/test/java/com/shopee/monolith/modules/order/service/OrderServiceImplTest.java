@@ -118,47 +118,37 @@ class OrderServiceImplTest {
                 .expiresAt(Instant.now())
                 .build();
 
-        when(checkoutProcessor.processCheckout(any(), any(), any(), any(), any(), any(), any(), any()))
+        when(checkoutProcessor.processCheckout(any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(expectedResponse);
 
         CheckoutResponse response = orderService.checkout(buyerId, request, idempotencyKey);
 
         assertNotNull(response);
         assertEquals(expectedResponse.checkoutSessionId(), response.checkoutSessionId());
-        verify(checkoutProcessor).processCheckout(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(checkoutProcessor).processCheckout(any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
     void checkoutWhenCompletedKeyButCurrentCartDriftedShouldThrowConflict() throws Exception {
-        CheckoutResponse cachedResponse = CheckoutResponse.builder()
-                .checkoutSessionId(UUID.randomUUID())
-                .orderIds(List.of(UUID.randomUUID()))
-                .status("PENDING_PAYMENT")
-                .totalAmount(BigDecimal.TEN)
-                .expiresAt(Instant.now())
-                .build();
         IdempotencyKey completedKey = IdempotencyKey.builder()
                 .actorId(buyerId)
                 .operation("CHECKOUT")
                 .idempotencyKey(idempotencyKey)
                 .requestHash("previous-cart-hash")
+                .requestBodyHash("previous-body-hash")
                 .status(IdempotencyStatus.COMPLETED)
                 .responseBody("{}")
                 .expiresAt(Instant.now().plusSeconds(60))
                 .build();
-        UUID variantId = UUID.randomUUID();
 
         when(idempotencyKeyRepository.findByActorIdAndOperationAndIdempotencyKey(buyerId, "CHECKOUT", idempotencyKey))
                 .thenReturn(Optional.of(completedKey));
-        when(objectMapper.readValue("{}", CheckoutResponse.class)).thenReturn(cachedResponse);
-        when(cartService.getSnapshot(buyerId))
-                .thenReturn(new CartSnapshot(buyerId, List.of(new CartSnapshotItem(variantId, 3)), 2L));
 
         AppException exception = assertThrows(AppException.class, () ->
                 orderService.checkout(buyerId, request, idempotencyKey)
         );
 
         assertEquals(ErrorCode.IDEMPOTENCY_KEY_CONFLICT, exception.getErrorCode());
-        verify(checkoutProcessor, never()).processCheckout(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(checkoutProcessor, never()).processCheckout(any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 }

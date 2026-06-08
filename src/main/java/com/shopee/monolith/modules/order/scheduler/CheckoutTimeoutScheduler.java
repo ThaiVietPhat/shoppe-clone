@@ -1,9 +1,9 @@
 package com.shopee.monolith.modules.order.scheduler;
 
+import com.shopee.monolith.modules.order.config.CheckoutTimeoutProperties;
 import com.shopee.monolith.modules.order.service.CheckoutTimeoutService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -13,14 +13,12 @@ import org.springframework.stereotype.Component;
 public class CheckoutTimeoutScheduler {
 
     private final CheckoutTimeoutService timeoutService;
+    private final CheckoutTimeoutProperties properties;
 
-    @Value("${app.order.timeout.batch-size:50}")
-    private int batchSize;
-
-    @Scheduled(fixedDelayString = "${app.order.timeout.check-delay-ms:10000}")
+    @Scheduled(fixedDelayString = "#{@checkoutTimeoutProperties.checkDelay.toMillis()}")
     public void runTimeoutJob() {
         try {
-            timeoutService.processExpiredCheckouts(batchSize);
+            timeoutService.processExpiredCheckouts(properties.getBatchSize());
         } catch (Exception e) {
             log.error("Error occurred while executing checkout timeout scheduler job", e);
         }

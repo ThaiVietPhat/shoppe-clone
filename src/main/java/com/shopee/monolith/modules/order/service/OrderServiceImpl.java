@@ -45,6 +45,7 @@ public class OrderServiceImpl implements OrderService {
 
         UUID keyId = UUID.randomUUID();
         Instant expiresAt = Instant.now().plus(Duration.ofDays(1));
+        String requestBodyHash = computeRequestBodyHash(request);
 
         IdempotencyKey completedKey = null;
         CheckoutResponse cachedResponse = null;
@@ -53,6 +54,9 @@ public class OrderServiceImpl implements OrderService {
             IdempotencyKey existing = existingKeyOpt.get();
             if (existing.getExpiresAt().isAfter(Instant.now())
                     && existing.getStatus() == IdempotencyStatus.COMPLETED) {
+                if (!existing.getRequestBodyHash().equals(requestBodyHash)) {
+                    throw new AppException(ErrorCode.IDEMPOTENCY_KEY_CONFLICT);
+                }
                 try {
                     completedKey = existing;
                     cachedResponse = objectMapper.readValue(existing.getResponseBody(), CheckoutResponse.class);
@@ -97,6 +101,7 @@ public class OrderServiceImpl implements OrderService {
                 address,
                 idempotencyKey,
                 requestHash,
+                requestBodyHash,
                 keyId,
                 expiresAt,
                 cartSnapshot.items(),
@@ -106,15 +111,24 @@ public class OrderServiceImpl implements OrderService {
         return response;
     }
 
+    private String computeRequestBodyHash(CheckoutRequest request) {
+        String canonical = "address=" + (request.addressId() != null ? request.addressId() : "null");
+        return sha256Hex(canonical);
+    }
+
     private String computeRequestHash(CheckoutRequest request, CartSnapshot cartSnapshot) {
+        String cartItems = cartSnapshot.items().stream()
+                .sorted(Comparator.comparing(item -> item.variantId().toString()))
+                .map(item -> item.variantId() + ":" + item.quantity())
+                .collect(Collectors.joining(","));
+        String canonical = "bodyHash=" + computeRequestBodyHash(request)
+                + "|cartVersion=" + cartSnapshot.version()
+                + "|items=" + cartItems;
+        return sha256Hex(canonical);
+    }
+
+    private String sha256Hex(String canonical) {
         try {
-            String cartItems = cartSnapshot.items().stream()
-                    .sorted(Comparator.comparing(item -> item.variantId().toString()))
-                    .map(item -> item.variantId() + ":" + item.quantity())
-                    .collect(Collectors.joining(","));
-            String canonical = "address=" + (request.addressId() != null ? request.addressId() : "null")
-                    + "|cartVersion=" + cartSnapshot.version()
-                    + "|items=" + cartItems;
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(canonical.getBytes(StandardCharsets.UTF_8));
             StringBuilder hexString = new StringBuilder();

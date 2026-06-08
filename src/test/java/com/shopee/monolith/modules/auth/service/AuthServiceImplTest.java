@@ -9,6 +9,7 @@ import com.shopee.monolith.modules.user.dto.internal.UserAuthenticationData;
 import com.shopee.monolith.modules.user.model.Role;
 import com.shopee.monolith.modules.user.model.UserStatus;
 import com.shopee.monolith.modules.user.service.UserService;
+import com.shopee.monolith.modules.user.service.UserVerificationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,16 +40,13 @@ class AuthServiceImplTest {
     private RefreshTokenService refreshTokenService;
 
     @Mock
-    private com.shopee.monolith.modules.user.repository.VerificationTokenRepository verificationTokenRepository;
+    private UserVerificationService userVerificationService;
 
     @Mock
     private com.shopee.monolith.modules.auth.security.VerificationTokenGenerator verificationTokenGenerator;
 
     @Mock
     private EventPayloadCryptoService eventPayloadCryptoService;
-
-    @Mock
-    private com.shopee.monolith.modules.user.repository.UserRepository userRepository;
 
     @Mock
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
@@ -73,12 +71,11 @@ class AuthServiceImplTest {
     void setUp() {
         authService = new AuthServiceImpl(
                 userService,
+                userVerificationService,
                 passwordEncoder,
                 refreshTokenService,
-                verificationTokenRepository,
                 verificationTokenGenerator,
                 eventPayloadCryptoService,
-                userRepository,
                 eventPublisher,
                 securityProperties,
                 clock,

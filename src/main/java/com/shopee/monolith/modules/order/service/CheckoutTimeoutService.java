@@ -20,6 +20,9 @@ public class CheckoutTimeoutService {
     private final CheckoutTimeoutProcessor timeoutProcessor;
 
     public void processExpiredCheckouts(int batchSize) {
+        if (batchSize <= 0) {
+            throw new IllegalArgumentException("Checkout timeout batch size must be greater than zero");
+        }
         Instant now = Instant.now();
         List<UUID> expiredSessionIds = checkoutSessionRepository.findExpiredIds(
                 CheckoutSessionStatus.PENDING_PAYMENT,

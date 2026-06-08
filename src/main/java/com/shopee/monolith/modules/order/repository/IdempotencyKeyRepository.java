@@ -26,8 +26,8 @@ public interface IdempotencyKeyRepository extends JpaRepository<IdempotencyKey, 
 
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.data.jpa.repository.Query(value =
-            "INSERT INTO idempotency_keys (id, actor_id, operation, idempotency_key, request_hash, status, expires_at, created_at, updated_at) " +
-            "VALUES (:id, :actorId, :operation, :idempotencyKey, :requestHash, :status, :expiresAt, NOW(), NOW()) " +
+            "INSERT INTO idempotency_keys (id, actor_id, operation, idempotency_key, request_hash, request_body_hash, status, expires_at, created_at, updated_at) " +
+            "VALUES (:id, :actorId, :operation, :idempotencyKey, :requestHash, :requestBodyHash, :status, :expiresAt, NOW(), NOW()) " +
             "ON CONFLICT (actor_id, operation, idempotency_key) DO NOTHING", nativeQuery = true)
     int tryInsert(
             @Param("id") UUID id,
@@ -35,6 +35,7 @@ public interface IdempotencyKeyRepository extends JpaRepository<IdempotencyKey, 
             @Param("operation") String operation,
             @Param("idempotencyKey") String idempotencyKey,
             @Param("requestHash") String requestHash,
+            @Param("requestBodyHash") String requestBodyHash,
             @Param("status") String status,
             @Param("expiresAt") java.time.Instant expiresAt
     );

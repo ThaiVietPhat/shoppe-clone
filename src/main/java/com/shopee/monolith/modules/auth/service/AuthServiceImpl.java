@@ -9,16 +9,14 @@ import com.shopee.monolith.modules.auth.dto.request.RegisterRequest;
 import com.shopee.monolith.common.security.EventPayloadCryptoService;
 import com.shopee.monolith.modules.auth.dto.request.VerifyRequest;
 import com.shopee.monolith.modules.auth.security.VerificationTokenGenerator;
+import com.shopee.monolith.modules.user.dto.command.CreateVerificationTokenCommand;
 import com.shopee.monolith.modules.user.dto.command.RegisterUserCommand;
 import com.shopee.monolith.modules.user.dto.internal.UserAuthenticationData;
 import com.shopee.monolith.modules.user.dto.response.UserResponse;
-import com.shopee.monolith.modules.user.entity.User;
-import com.shopee.monolith.modules.user.entity.VerificationToken;
 import com.shopee.monolith.modules.user.event.UserRegisteredEvent;
 import com.shopee.monolith.modules.user.model.UserStatus;
-import com.shopee.monolith.modules.user.repository.UserRepository;
-import com.shopee.monolith.modules.user.repository.VerificationTokenRepository;
 import com.shopee.monolith.modules.user.service.UserService;
+import com.shopee.monolith.modules.user.service.UserVerificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -36,12 +34,11 @@ import java.util.UUID;
 public class AuthServiceImpl implements AuthService {
 
     private final UserService userService;
+    private final UserVerificationService userVerificationService;
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenService refreshTokenService;
-    private final VerificationTokenRepository verificationTokenRepository;
     private final VerificationTokenGenerator verificationTokenGenerator;
     private final EventPayloadCryptoService eventPayloadCryptoService;
-    private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final AuthSecurityProperties securityProperties;
     private final Clock clock;
@@ -82,13 +79,11 @@ public class AuthServiceImpl implements AuthService {
 
         Instant expiresAt = Instant.now(clock).plus(securityProperties.getVerificationToken().getTtl());
 
-        VerificationToken verificationToken = VerificationToken.builder()
-                .userId(userResponse.id())
-                .tokenHash(tokenHash)
-                .expiresAt(expiresAt)
-                .build();
-
-        verificationTokenRepository.save(verificationToken);
+        userVerificationService.createVerificationToken(new CreateVerificationTokenCommand(
+                userResponse.id(),
+                tokenHash,
+                expiresAt
+        ));
 
         // Encrypt the raw token for transmission via event (safe for Modulith event log)
         String encryptedToken = eventPayloadCryptoService.encrypt(rawToken);
@@ -105,32 +100,7 @@ public class AuthServiceImpl implements AuthService {
         Instant now = Instant.now(clock);
         String tokenHash = verificationTokenGenerator.hash(request.token());
 
-        // Lock verification token row
-        VerificationToken verificationToken = verificationTokenRepository.findByTokenHashForUpdate(tokenHash)
-                .orElseThrow(() -> new AppException(ErrorCode.INVALID_TOKEN));
-
-        if (verificationToken.isConsumed()) {
-            throw new AppException(ErrorCode.VERIFICATION_TOKEN_REUSED);
-        }
-
-        if (verificationToken.isExpired(now)) {
-            throw new AppException(ErrorCode.VERIFICATION_TOKEN_EXPIRED);
-        }
-
-        // Lock user row
-        User user = userRepository.findByIdForUpdate(verificationToken.getUserId())
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
-        if (user.getStatus() == UserStatus.LOCKED || user.getStatus() == UserStatus.INACTIVE) {
-            throw new AppException(ErrorCode.ACCOUNT_NOT_ACTIVE);
-        }
-
-        // Activate user and consume token
-        user.activate();
-        verificationToken.consume(now);
-
-        userRepository.save(user);
-        verificationTokenRepository.save(verificationToken);
+        userVerificationService.verifyTokenHash(tokenHash, now);
     }
 
     private void validateUserStatus(UserStatus status) {
