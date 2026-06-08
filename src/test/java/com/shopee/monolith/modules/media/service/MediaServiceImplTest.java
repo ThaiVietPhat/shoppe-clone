@@ -8,6 +8,7 @@ import com.shopee.monolith.modules.media.entity.MediaOwnerType;
 import com.shopee.monolith.modules.media.entity.MediaPurpose;
 import com.shopee.monolith.modules.media.entity.MediaStatus;
 import com.shopee.monolith.modules.media.entity.ProductMedia;
+import com.shopee.monolith.modules.media.entity.ProductMediaId;
 import com.shopee.monolith.modules.media.mapper.MediaMapper;
 import com.shopee.monolith.modules.media.repository.MediaAssetRepository;
 import com.shopee.monolith.modules.media.repository.ProductMediaRepository;
@@ -233,5 +234,56 @@ class MediaServiceImplTest {
         assertEquals(mediaId, productMediaCaptor.getValue().getId().getMediaId());
         assertEquals(0, productMediaCaptor.getValue().getSortOrder());
         assertEquals(true, productMediaCaptor.getValue().isCover());
+    }
+
+    @Test
+    void listProductMediaShouldOnlyReturnReadyAssets() {
+        UUID productId = UUID.randomUUID();
+        UUID readyMediaId = UUID.randomUUID();
+        UUID deletedMediaId = UUID.randomUUID();
+        ProductMedia readyLink = ProductMedia.builder()
+                .id(new ProductMediaId(productId, readyMediaId))
+                .sortOrder(0)
+                .cover(true)
+                .build();
+        ProductMedia deletedLink = ProductMedia.builder()
+                .id(new ProductMediaId(productId, deletedMediaId))
+                .sortOrder(1)
+                .cover(false)
+                .build();
+        MediaAsset readyAsset = MediaAsset.builder()
+                .id(readyMediaId)
+                .ownerId(UUID.randomUUID())
+                .ownerType(MediaOwnerType.SHOP)
+                .purpose(MediaPurpose.PRODUCT_IMAGE)
+                .objectKey("ready.png")
+                .contentType("image/png")
+                .sizeBytes(PNG_BYTES.length)
+                .status(MediaStatus.READY)
+                .build();
+        MediaAsset deletedAsset = MediaAsset.builder()
+                .id(deletedMediaId)
+                .ownerId(UUID.randomUUID())
+                .ownerType(MediaOwnerType.SHOP)
+                .purpose(MediaPurpose.PRODUCT_IMAGE)
+                .objectKey("deleted.png")
+                .contentType("image/png")
+                .sizeBytes(PNG_BYTES.length)
+                .status(MediaStatus.DELETED)
+                .build();
+
+        when(productMediaRepository.findAllByIdProductIdOrderBySortOrder(productId))
+                .thenReturn(List.of(readyLink, deletedLink));
+        when(mediaAssetRepository.findAllById(List.of(readyMediaId, deletedMediaId)))
+                .thenReturn(List.of(readyAsset, deletedAsset));
+        when(storageService.getPublicUrl("ready.png")).thenReturn("http://localhost/media/ready.png");
+
+        List<com.shopee.monolith.modules.media.dto.response.ProductMediaSummary> result =
+                mediaService.listProductMedia(productId);
+
+        assertEquals(1, result.size());
+        assertEquals(readyMediaId, result.get(0).mediaId());
+        assertEquals("http://localhost/media/ready.png", result.get(0).publicUrl());
+        verify(storageService, never()).getPublicUrl("deleted.png");
     }
 }

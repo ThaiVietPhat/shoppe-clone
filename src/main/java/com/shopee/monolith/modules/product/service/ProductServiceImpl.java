@@ -44,8 +44,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.util.Collections;
@@ -192,7 +190,7 @@ public class ProductServiceImpl implements ProductService {
             replaceProductMedia(ownerId, request.shopId(), product.getId(), request.mediaIds());
         }
 
-        publishAfterCommit(new ProductCreatedEvent(product.getId(), product.getShopId()));
+        eventPublisher.publishEvent(new ProductCreatedEvent(product.getId(), product.getShopId()));
         publishCatalogSnapshot(product, List.of());
 
         return productMapper.toResponse(product, List.of());
@@ -221,7 +219,7 @@ public class ProductServiceImpl implements ProductService {
         }
 
         List<ProductVariant> variants = productVariantRepository.findAllByProductId(productId);
-        publishAfterCommit(new ProductUpdatedEvent(product.getId(), product.getShopId()));
+        eventPublisher.publishEvent(new ProductUpdatedEvent(product.getId(), product.getShopId()));
         publishCatalogSnapshot(product, variants);
 
         List<ProductVariantResponse> variantResponses = variants.stream()
@@ -337,7 +335,7 @@ public class ProductServiceImpl implements ProductService {
 
         List<ProductVariant> variants = productVariantRepository.findAllByProductId(productId);
 
-        publishAfterCommit(new ProductListingStatusChangedEvent(
+        eventPublisher.publishEvent(new ProductListingStatusChangedEvent(
                 product.getId(), product.getShopId(), ProductStatus.ACTIVE));
         publishCatalogSnapshot(product, variants);
 
@@ -356,7 +354,7 @@ public class ProductServiceImpl implements ProductService {
 
         List<ProductVariant> variants = productVariantRepository.findAllByProductId(productId);
 
-        publishAfterCommit(new ProductListingStatusChangedEvent(
+        eventPublisher.publishEvent(new ProductListingStatusChangedEvent(
                 product.getId(), product.getShopId(), ProductStatus.INACTIVE));
         publishCatalogSnapshot(product, variants);
 
@@ -378,7 +376,7 @@ public class ProductServiceImpl implements ProductService {
         product.softDelete();
         productRepository.save(product);
 
-        publishAfterCommit(new ProductListingStatusChangedEvent(
+        eventPublisher.publishEvent(new ProductListingStatusChangedEvent(
                 product.getId(), product.getShopId(), ProductStatus.DELETED));
         List<ProductVariant> variants = productVariantRepository.findAllByProductId(productId);
         publishCatalogSnapshot(product, variants);
@@ -571,10 +569,10 @@ public class ProductServiceImpl implements ProductService {
         product = productRepository.save(product);
         List<ProductVariant> variants = productVariantRepository.findAllByProductId(product.getId());
         if (unpublished) {
-            publishAfterCommit(new ProductListingStatusChangedEvent(
+            eventPublisher.publishEvent(new ProductListingStatusChangedEvent(
                     product.getId(), product.getShopId(), ProductStatus.INACTIVE));
         } else {
-            publishAfterCommit(new ProductUpdatedEvent(product.getId(), product.getShopId()));
+            eventPublisher.publishEvent(new ProductUpdatedEvent(product.getId(), product.getShopId()));
         }
         publishCatalogSnapshot(product, variants);
     }
@@ -596,7 +594,7 @@ public class ProductServiceImpl implements ProductService {
                         v.getId(), v.getSku(), v.getPrice(), v.getOptionLabels(), v.isActive()))
                 .toList();
 
-        publishAfterCommit(new ProductCatalogSnapshotEvent(
+        eventPublisher.publishEvent(new ProductCatalogSnapshotEvent(
                 product.getId(),
                 product.getShopId(),
                 product.getStatus(),
@@ -617,19 +615,6 @@ public class ProductServiceImpl implements ProductService {
                 eligibilityIssues,
                 variantSnapshots
         ));
-    }
-
-    private void publishAfterCommit(Object event) {
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            eventPublisher.publishEvent(event);
-            return;
-        }
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                eventPublisher.publishEvent(event);
-            }
-        });
     }
 
     private PagedResponse<ProductResponse> toPagedResponse(Page<Product> productPage) {

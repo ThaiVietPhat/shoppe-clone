@@ -44,8 +44,6 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -256,37 +254,6 @@ class ProductServiceImplTest {
         assertEquals(BigDecimal.valueOf(4.80), snapshot.shopRating());
         assertFalse(snapshot.checkoutEligible());
         assertTrue(snapshot.eligibilityIssues().contains(ProductEligibilityIssue.NO_ACTIVE_VARIANT));
-    }
-
-    @Test
-    void createProductWhenTransactionActiveShouldPublishSnapshotAfterCommit() {
-        CreateProductRequest req = CreateProductRequest.builder()
-                .shopId(shopId)
-                .categoryId(categoryId)
-                .name("iPhone 15")
-                .description("Titanium")
-                .brand("Apple")
-                .build();
-
-        when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
-        when(categoryRepository.existsById(categoryId)).thenReturn(true);
-        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
-        when(productRepository.save(any(Product.class))).thenReturn(product);
-        when(productMapper.toResponse(any(Product.class), any())).thenReturn(productResponse);
-
-        TransactionSynchronizationManager.initSynchronization();
-        try {
-            productService.createProduct(ownerId, req);
-
-            verify(eventPublisher, never()).publishEvent(any(ProductCatalogSnapshotEvent.class));
-            TransactionSynchronizationManager.getSynchronizations()
-                    .forEach(TransactionSynchronization::afterCommit);
-        } finally {
-            TransactionSynchronizationManager.clearSynchronization();
-        }
-
-        verify(eventPublisher).publishEvent(any(ProductCatalogSnapshotEvent.class));
-        verify(eventPublisher).publishEvent(any(ProductCreatedEvent.class));
     }
 
     @Test

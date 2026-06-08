@@ -290,20 +290,20 @@ public class MediaServiceImpl implements MediaService {
     private List<ProductMediaSummary> buildSummaries(List<ProductMedia> list) {
         List<UUID> mediaIds = list.stream().map(pm -> pm.getId().getMediaId()).toList();
         Map<UUID, MediaAsset> assetMap = mediaAssetRepository.findAllById(mediaIds).stream()
+                .filter(asset -> asset.getStatus() == MediaStatus.READY)
                 .collect(Collectors.toMap(MediaAsset::getId, a -> a));
 
         return list.stream()
+                .filter(pm -> assetMap.containsKey(pm.getId().getMediaId()))
                 .map(pm -> {
                     UUID mediaId = pm.getId().getMediaId();
                     MediaAsset asset = assetMap.get(mediaId);
-                    String publicUrl = asset != null
-                            ? storageService.getPublicUrl(asset.getObjectKey())
-                            : null;
+                    String publicUrl = storageService.getPublicUrl(asset.getObjectKey());
                     return ProductMediaSummary.builder()
                             .mediaId(mediaId)
                             .publicUrl(publicUrl)
-                            .objectKey(asset != null ? asset.getObjectKey() : null)
-                            .contentType(asset != null ? asset.getContentType() : null)
+                            .objectKey(asset.getObjectKey())
+                            .contentType(asset.getContentType())
                             .sortOrder(pm.getSortOrder())
                             .cover(pm.isCover())
                             .build();
