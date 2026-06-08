@@ -131,6 +131,7 @@ class ProductServiceImplTest {
                 .name("iPhone 15")
                 .description("Titanium")
                 .brand("Apple")
+                .sellerSku("APPLE-IP15-REF")
                 .attributes(Map.of("storage", "256GB"))
                 .createdAt(Instant.now())
                 .updatedAt(Instant.now())
@@ -245,6 +246,7 @@ class ProductServiceImplTest {
         assertEquals(shopId, snapshot.shopId());
         assertEquals("Electronics", snapshot.categoryPath());
         assertEquals("Apple", snapshot.brand());
+        assertEquals("APPLE-IP15-REF", snapshot.sellerSku());
         assertEquals(Map.of("storage", "256GB"), snapshot.attributes());
         assertEquals("http://localhost/media/cover.png", snapshot.coverImageUrl());
         assertEquals(cover.mediaId(), snapshot.coverMediaId());
@@ -539,6 +541,7 @@ class ProductServiceImplTest {
                 .status(ProductStatus.ACTIVE)
                 .name("iPhone 15")
                 .brand("Apple")
+                .sellerSku("APPLE-IP15-REF")
                 .minPrice(BigDecimal.valueOf(999.00))
                 .maxPrice(BigDecimal.valueOf(1299.00))
                 .createdAt(Instant.now())
@@ -578,6 +581,7 @@ class ProductServiceImplTest {
         ProductCardResponse card = result.items().get(0);
 
         assertEquals(cover.mediaId(), card.coverMediaId());
+        assertEquals("APPLE-IP15-REF", card.sellerSku());
         assertEquals("image/png", card.coverContentType());
         assertEquals(BigDecimal.valueOf(4.85), card.shopRating());
         assertTrue(card.checkoutEligible());

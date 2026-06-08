@@ -602,6 +602,7 @@ public class ProductServiceImpl implements ProductService {
                 product.getDescription(),
                 resolveCategory(product.getCategoryId()),
                 product.getBrand(),
+                product.getSellerSku(),
                 product.getAttributes(),
                 product.getMinPrice(),
                 product.getMaxPrice(),
@@ -671,6 +672,7 @@ public class ProductServiceImpl implements ProductService {
                     .id(p.getId())
                     .name(p.getName())
                     .brand(p.getBrand())
+                    .sellerSku(p.getSellerSku())
                     .coverImageUrl(cover != null ? cover.publicUrl() : null)
                     .coverMediaId(cover != null ? cover.mediaId() : null)
                     .coverObjectKey(cover != null ? cover.objectKey() : null)

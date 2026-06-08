@@ -21,6 +21,7 @@ public record ProductCatalogSnapshotEvent(
         String description,
         String categoryPath,
         String brand,
+        String sellerSku,
         Map<String, Object> attributes,
         BigDecimal minPrice,
         BigDecimal maxPrice,

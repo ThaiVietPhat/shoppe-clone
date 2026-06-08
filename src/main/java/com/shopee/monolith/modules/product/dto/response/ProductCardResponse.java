@@ -22,6 +22,9 @@ public record ProductCardResponse(
         @Schema(description = "Brand name", example = "Apple")
         String brand,
 
+        @Schema(description = "Seller reference SKU, when available", example = "APPLE-IP15PRO-2024")
+        String sellerSku,
+
         @Schema(description = "Public URL of the cover image (null if no cover)")
         String coverImageUrl,
 
