@@ -5,6 +5,7 @@ import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.modules.inventory.dto.command.ReserveInventoryCommand;
 import com.shopee.monolith.modules.inventory.service.InventoryService;
+import com.shopee.monolith.modules.cart.dto.internal.CartSnapshotItem;
 import com.shopee.monolith.modules.order.dto.response.CheckoutResponse;
 import com.shopee.monolith.modules.order.entity.CheckoutSession;
 import com.shopee.monolith.modules.order.entity.IdempotencyKey;
@@ -20,6 +21,9 @@ import com.shopee.monolith.modules.order.repository.IdempotencyKeyRepository;
 import com.shopee.monolith.modules.order.repository.InventoryReservationRepository;
 import com.shopee.monolith.modules.order.repository.OrderItemRepository;
 import com.shopee.monolith.modules.order.repository.OrderRepository;
+import com.shopee.monolith.modules.product.dto.internal.ProductLookupData;
+import com.shopee.monolith.modules.product.dto.internal.VariantLookupData;
+import com.shopee.monolith.modules.product.service.ProductService;
 import com.shopee.monolith.modules.user.dto.response.AddressResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -48,12 +52,13 @@ public class CheckoutProcessor {
     private final OrderItemRepository orderItemRepository;
     private final InventoryReservationRepository inventoryReservationRepository;
     private final InventoryService inventoryService;
+    private final ProductService productService;
     private final ObjectMapper objectMapper;
 
     @Transactional
     public CheckoutResponse processCheckout(UUID buyerId, AddressResponse address, String idempotencyKey,
                                             String requestHash, UUID keyId, Instant expiresAt,
-                                            List<OrderServiceImpl.CartItemWithDetails> resolvedItems,
+                                            List<CartSnapshotItem> cartItems,
                                             Runnable postCommitAction) {
 
         int inserted = idempotencyKeyRepository.tryInsert(
@@ -104,6 +109,8 @@ public class CheckoutProcessor {
                 }
             }
         }
+
+        List<OrderServiceImpl.CartItemWithDetails> resolvedItems = resolveCheckoutItemsForUpdate(cartItems);
 
         BigDecimal totalAmount = BigDecimal.ZERO;
         List<OrderCreationInfo> orderCreationInfos = new ArrayList<>();
@@ -183,26 +190,8 @@ public class CheckoutProcessor {
             orderCreationInfos.add(new OrderCreationInfo(order, orderItems));
         }
 
-        // Update total amount on checkout session
-        CheckoutSession sessionToUpdate = CheckoutSession.builder()
-                .id(session.getId())
-                .buyerId(session.getBuyerId())
-                .status(session.getStatus())
-                .totalAmount(totalAmount)
-                .shippingRecipientName(session.getShippingRecipientName())
-                .shippingPhone(session.getShippingPhone())
-                .shippingAddressLine(session.getShippingAddressLine())
-                .shippingWardCode(session.getShippingWardCode())
-                .shippingWardName(session.getShippingWardName())
-                .shippingDistrictCode(session.getShippingDistrictCode())
-                .shippingDistrictName(session.getShippingDistrictName())
-                .shippingProvinceCode(session.getShippingProvinceCode())
-                .shippingProvinceName(session.getShippingProvinceName())
-                .expiresAt(session.getExpiresAt())
-                .createdAt(session.getCreatedAt())
-                .updatedAt(session.getUpdatedAt())
-                .build();
-        checkoutSessionRepository.save(sessionToUpdate);
+        session.updateTotalAmount(totalAmount);
+        checkoutSessionRepository.save(session);
 
         // Reserve inventory (this internally does SELECT FOR UPDATE on inventories table)
         inventoryService.reserve(reserveCommands);
@@ -261,4 +250,19 @@ public class CheckoutProcessor {
             Order order,
             List<OrderItem> items
     ) {}
+
+    private List<OrderServiceImpl.CartItemWithDetails> resolveCheckoutItemsForUpdate(List<CartSnapshotItem> cartItems) {
+        return cartItems.stream()
+                .sorted(java.util.Comparator.comparing(CartSnapshotItem::variantId))
+                .map(this::resolveCheckoutItemForUpdate)
+                .toList();
+    }
+
+    private OrderServiceImpl.CartItemWithDetails resolveCheckoutItemForUpdate(CartSnapshotItem item) {
+        VariantLookupData variant = productService.findActiveVariantLookupDataByIdForCheckout(item.variantId())
+                .orElseThrow(() -> new AppException(ErrorCode.VARIANT_NOT_FOUND));
+        ProductLookupData product = productService.findActiveProductLookupDataByIdForCheckout(variant.productId())
+                .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
+        return new OrderServiceImpl.CartItemWithDetails(item, variant, product);
+    }
 }

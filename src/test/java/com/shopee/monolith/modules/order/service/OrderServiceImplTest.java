@@ -7,10 +7,9 @@ import com.shopee.monolith.modules.cart.dto.internal.CartSnapshotItem;
 import com.shopee.monolith.modules.cart.service.CartService;
 import com.shopee.monolith.modules.order.dto.request.CheckoutRequest;
 import com.shopee.monolith.modules.order.dto.response.CheckoutResponse;
-import com.shopee.monolith.modules.product.dto.internal.ProductLookupData;
-import com.shopee.monolith.modules.product.dto.internal.VariantLookupData;
-import com.shopee.monolith.modules.product.service.ProductService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.shopee.monolith.modules.order.entity.IdempotencyKey;
+import com.shopee.monolith.modules.order.model.IdempotencyStatus;
 import com.shopee.monolith.modules.order.repository.IdempotencyKeyRepository;
 import com.shopee.monolith.modules.user.dto.response.AddressResponse;
 import com.shopee.monolith.modules.user.service.AddressService;
@@ -33,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -43,8 +43,6 @@ class OrderServiceImplTest {
     private CheckoutProcessor checkoutProcessor;
     @Mock
     private CartService cartService;
-    @Mock
-    private ProductService productService;
     @Mock
     private IdempotencyKeyRepository idempotencyKeyRepository;
     @Mock
@@ -96,7 +94,6 @@ class OrderServiceImplTest {
 
     @Test
     void checkoutWhenCartIsEmptyShouldThrowException() {
-        when(addressService.resolveCheckoutAddress(buyerId, request.addressId())).thenReturn(address);
         when(cartService.getSnapshot(buyerId)).thenReturn(new CartSnapshot(buyerId, Collections.emptyList(), 1L));
 
         AppException exception = assertThrows(AppException.class, () ->
@@ -112,22 +109,6 @@ class OrderServiceImplTest {
         UUID variantId = UUID.randomUUID();
         CartSnapshotItem item = new CartSnapshotItem(variantId, 2);
         when(cartService.getSnapshot(buyerId)).thenReturn(new CartSnapshot(buyerId, List.of(item), 1L));
-
-        VariantLookupData variant = VariantLookupData.builder()
-                .id(variantId)
-                .productId(UUID.randomUUID())
-                .sku("SKU-TEST")
-                .name("Test Variant")
-                .price(BigDecimal.TEN)
-                .build();
-        ProductLookupData product = ProductLookupData.builder()
-                .id(variant.productId())
-                .shopId(UUID.randomUUID())
-                .name("Test Product")
-                .build();
-
-        when(productService.findActiveVariantLookupDataById(variantId)).thenReturn(Optional.of(variant));
-        when(productService.findActiveProductLookupDataById(variant.productId())).thenReturn(Optional.of(product));
 
         CheckoutResponse expectedResponse = CheckoutResponse.builder()
                 .checkoutSessionId(UUID.randomUUID())
@@ -145,5 +126,39 @@ class OrderServiceImplTest {
         assertNotNull(response);
         assertEquals(expectedResponse.checkoutSessionId(), response.checkoutSessionId());
         verify(checkoutProcessor).processCheckout(any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void checkoutWhenCompletedKeyButCurrentCartDriftedShouldThrowConflict() throws Exception {
+        CheckoutResponse cachedResponse = CheckoutResponse.builder()
+                .checkoutSessionId(UUID.randomUUID())
+                .orderIds(List.of(UUID.randomUUID()))
+                .status("PENDING_PAYMENT")
+                .totalAmount(BigDecimal.TEN)
+                .expiresAt(Instant.now())
+                .build();
+        IdempotencyKey completedKey = IdempotencyKey.builder()
+                .actorId(buyerId)
+                .operation("CHECKOUT")
+                .idempotencyKey(idempotencyKey)
+                .requestHash("previous-cart-hash")
+                .status(IdempotencyStatus.COMPLETED)
+                .responseBody("{}")
+                .expiresAt(Instant.now().plusSeconds(60))
+                .build();
+        UUID variantId = UUID.randomUUID();
+
+        when(idempotencyKeyRepository.findByActorIdAndOperationAndIdempotencyKey(buyerId, "CHECKOUT", idempotencyKey))
+                .thenReturn(Optional.of(completedKey));
+        when(objectMapper.readValue("{}", CheckoutResponse.class)).thenReturn(cachedResponse);
+        when(cartService.getSnapshot(buyerId))
+                .thenReturn(new CartSnapshot(buyerId, List.of(new CartSnapshotItem(variantId, 3)), 2L));
+
+        AppException exception = assertThrows(AppException.class, () ->
+                orderService.checkout(buyerId, request, idempotencyKey)
+        );
+
+        assertEquals(ErrorCode.IDEMPOTENCY_KEY_CONFLICT, exception.getErrorCode());
+        verify(checkoutProcessor, never()).processCheckout(any(), any(), any(), any(), any(), any(), any(), any());
     }
 }

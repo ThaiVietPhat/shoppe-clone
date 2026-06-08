@@ -1,7 +1,9 @@
 package com.shopee.monolith.modules.product.repository;
 
 import com.shopee.monolith.modules.product.entity.ProductVariant;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -22,6 +24,13 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
     @Query("SELECT v FROM ProductVariant v JOIN Product p ON p.id = v.productId "
             + "WHERE v.id = :variantId AND v.active = true AND v.price > 0 AND p.status = :status")
     Optional<ProductVariant> findActiveByIdAndProductStatus(
+            @Param("variantId") UUID variantId,
+            @Param("status") com.shopee.monolith.modules.product.entity.ProductStatus status);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT v FROM ProductVariant v JOIN Product p ON p.id = v.productId "
+            + "WHERE v.id = :variantId AND v.active = true AND v.price > 0 AND p.status = :status")
+    Optional<ProductVariant> findActiveByIdAndProductStatusForUpdate(
             @Param("variantId") UUID variantId,
             @Param("status") com.shopee.monolith.modules.product.entity.ProductStatus status);
 

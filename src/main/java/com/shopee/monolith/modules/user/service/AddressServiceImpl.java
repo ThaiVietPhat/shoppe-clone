@@ -9,7 +9,9 @@ import com.shopee.monolith.modules.user.entity.Address;
 import com.shopee.monolith.modules.user.mapper.AddressMapper;
 import com.shopee.monolith.modules.user.model.UserStatus;
 import com.shopee.monolith.modules.user.repository.AddressRepository;
+import com.shopee.monolith.modules.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,35 +27,40 @@ public class AddressServiceImpl implements AddressService {
     private final AddressRepository addressRepository;
     private final AddressMapper addressMapper;
     private final UserService userService;
+    private final UserRepository userRepository;
 
     @Override
     @Transactional
     public AddressResponse createAddress(UUID userId, AddressRequest request) {
-        verifyUserActive(userId);
+        lockActiveUser(userId);
 
-        List<Address> existing = addressRepository.findAllByUserIdOrderByIsDefaultDesc(userId);
-        boolean shouldBeDefault = existing.isEmpty() || request.isDefault();
+        try {
+            List<Address> existing = addressRepository.findAllByUserIdOrderByIsDefaultDesc(userId);
+            boolean shouldBeDefault = existing.isEmpty() || request.isDefault();
 
-        if (shouldBeDefault) {
-            addressRepository.resetDefaultAddresses(userId);
+            if (shouldBeDefault) {
+                addressRepository.resetDefaultAddresses(userId);
+            }
+
+            Address address = Address.builder()
+                    .userId(userId)
+                    .recipientName(request.recipientName())
+                    .phone(request.phone())
+                    .addressLine(request.addressLine())
+                    .wardCode(request.wardCode())
+                    .wardName(request.wardName())
+                    .districtCode(request.districtCode())
+                    .districtName(request.districtName())
+                    .provinceCode(request.provinceCode())
+                    .provinceName(request.provinceName())
+                    .isDefault(shouldBeDefault)
+                    .build();
+
+            Address saved = addressRepository.saveAndFlush(address);
+            return addressMapper.toResponse(saved);
+        } catch (DataIntegrityViolationException e) {
+            throw new AppException(ErrorCode.CONFLICT);
         }
-
-        Address address = Address.builder()
-                .userId(userId)
-                .recipientName(request.recipientName())
-                .phone(request.phone())
-                .addressLine(request.addressLine())
-                .wardCode(request.wardCode())
-                .wardName(request.wardName())
-                .districtCode(request.districtCode())
-                .districtName(request.districtName())
-                .provinceCode(request.provinceCode())
-                .provinceName(request.provinceName())
-                .isDefault(shouldBeDefault)
-                .build();
-
-        Address saved = addressRepository.save(address);
-        return addressMapper.toResponse(saved);
     }
 
     @Override
@@ -66,36 +73,40 @@ public class AddressServiceImpl implements AddressService {
     @Override
     @Transactional
     public AddressResponse updateAddress(UUID userId, UUID addressId, AddressRequest request) {
-        verifyUserActive(userId);
+        lockActiveUser(userId);
 
-        Address address = addressRepository.findByIdAndUserId(addressId, userId)
-                .orElseThrow(() -> new AppException(ErrorCode.ADDRESS_NOT_FOUND));
+        try {
+            Address address = addressRepository.findByIdAndUserId(addressId, userId)
+                    .orElseThrow(() -> new AppException(ErrorCode.ADDRESS_NOT_FOUND));
 
-        List<Address> existing = addressRepository.findAllByUserIdOrderByIsDefaultDesc(userId);
-        // Invariant: at least one address must always be default.
-        // If the address being updated is currently default, ignore isDefault=false from request.
-        boolean keepDefault = address.isDefault() && !request.isDefault();
-        boolean shouldBeDefault = keepDefault || (existing.size() == 1) || request.isDefault();
+            List<Address> existing = addressRepository.findAllByUserIdOrderByIsDefaultDesc(userId);
+            // Invariant: at least one address must always be default.
+            // If the address being updated is currently default, ignore isDefault=false from request.
+            boolean keepDefault = address.isDefault() && !request.isDefault();
+            boolean shouldBeDefault = keepDefault || (existing.size() == 1) || request.isDefault();
 
-        if (shouldBeDefault && !address.isDefault()) {
-            addressRepository.resetDefaultAddresses(userId);
+            if (shouldBeDefault && !address.isDefault()) {
+                addressRepository.resetDefaultAddresses(userId);
+            }
+
+            address.update(
+                    request.recipientName(),
+                    request.phone(),
+                    request.addressLine(),
+                    request.wardCode(),
+                    request.wardName(),
+                    request.districtCode(),
+                    request.districtName(),
+                    request.provinceCode(),
+                    request.provinceName(),
+                    shouldBeDefault
+            );
+
+            Address updated = addressRepository.saveAndFlush(address);
+            return addressMapper.toResponse(updated);
+        } catch (DataIntegrityViolationException e) {
+            throw new AppException(ErrorCode.CONFLICT);
         }
-
-        address.update(
-                request.recipientName(),
-                request.phone(),
-                request.addressLine(),
-                request.wardCode(),
-                request.wardName(),
-                request.districtCode(),
-                request.districtName(),
-                request.provinceCode(),
-                request.provinceName(),
-                shouldBeDefault
-        );
-
-        Address updated = addressRepository.save(address);
-        return addressMapper.toResponse(updated);
     }
 
     @Override
@@ -122,18 +133,22 @@ public class AddressServiceImpl implements AddressService {
     @Override
     @Transactional
     public AddressResponse setDefaultAddress(UUID userId, UUID addressId) {
-        verifyUserActive(userId);
+        lockActiveUser(userId);
 
-        Address address = addressRepository.findByIdAndUserId(addressId, userId)
-                .orElseThrow(() -> new AppException(ErrorCode.ADDRESS_NOT_FOUND));
+        try {
+            Address address = addressRepository.findByIdAndUserId(addressId, userId)
+                    .orElseThrow(() -> new AppException(ErrorCode.ADDRESS_NOT_FOUND));
 
-        if (!address.isDefault()) {
-            addressRepository.resetDefaultAddresses(userId);
-            address.setDefault(true);
-            address = addressRepository.save(address);
+            if (!address.isDefault()) {
+                addressRepository.resetDefaultAddresses(userId);
+                address.setDefault(true);
+                address = addressRepository.saveAndFlush(address);
+            }
+
+            return addressMapper.toResponse(address);
+        } catch (DataIntegrityViolationException e) {
+            throw new AppException(ErrorCode.CONFLICT);
         }
-
-        return addressMapper.toResponse(address);
     }
 
     @Override
@@ -166,6 +181,14 @@ public class AddressServiceImpl implements AddressService {
         UserAuthenticationData userAuth = userService.findAuthenticationDataById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         if (userAuth.status() != UserStatus.ACTIVE) {
+            throw new AppException(ErrorCode.ACCOUNT_NOT_ACTIVE);
+        }
+    }
+
+    private void lockActiveUser(UUID userId) {
+        var user = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        if (user.getStatus() != UserStatus.ACTIVE) {
             throw new AppException(ErrorCode.ACCOUNT_NOT_ACTIVE);
         }
     }

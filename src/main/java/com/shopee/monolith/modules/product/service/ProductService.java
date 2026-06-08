@@ -70,4 +70,8 @@ public interface ProductService {
     Optional<ProductLookupData> findActiveProductLookupDataById(UUID productId);
 
     Optional<VariantLookupData> findActiveVariantLookupDataById(UUID variantId);
+
+    Optional<ProductLookupData> findActiveProductLookupDataByIdForCheckout(UUID productId);
+
+    Optional<VariantLookupData> findActiveVariantLookupDataByIdForCheckout(UUID variantId);
 }

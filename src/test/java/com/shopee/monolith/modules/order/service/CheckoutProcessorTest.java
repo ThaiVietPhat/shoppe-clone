@@ -17,6 +17,7 @@ import com.shopee.monolith.modules.order.repository.OrderItemRepository;
 import com.shopee.monolith.modules.order.repository.OrderRepository;
 import com.shopee.monolith.modules.product.dto.internal.ProductLookupData;
 import com.shopee.monolith.modules.product.dto.internal.VariantLookupData;
+import com.shopee.monolith.modules.product.service.ProductService;
 import com.shopee.monolith.modules.user.dto.response.AddressResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -54,6 +55,8 @@ class CheckoutProcessorTest {
     private InventoryReservationRepository inventoryReservationRepository;
     @Mock
     private InventoryService inventoryService;
+    @Mock
+    private ProductService productService;
 
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper().registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
@@ -188,10 +191,10 @@ class CheckoutProcessorTest {
                 .name("Prod 1")
                 .build();
 
-        OrderServiceImpl.CartItemWithDetails item = new OrderServiceImpl.CartItemWithDetails(cartItem, variant, product);
-
         when(idempotencyKeyRepository.tryInsert(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(1);
+        when(productService.findActiveVariantLookupDataByIdForCheckout(variantId)).thenReturn(Optional.of(variant));
+        when(productService.findActiveProductLookupDataByIdForCheckout(variant.productId())).thenReturn(Optional.of(product));
 
         CheckoutSession session = CheckoutSession.builder()
                 .id(UUID.randomUUID())
@@ -213,12 +216,28 @@ class CheckoutProcessorTest {
         when(orderRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         CheckoutResponse response = checkoutProcessor.processCheckout(
-                buyerId, address, idempotencyKey, requestHash, keyId, expiresAt, List.of(item), () -> {}
+                buyerId, address, idempotencyKey, requestHash, keyId, expiresAt, List.of(cartItem), () -> {}
         );
 
         assertNotNull(response);
         assertEquals(session.getId(), response.checkoutSessionId());
         verify(inventoryService).reserve(any());
         verify(inventoryReservationRepository).saveAll(any());
+    }
+
+    @Test
+    void processCheckoutWhenVariantBecomesInactiveInsideTransactionShouldThrowVariantNotFound() {
+        UUID variantId = UUID.randomUUID();
+        CartSnapshotItem cartItem = new CartSnapshotItem(variantId, 1);
+
+        when(idempotencyKeyRepository.tryInsert(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(1);
+        when(productService.findActiveVariantLookupDataByIdForCheckout(variantId)).thenReturn(Optional.empty());
+
+        AppException exception = assertThrows(AppException.class, () -> checkoutProcessor.processCheckout(
+                buyerId, address, idempotencyKey, requestHash, keyId, expiresAt, List.of(cartItem), () -> {}
+        ));
+
+        assertEquals(ErrorCode.VARIANT_NOT_FOUND, exception.getErrorCode());
     }
 }

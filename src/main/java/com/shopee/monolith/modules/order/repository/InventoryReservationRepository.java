@@ -15,7 +15,7 @@ public interface InventoryReservationRepository extends JpaRepository<InventoryR
     @Query(value = "SELECT * FROM inventory_reservations " +
                    "WHERE checkout_session_id = :checkoutSessionId AND status = :status " +
                    "ORDER BY variant_id ASC " +
-                   "FOR UPDATE SKIP LOCKED", nativeQuery = true)
+                   "FOR UPDATE", nativeQuery = true)
     List<InventoryReservation> findAllByCheckoutSessionIdAndStatusForUpdate(
             @Param("checkoutSessionId") UUID checkoutSessionId,
             @Param("status") String status

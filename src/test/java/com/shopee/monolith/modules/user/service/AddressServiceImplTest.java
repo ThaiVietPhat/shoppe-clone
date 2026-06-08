@@ -6,16 +6,19 @@ import com.shopee.monolith.modules.user.dto.internal.UserAuthenticationData;
 import com.shopee.monolith.modules.user.dto.request.AddressRequest;
 import com.shopee.monolith.modules.user.dto.response.AddressResponse;
 import com.shopee.monolith.modules.user.entity.Address;
+import com.shopee.monolith.modules.user.entity.User;
 import com.shopee.monolith.modules.user.mapper.AddressMapper;
 import com.shopee.monolith.modules.user.model.Role;
 import com.shopee.monolith.modules.user.model.UserStatus;
 import com.shopee.monolith.modules.user.repository.AddressRepository;
+import com.shopee.monolith.modules.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -28,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -44,6 +48,9 @@ class AddressServiceImplTest {
     @Mock
     private UserService userService;
 
+    @Mock
+    private UserRepository userRepository;
+
     @InjectMocks
     private AddressServiceImpl addressService;
 
@@ -53,6 +60,7 @@ class AddressServiceImplTest {
     private Address address;
     private AddressResponse response;
     private UserAuthenticationData activeUser;
+    private User activeUserEntity;
 
     @BeforeEach
     void setUp() {
@@ -105,20 +113,26 @@ class AddressServiceImplTest {
                 .role(Role.BUYER)
                 .status(UserStatus.ACTIVE)
                 .build();
+        activeUserEntity = User.builder()
+                .id(userId)
+                .email("buyer@shoppe.local")
+                .role(Role.BUYER)
+                .status(UserStatus.ACTIVE)
+                .build();
+        lenient().when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(activeUserEntity));
     }
 
     @Test
     void createAddressWhenFirstAddressShouldForceDefault() {
-        when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(activeUser));
         when(addressRepository.findAllByUserIdOrderByIsDefaultDesc(userId)).thenReturn(Collections.emptyList());
-        when(addressRepository.save(any(Address.class))).thenReturn(address);
+        when(addressRepository.saveAndFlush(any(Address.class))).thenReturn(address);
         when(addressMapper.toResponse(address)).thenReturn(response);
 
         AddressResponse result = addressService.createAddress(userId, request);
 
         assertEquals(response, result);
         verify(addressRepository).resetDefaultAddresses(userId);
-        verify(addressRepository).save(any(Address.class));
+        verify(addressRepository).saveAndFlush(any(Address.class));
     }
 
     @Test
@@ -136,9 +150,8 @@ class AddressServiceImplTest {
                 .isDefault(true)
                 .build();
 
-        when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(activeUser));
         when(addressRepository.findAllByUserIdOrderByIsDefaultDesc(userId)).thenReturn(List.of(address));
-        when(addressRepository.save(any(Address.class))).thenReturn(address);
+        when(addressRepository.saveAndFlush(any(Address.class))).thenReturn(address);
         when(addressMapper.toResponse(address)).thenReturn(response);
 
         AddressResponse result = addressService.createAddress(userId, defaultRequest);
@@ -161,7 +174,6 @@ class AddressServiceImplTest {
 
     @Test
     void updateAddressWhenNotFoundShouldThrowException() {
-        when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(activeUser));
         when(addressRepository.findByIdAndUserId(addressId, userId)).thenReturn(Optional.empty());
 
         assertThrows(AppException.class, () -> addressService.updateAddress(userId, addressId, request));
@@ -169,10 +181,9 @@ class AddressServiceImplTest {
 
     @Test
     void updateAddressShouldSucceed() {
-        when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(activeUser));
         when(addressRepository.findByIdAndUserId(addressId, userId)).thenReturn(Optional.of(address));
         when(addressRepository.findAllByUserIdOrderByIsDefaultDesc(userId)).thenReturn(List.of(address));
-        when(addressRepository.save(address)).thenReturn(address);
+        when(addressRepository.saveAndFlush(address)).thenReturn(address);
         when(addressMapper.toResponse(address)).thenReturn(response);
 
         AddressResponse result = addressService.updateAddress(userId, addressId, request);
@@ -190,11 +201,10 @@ class AddressServiceImplTest {
                 .isDefault(false)
                 .build();
 
-        when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(activeUser));
         when(addressRepository.findByIdAndUserId(addressId, userId)).thenReturn(Optional.of(address));
         when(addressRepository.findAllByUserIdOrderByIsDefaultDesc(userId))
                 .thenReturn(List.of(address, otherAddress));
-        when(addressRepository.save(address)).thenReturn(address);
+        when(addressRepository.saveAndFlush(address)).thenReturn(address);
         when(addressMapper.toResponse(address)).thenReturn(response);
 
         AddressResponse result = addressService.updateAddress(userId, addressId, request);
@@ -247,8 +257,6 @@ class AddressServiceImplTest {
 
     @Test
     void setDefaultAddressShouldResetOthersAndSetTrue() {
-        when(userService.findAuthenticationDataById(userId)).thenReturn(Optional.of(activeUser));
-        
         Address nonDefaultAddress = Address.builder()
                 .id(addressId)
                 .userId(userId)
@@ -258,12 +266,33 @@ class AddressServiceImplTest {
                 .build();
 
         when(addressRepository.findByIdAndUserId(addressId, userId)).thenReturn(Optional.of(nonDefaultAddress));
-        when(addressRepository.save(nonDefaultAddress)).thenReturn(nonDefaultAddress);
+        when(addressRepository.saveAndFlush(nonDefaultAddress)).thenReturn(nonDefaultAddress);
         when(addressMapper.toResponse(nonDefaultAddress)).thenReturn(response);
 
         AddressResponse result = addressService.setDefaultAddress(userId, addressId);
 
         verify(addressRepository).resetDefaultAddresses(userId);
         assertEquals(response, result);
+    }
+
+    @Test
+    void setDefaultAddressWhenUniqueConstraintRacesShouldThrowConflict() {
+        Address nonDefaultAddress = Address.builder()
+                .id(addressId)
+                .userId(userId)
+                .recipientName("John Doe")
+                .phone("0987654321")
+                .isDefault(false)
+                .build();
+
+        when(addressRepository.findByIdAndUserId(addressId, userId)).thenReturn(Optional.of(nonDefaultAddress));
+        when(addressRepository.saveAndFlush(nonDefaultAddress))
+                .thenThrow(new DataIntegrityViolationException("uq_addresses_one_default_per_user"));
+
+        AppException exception = assertThrows(AppException.class, () ->
+                addressService.setDefaultAddress(userId, addressId)
+        );
+
+        assertEquals(ErrorCode.CONFLICT, exception.getErrorCode());
     }
 }

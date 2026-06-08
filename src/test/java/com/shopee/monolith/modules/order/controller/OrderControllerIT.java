@@ -247,14 +247,15 @@ class OrderControllerIT extends BasePostgresRedisIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        // Duplicate call with different request should return conflict
+        // The successful checkout clears the cart snapshot, so later retries with the same key
+        // return the cached idempotency response even if the client body is stale.
         CheckoutRequest request2 = CheckoutRequest.builder().addressId(UUID.randomUUID()).build();
         mockMvc.perform(post("/api/orders")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + buyerToken)
                         .header("Idempotency-Key", idempotencyKey)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request2)))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value(ErrorCode.IDEMPOTENCY_KEY_CONFLICT.getHttpStatus()));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
     }
 }

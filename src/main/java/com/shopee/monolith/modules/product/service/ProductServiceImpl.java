@@ -44,6 +44,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.util.Collections;
@@ -439,6 +441,18 @@ public class ProductServiceImpl implements ProductService {
                 .map(productMapper::toLookupData);
     }
 
+    @Override
+    public Optional<ProductLookupData> findActiveProductLookupDataByIdForCheckout(UUID productId) {
+        return productRepository.findByIdAndStatusForUpdate(productId, ProductStatus.ACTIVE)
+                .map(productMapper::toLookupData);
+    }
+
+    @Override
+    public Optional<VariantLookupData> findActiveVariantLookupDataByIdForCheckout(UUID variantId) {
+        return productVariantRepository.findActiveByIdAndProductStatusForUpdate(variantId, ProductStatus.ACTIVE)
+                .map(productMapper::toLookupData);
+    }
+
     // ===================== Private builders =====================
 
     private ProductDetailResponse buildProductDetail(Product product, boolean includeInactiveVariants) {
@@ -594,7 +608,7 @@ public class ProductServiceImpl implements ProductService {
                         v.getId(), v.getSku(), v.getPrice(), v.getOptionLabels(), v.isActive()))
                 .toList();
 
-        eventPublisher.publishEvent(new ProductCatalogSnapshotEvent(
+        publishAfterCommit(new ProductCatalogSnapshotEvent(
                 product.getId(),
                 product.getShopId(),
                 product.getStatus(),
@@ -616,6 +630,19 @@ public class ProductServiceImpl implements ProductService {
                 eligibilityIssues,
                 variantSnapshots
         ));
+    }
+
+    private void publishAfterCommit(Object event) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            eventPublisher.publishEvent(event);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                eventPublisher.publishEvent(event);
+            }
+        });
     }
 
     private PagedResponse<ProductResponse> toPagedResponse(Page<Product> productPage) {

@@ -7,9 +7,6 @@ import com.shopee.monolith.modules.cart.dto.internal.CartSnapshotItem;
 import com.shopee.monolith.modules.cart.service.CartService;
 import com.shopee.monolith.modules.order.dto.request.CheckoutRequest;
 import com.shopee.monolith.modules.order.dto.response.CheckoutResponse;
-import com.shopee.monolith.modules.product.dto.internal.ProductLookupData;
-import com.shopee.monolith.modules.product.dto.internal.VariantLookupData;
-import com.shopee.monolith.modules.product.service.ProductService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shopee.monolith.modules.order.entity.IdempotencyKey;
 import com.shopee.monolith.modules.order.model.IdempotencyStatus;
@@ -24,10 +21,10 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Comparator;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -36,7 +33,6 @@ public class OrderServiceImpl implements OrderService {
 
     private final CheckoutProcessor checkoutProcessor;
     private final CartService cartService;
-    private final ProductService productService;
     private final IdempotencyKeyRepository idempotencyKeyRepository;
     private final AddressService addressService;
     private final ObjectMapper objectMapper;
@@ -47,28 +43,41 @@ public class OrderServiceImpl implements OrderService {
             throw new AppException(ErrorCode.IDEMPOTENCY_KEY_MISSING);
         }
 
-        String requestHash = computeRequestHash(request);
         UUID keyId = UUID.randomUUID();
         Instant expiresAt = Instant.now().plus(Duration.ofDays(1));
 
-        // Look up existing idempotency key first to return cached responses even if the cart is already cleared
+        IdempotencyKey completedKey = null;
+        CheckoutResponse cachedResponse = null;
         Optional<IdempotencyKey> existingKeyOpt = idempotencyKeyRepository.findByActorIdAndOperationAndIdempotencyKey(buyerId, "CHECKOUT", idempotencyKey);
         if (existingKeyOpt.isPresent()) {
             IdempotencyKey existing = existingKeyOpt.get();
-            if (existing.getExpiresAt().isAfter(Instant.now())) {
-                if (!existing.getRequestHash().equals(requestHash)) {
-                    throw new AppException(ErrorCode.IDEMPOTENCY_KEY_CONFLICT);
-                }
-                if (existing.getStatus() == IdempotencyStatus.PROCESSING) {
-                    throw new AppException(ErrorCode.IDEMPOTENCY_REQUEST_PROCESSING);
-                }
+            if (existing.getExpiresAt().isAfter(Instant.now())
+                    && existing.getStatus() == IdempotencyStatus.COMPLETED) {
                 try {
-                    return objectMapper.readValue(existing.getResponseBody(), CheckoutResponse.class);
+                    completedKey = existing;
+                    cachedResponse = objectMapper.readValue(existing.getResponseBody(), CheckoutResponse.class);
                 } catch (Exception e) {
                     log.error("Failed to deserialize cached checkout response in pre-check", e);
                     throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR);
                 }
             }
+        }
+
+        // Proceed with checkout - Read cart snapshot from Redis OUTSIDE the DB transaction
+        CartSnapshot cartSnapshot = cartService.getSnapshot(buyerId);
+        if (cartSnapshot == null || cartSnapshot.items().isEmpty()) {
+            if (cachedResponse != null) {
+                return cachedResponse;
+            }
+            throw new AppException(ErrorCode.CART_EMPTY);
+        }
+
+        String requestHash = computeRequestHash(request, cartSnapshot);
+        if (completedKey != null) {
+            if (!completedKey.getRequestHash().equals(requestHash)) {
+                throw new AppException(ErrorCode.IDEMPOTENCY_KEY_CONFLICT);
+            }
+            return cachedResponse;
         }
 
         // Resolve address details OUTSIDE DB transaction.
@@ -81,24 +90,6 @@ public class OrderServiceImpl implements OrderService {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
 
-        // Proceed with checkout - Read cart snapshot from Redis OUTSIDE the DB transaction
-        CartSnapshot cartSnapshot = cartService.getSnapshot(buyerId);
-        if (cartSnapshot == null || cartSnapshot.items().isEmpty()) {
-            throw new AppException(ErrorCode.CART_EMPTY);
-        }
-
-        // Resolve variants and group by shopId OUTSIDE the DB transaction
-        List<CartItemWithDetails> resolvedItems = new ArrayList<>();
-        for (CartSnapshotItem item : cartSnapshot.items()) {
-            VariantLookupData variant = productService.findActiveVariantLookupDataById(item.variantId())
-                    .orElseThrow(() -> new AppException(ErrorCode.VARIANT_NOT_FOUND));
-
-            ProductLookupData product = productService.findActiveProductLookupDataById(variant.productId())
-                    .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
-
-            resolvedItems.add(new CartItemWithDetails(item, variant, product));
-        }
-
         // Enter short DB transaction via CheckoutProcessor
         long cartVersion = cartSnapshot.version();
         CheckoutResponse response = checkoutProcessor.processCheckout(
@@ -108,16 +99,22 @@ public class OrderServiceImpl implements OrderService {
                 requestHash,
                 keyId,
                 expiresAt,
-                resolvedItems,
+                cartSnapshot.items(),
                 () -> cartService.clearSnapshotIfVersionUnchanged(buyerId, cartVersion)
         );
 
         return response;
     }
 
-    private String computeRequestHash(CheckoutRequest request) {
+    private String computeRequestHash(CheckoutRequest request, CartSnapshot cartSnapshot) {
         try {
-            String canonical = request.addressId() != null ? request.addressId().toString() : "null";
+            String cartItems = cartSnapshot.items().stream()
+                    .sorted(Comparator.comparing(item -> item.variantId().toString()))
+                    .map(item -> item.variantId() + ":" + item.quantity())
+                    .collect(Collectors.joining(","));
+            String canonical = "address=" + (request.addressId() != null ? request.addressId() : "null")
+                    + "|cartVersion=" + cartSnapshot.version()
+                    + "|items=" + cartItems;
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(canonical.getBytes(StandardCharsets.UTF_8));
             StringBuilder hexString = new StringBuilder();
@@ -137,7 +134,7 @@ public class OrderServiceImpl implements OrderService {
 
     public record CartItemWithDetails(
             CartSnapshotItem cartItem,
-            VariantLookupData variant,
-            ProductLookupData product
+            com.shopee.monolith.modules.product.dto.internal.VariantLookupData variant,
+            com.shopee.monolith.modules.product.dto.internal.ProductLookupData product
     ) {}
 }
