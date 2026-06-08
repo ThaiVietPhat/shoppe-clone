@@ -172,6 +172,31 @@ class MediaServiceImplTest {
     }
 
     @Test
+    void attachToProductWhenMediaIsShopLogoShouldThrowException() {
+        UUID shopId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        UUID mediaId = UUID.randomUUID();
+        MediaAsset asset = MediaAsset.builder()
+                .ownerId(shopId)
+                .ownerType(MediaOwnerType.SHOP)
+                .purpose(MediaPurpose.SHOP_LOGO)
+                .objectKey("logo.png")
+                .contentType("image/png")
+                .sizeBytes(PNG_BYTES.length)
+                .status(MediaStatus.READY)
+                .build();
+
+        when(mediaAssetRepository.findByIdAndOwnerId(mediaId, shopId)).thenReturn(Optional.of(asset));
+
+        AppException ex = assertThrows(AppException.class, () -> mediaService.attachToProduct(
+                UUID.randomUUID(), shopId, productId, mediaId, 0, true));
+
+        assertEquals(ErrorCode.MEDIA_OWNERSHIP_VIOLATION, ex.getErrorCode());
+        verify(productMediaRepository, never()).clearCoverByProductId(productId);
+        verify(productMediaRepository, never()).save(any());
+    }
+
+    @Test
     void replaceProductMediaWhenDuplicateIdsShouldKeepSingleCoverAttachment() {
         UUID shopId = UUID.randomUUID();
         UUID productId = UUID.randomUUID();

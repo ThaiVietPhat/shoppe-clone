@@ -153,6 +153,9 @@ public class MediaServiceImpl implements MediaService {
         if (asset.getStatus() == MediaStatus.DELETED) {
             throw new AppException(ErrorCode.MEDIA_NOT_FOUND);
         }
+        if (asset.getPurpose() != MediaPurpose.PRODUCT_IMAGE) {
+            throw new AppException(ErrorCode.MEDIA_OWNERSHIP_VIOLATION);
+        }
 
         if (isCover) {
             productMediaRepository.clearCoverByProductId(productId);

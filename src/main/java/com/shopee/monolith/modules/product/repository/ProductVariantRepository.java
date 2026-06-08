@@ -32,9 +32,11 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
     @Query("SELECT COUNT(v) FROM ProductVariant v WHERE v.productId = :productId AND v.active = true AND v.price > :minPrice")
     long countActiveVariantsWithPriceAbove(@Param("productId") UUID productId, @Param("minPrice") BigDecimal minPrice);
 
-    @Query("SELECT MIN(v.price) FROM ProductVariant v WHERE v.productId = :productId AND v.active = true")
+    @Query("SELECT MIN(v.price) FROM ProductVariant v "
+            + "WHERE v.productId = :productId AND v.active = true AND v.price > 0")
     Optional<BigDecimal> findMinPriceByProductId(@Param("productId") UUID productId);
 
-    @Query("SELECT MAX(v.price) FROM ProductVariant v WHERE v.productId = :productId AND v.active = true")
+    @Query("SELECT MAX(v.price) FROM ProductVariant v "
+            + "WHERE v.productId = :productId AND v.active = true AND v.price > 0")
     Optional<BigDecimal> findMaxPriceByProductId(@Param("productId") UUID productId);
 }

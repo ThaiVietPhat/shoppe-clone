@@ -296,7 +296,7 @@ public class ProductServiceImpl implements ProductService {
             throw new AppException(ErrorCode.SKU_ALREADY_EXISTS);
         }
 
-        boolean activeFlag = request.active() == null || request.active();
+        boolean activeFlag = request.active() == null ? variant.isActive() : request.active();
         variant.update(request.sku(), request.name(), request.price(), request.optionLabels(), activeFlag);
 
         try {
@@ -484,7 +484,7 @@ public class ProductServiceImpl implements ProductService {
 
         ShopLookupData shop = shopService.findShopLookupDataById(product.getShopId()).orElse(null);
         ShopSummaryDto shopSummary = shop != null
-                ? ShopSummaryDto.builder().id(shop.id()).name(shop.name()).build()
+                ? ShopSummaryDto.builder().id(shop.id()).name(shop.name()).rating(shop.rating()).build()
                 : null;
 
         String categoryPath = resolveCategory(product.getCategoryId());

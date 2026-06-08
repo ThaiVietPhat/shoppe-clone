@@ -394,6 +394,41 @@ class ProductServiceImplTest {
     }
 
     @Test
+    void updateVariantWhenActiveOmittedShouldPreserveCurrentActiveFlag() {
+        UpdateProductVariantRequest req = UpdateProductVariantRequest.builder()
+                .sku("IPHONE-15-256")
+                .name("Updated variant")
+                .price(BigDecimal.valueOf(1099.00))
+                .active(null)
+                .build();
+        ProductVariant inactiveVariant = ProductVariant.builder()
+                .id(variantId)
+                .productId(productId)
+                .sku("IPHONE-15-256")
+                .name("256GB Black")
+                .price(BigDecimal.valueOf(999.00))
+                .active(false)
+                .build();
+
+        when(productVariantRepository.findById(variantId)).thenReturn(Optional.of(inactiveVariant));
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
+        when(productVariantRepository.findBySku("IPHONE-15-256")).thenReturn(Optional.of(inactiveVariant));
+        when(productVariantRepository.saveAndFlush(inactiveVariant)).thenReturn(inactiveVariant);
+        when(productVariantRepository.findMinPriceByProductId(productId)).thenReturn(Optional.empty());
+        when(productVariantRepository.findMaxPriceByProductId(productId)).thenReturn(Optional.empty());
+        when(productRepository.save(product)).thenReturn(product);
+        when(productVariantRepository.findAllByProductId(productId)).thenReturn(List.of(inactiveVariant));
+        when(productMapper.toResponse(inactiveVariant)).thenReturn(variantResponse);
+
+        productService.updateVariant(ownerId, productId, variantId, req);
+
+        ArgumentCaptor<ProductVariant> variantCaptor = ArgumentCaptor.forClass(ProductVariant.class);
+        verify(productVariantRepository).saveAndFlush(variantCaptor.capture());
+        assertEquals(false, variantCaptor.getValue().isActive());
+    }
+
+    @Test
     void updateVariantWhenProductDeletedShouldThrowException() {
         UpdateProductVariantRequest req = UpdateProductVariantRequest.builder()
                 .sku("IPHONE-15-256")
@@ -531,5 +566,31 @@ class ProductServiceImplTest {
         assertTrue(result.eligibilityIssues().contains(ProductEligibilityIssue.PRODUCT_NOT_ACTIVE));
         assertTrue(result.eligibilityIssues().contains(ProductEligibilityIssue.NO_POSITIVE_PRICE));
         assertTrue(result.eligibilityIssues().contains(ProductEligibilityIssue.NO_STOCK));
+    }
+
+    @Test
+    void getProductDetailForSellerShouldIncludeShopRating() {
+        Product activeProduct = Product.builder()
+                .id(productId)
+                .shopId(shopId)
+                .categoryId(categoryId)
+                .status(ProductStatus.ACTIVE)
+                .name("Active product")
+                .build();
+        ShopLookupData ratedShop = ShopLookupData.builder()
+                .id(shopId)
+                .ownerId(ownerId)
+                .name("Seller Shop")
+                .rating(BigDecimal.valueOf(4.85))
+                .build();
+
+        when(productRepository.findById(productId)).thenReturn(Optional.of(activeProduct));
+        when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(ratedShop));
+        when(productVariantRepository.findAllByProductId(productId)).thenReturn(List.of(variant));
+        when(stockSummaryProvider.getStockSummariesByVariantIds(List.of(variantId))).thenReturn(Map.of());
+
+        ProductDetailResponse result = productService.getProductDetailForSeller(ownerId, productId);
+
+        assertEquals(BigDecimal.valueOf(4.85), result.shop().rating());
     }
 }
