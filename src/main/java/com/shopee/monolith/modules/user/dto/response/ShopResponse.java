@@ -1,5 +1,6 @@
 package com.shopee.monolith.modules.user.dto.response;
 
+import com.shopee.monolith.modules.media.dto.response.MediaAssetResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 
@@ -24,6 +25,9 @@ public record ShopResponse(
 
         @Schema(description = "Shop rating (0.00 to 5.00)", example = "4.85")
         BigDecimal rating,
+
+        @Schema(description = "Latest uploaded shop logo media, if any")
+        MediaAssetResponse logo,
 
         @Schema(description = "Timestamp when the shop profile was created")
         Instant createdAt,

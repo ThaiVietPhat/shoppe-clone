@@ -15,6 +15,7 @@ import com.shopee.monolith.modules.product.dto.request.UpdateProductVariantReque
 import com.shopee.monolith.modules.product.dto.response.CategoryResponse;
 import com.shopee.monolith.modules.product.dto.response.ProductCardResponse;
 import com.shopee.monolith.modules.product.dto.response.ProductDetailResponse;
+import com.shopee.monolith.modules.product.dto.response.ProductEligibilityIssue;
 import com.shopee.monolith.modules.product.dto.response.ProductResponse;
 import com.shopee.monolith.modules.product.dto.response.ProductVariantDetailResponse;
 import com.shopee.monolith.modules.product.dto.response.ProductVariantResponse;
@@ -260,10 +261,11 @@ public class ProductServiceImpl implements ProductService {
 
         try {
             variant = productVariantRepository.saveAndFlush(variant);
-            return productMapper.toResponse(variant);
         } catch (DataIntegrityViolationException e) {
             throw new AppException(ErrorCode.SKU_ALREADY_EXISTS);
         }
+        refreshProductAfterVariantMutation(product);
+        return productMapper.toResponse(variant);
     }
 
     @Override
@@ -283,6 +285,10 @@ public class ProductServiceImpl implements ProductService {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
 
+        if (product.getStatus() == ProductStatus.DELETED) {
+            throw new AppException(ErrorCode.PRODUCT_NOT_FOUND);
+        }
+
         validateShopOwner(ownerId, product.getShopId());
 
         Optional<ProductVariant> existingSku = productVariantRepository.findBySku(request.sku());
@@ -295,10 +301,11 @@ public class ProductServiceImpl implements ProductService {
 
         try {
             variant = productVariantRepository.saveAndFlush(variant);
-            return productMapper.toResponse(variant);
         } catch (DataIntegrityViolationException e) {
             throw new AppException(ErrorCode.SKU_ALREADY_EXISTS);
         }
+        refreshProductAfterVariantMutation(product);
+        return productMapper.toResponse(variant);
     }
 
     // ===================== Seller lifecycle =====================
@@ -420,6 +427,18 @@ public class ProductServiceImpl implements ProductService {
                 .map(productMapper::toLookupData);
     }
 
+    @Override
+    public Optional<ProductLookupData> findActiveProductLookupDataById(UUID productId) {
+        return productRepository.findByIdAndStatus(productId, ProductStatus.ACTIVE)
+                .map(productMapper::toLookupData);
+    }
+
+    @Override
+    public Optional<VariantLookupData> findActiveVariantLookupDataById(UUID variantId) {
+        return productVariantRepository.findActiveByIdAndProductStatus(variantId, ProductStatus.ACTIVE)
+                .map(productMapper::toLookupData);
+    }
+
     // ===================== Private builders =====================
 
     private ProductDetailResponse buildProductDetail(Product product, boolean includeInactiveVariants) {
@@ -442,6 +461,7 @@ public class ProductServiceImpl implements ProductService {
                             ProductStockSummaryDto.empty(v.getId()));
                     boolean checkoutEligible = product.getStatus() == ProductStatus.ACTIVE
                             && v.isActive()
+                            && v.getPrice().compareTo(BigDecimal.ZERO) > 0
                             && stock.availableStock() > 0;
                     return ProductVariantDetailResponse.builder()
                             .id(v.getId())
@@ -459,6 +479,8 @@ public class ProductServiceImpl implements ProductService {
                             .build();
                 })
                 .toList();
+
+        List<ProductEligibilityIssue> eligibilityIssues = buildEligibilityIssues(product, variants, stockMap);
 
         ShopLookupData shop = shopService.findShopLookupDataById(product.getShopId()).orElse(null);
         ShopSummaryDto shopSummary = shop != null
@@ -483,6 +505,7 @@ public class ProductServiceImpl implements ProductService {
                 .hasCover(hasCover)
                 .media(media)
                 .variants(variantDetails)
+                .eligibilityIssues(eligibilityIssues)
                 .shop(shopSummary)
                 .totalAvailableStock(totalStock)
                 .createdAt(product.getCreatedAt())
@@ -490,10 +513,63 @@ public class ProductServiceImpl implements ProductService {
                 .build();
     }
 
+    private List<ProductEligibilityIssue> buildEligibilityIssues(
+            Product product,
+            List<ProductVariant> variants,
+            Map<UUID, ProductStockSummaryDto> stockMap) {
+        List<ProductEligibilityIssue> issues = new java.util.ArrayList<>();
+        if (product.getStatus() != ProductStatus.ACTIVE) {
+            issues.add(ProductEligibilityIssue.PRODUCT_NOT_ACTIVE);
+        }
+        List<ProductVariant> activeVariants = variants.stream()
+                .filter(ProductVariant::isActive)
+                .toList();
+        if (activeVariants.isEmpty()) {
+            issues.add(ProductEligibilityIssue.NO_ACTIVE_VARIANT);
+            issues.add(ProductEligibilityIssue.NO_POSITIVE_PRICE);
+            issues.add(ProductEligibilityIssue.NO_STOCK);
+            return issues;
+        }
+        List<ProductVariant> positivePriceVariants = activeVariants.stream()
+                .filter(v -> v.getPrice().compareTo(BigDecimal.ZERO) > 0)
+                .toList();
+        if (positivePriceVariants.isEmpty()) {
+            issues.add(ProductEligibilityIssue.NO_POSITIVE_PRICE);
+            issues.add(ProductEligibilityIssue.NO_STOCK);
+            return issues;
+        }
+        boolean hasStock = positivePriceVariants.stream()
+                .anyMatch(v -> stockMap.getOrDefault(v.getId(),
+                        ProductStockSummaryDto.empty(v.getId())).availableStock() > 0);
+        if (!hasStock) {
+            issues.add(ProductEligibilityIssue.NO_STOCK);
+        }
+        return issues;
+    }
+
     private void recomputeProductPriceRange(Product product) {
         BigDecimal min = productVariantRepository.findMinPriceByProductId(product.getId()).orElse(null);
         BigDecimal max = productVariantRepository.findMaxPriceByProductId(product.getId()).orElse(null);
         product.recomputePriceRange(min, max);
+    }
+
+    private void refreshProductAfterVariantMutation(Product product) {
+        recomputeProductPriceRange(product);
+        boolean unpublished = false;
+        if (product.getStatus() == ProductStatus.ACTIVE
+                && productVariantRepository.countActiveVariantsWithPriceAbove(product.getId(), BigDecimal.ZERO) == 0) {
+            product.unpublish();
+            unpublished = true;
+        }
+        product = productRepository.save(product);
+        List<ProductVariant> variants = productVariantRepository.findAllByProductId(product.getId());
+        if (unpublished) {
+            eventPublisher.publishEvent(new ProductListingStatusChangedEvent(
+                    product.getId(), product.getShopId(), ProductStatus.INACTIVE));
+        } else {
+            eventPublisher.publishEvent(new ProductUpdatedEvent(product.getId(), product.getShopId()));
+        }
+        publishCatalogSnapshot(product, variants);
     }
 
     private void replaceProductMedia(UUID ownerId, UUID shopId, UUID productId, List<UUID> mediaIds) {

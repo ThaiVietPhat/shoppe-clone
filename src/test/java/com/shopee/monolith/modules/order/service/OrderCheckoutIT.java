@@ -21,6 +21,7 @@ import com.shopee.monolith.modules.order.repository.OrderItemRepository;
 import com.shopee.monolith.modules.order.repository.OrderRepository;
 import com.shopee.monolith.modules.product.entity.Category;
 import com.shopee.monolith.modules.product.entity.Product;
+import com.shopee.monolith.modules.product.entity.ProductStatus;
 import com.shopee.monolith.modules.product.entity.ProductVariant;
 import com.shopee.monolith.modules.product.repository.CategoryRepository;
 import com.shopee.monolith.modules.product.repository.ProductRepository;
@@ -171,6 +172,7 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
                 .shopId(shop1.getId())
                 .categoryId(category.getId())
                 .name("Checkout Product 1")
+                .status(ProductStatus.ACTIVE)
                 .build();
         product1 = productRepository.save(product1);
 
@@ -178,6 +180,7 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
                 .shopId(shop2.getId())
                 .categoryId(category.getId())
                 .name("Checkout Product 2")
+                .status(ProductStatus.ACTIVE)
                 .build();
         product2 = productRepository.save(product2);
 

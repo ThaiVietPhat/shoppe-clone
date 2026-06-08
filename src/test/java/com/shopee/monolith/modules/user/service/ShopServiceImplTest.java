@@ -2,6 +2,8 @@ package com.shopee.monolith.modules.user.service;
 
 import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
+import com.shopee.monolith.modules.media.entity.MediaPurpose;
+import com.shopee.monolith.modules.media.service.MediaService;
 import com.shopee.monolith.modules.user.dto.internal.ShopLookupData;
 import com.shopee.monolith.modules.user.dto.internal.UserAuthenticationData;
 import com.shopee.monolith.modules.user.dto.request.CreateShopRequest;
@@ -45,6 +47,9 @@ class ShopServiceImplTest {
 
     @Mock
     private UserService userService;
+
+    @Mock
+    private MediaService mediaService;
 
     @InjectMocks
     private ShopServiceImpl shopService;
@@ -112,6 +117,10 @@ class ShopServiceImplTest {
                 .description("Shop description")
                 .rating(BigDecimal.ZERO)
                 .build();
+
+        org.mockito.Mockito.lenient()
+                .when(mediaService.findLatestReadyMedia(shopId, "SHOP", MediaPurpose.SHOP_LOGO))
+                .thenReturn(Optional.empty());
     }
 
     @Test
@@ -119,7 +128,6 @@ class ShopServiceImplTest {
         when(userService.findAuthenticationDataById(ownerId)).thenReturn(Optional.of(activeUser));
         when(shopRepository.existsByOwnerId(ownerId)).thenReturn(false);
         when(shopRepository.saveAndFlush(any(Shop.class))).thenReturn(shop);
-        when(shopMapper.toResponse(shop)).thenReturn(shopResponse);
 
         ShopResponse result = shopService.createShop(ownerId, createRequest);
 
@@ -172,7 +180,6 @@ class ShopServiceImplTest {
     @Test
     void getShopByOwnerIdWhenShopExistsShouldReturnShop() {
         when(shopRepository.findByOwnerId(ownerId)).thenReturn(Optional.of(shop));
-        when(shopMapper.toResponse(shop)).thenReturn(shopResponse);
 
         ShopResponse result = shopService.getShopByOwnerId(ownerId);
 
@@ -191,7 +198,6 @@ class ShopServiceImplTest {
     @Test
     void getShopByIdWhenShopExistsShouldReturnShop() {
         when(shopRepository.findById(shopId)).thenReturn(Optional.of(shop));
-        when(shopMapper.toResponse(shop)).thenReturn(shopResponse);
 
         ShopResponse result = shopService.getShopById(shopId);
 
@@ -211,11 +217,11 @@ class ShopServiceImplTest {
     void updateShopWhenShopExistsShouldUpdateShopDetails() {
         when(shopRepository.findByOwnerId(ownerId)).thenReturn(Optional.of(shop));
         when(shopRepository.saveAndFlush(shop)).thenReturn(shop);
-        when(shopMapper.toResponse(shop)).thenReturn(shopResponse);
 
         ShopResponse result = shopService.updateShop(ownerId, updateRequest);
 
-        assertEquals(shopResponse, result);
+        assertEquals("Updated Shop", result.name());
+        assertEquals("Updated description", result.description());
         assertEquals("Updated Shop", shop.getName());
         assertEquals("Updated description", shop.getDescription());
     }

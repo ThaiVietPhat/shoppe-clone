@@ -90,14 +90,14 @@ public class CartServiceImpl implements CartService {
                 UUID variantId = UUID.fromString((String) entry.getKey());
                 int quantity = Integer.parseInt((String) entry.getValue());
 
-                var variantOpt = productService.findVariantLookupDataById(variantId);
+                var variantOpt = productService.findActiveVariantLookupDataById(variantId);
                 if (variantOpt.isEmpty()) {
                     // Skip variant if it no longer exists in the system
                     continue;
                 }
 
                 VariantLookupData variant = variantOpt.get();
-                UUID shopId = productService.findProductLookupDataById(variant.productId())
+                UUID shopId = productService.findActiveProductLookupDataById(variant.productId())
                         .map(ProductLookupData::shopId)
                         .orElse(null);
 
@@ -135,7 +135,7 @@ public class CartServiceImpl implements CartService {
         }
 
         // Validate variant exists
-        var variantOpt = productService.findVariantLookupDataById(request.variantId());
+        var variantOpt = productService.findActiveVariantLookupDataById(request.variantId());
         if (variantOpt.isEmpty()) {
             throw new AppException(ErrorCode.VARIANT_NOT_FOUND);
         }
@@ -186,7 +186,7 @@ public class CartServiceImpl implements CartService {
         }
 
         // Validate variant exists
-        var variantOpt = productService.findVariantLookupDataById(variantId);
+        var variantOpt = productService.findActiveVariantLookupDataById(variantId);
         if (variantOpt.isEmpty()) {
             throw new AppException(ErrorCode.VARIANT_NOT_FOUND);
         }

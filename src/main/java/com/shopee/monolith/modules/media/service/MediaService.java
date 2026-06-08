@@ -7,6 +7,7 @@ import com.shopee.monolith.modules.media.entity.MediaPurpose;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface MediaService {
@@ -29,6 +30,8 @@ public interface MediaService {
      * Get media asset metadata by ID (public).
      */
     MediaAssetResponse getMediaById(UUID mediaId);
+
+    Optional<MediaAssetResponse> findLatestReadyMedia(UUID ownerId, String ownerType, MediaPurpose purpose);
 
     MediaFileData loadFile(String objectKey);
 

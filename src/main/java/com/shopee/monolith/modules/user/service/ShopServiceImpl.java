@@ -2,6 +2,9 @@ package com.shopee.monolith.modules.user.service;
 
 import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
+import com.shopee.monolith.modules.media.dto.response.MediaAssetResponse;
+import com.shopee.monolith.modules.media.entity.MediaPurpose;
+import com.shopee.monolith.modules.media.service.MediaService;
 import com.shopee.monolith.modules.user.dto.internal.ShopLookupData;
 import com.shopee.monolith.modules.user.dto.internal.UserAuthenticationData;
 import com.shopee.monolith.modules.user.dto.request.CreateShopRequest;
@@ -27,6 +30,7 @@ public class ShopServiceImpl implements ShopService {
     private final ShopRepository shopRepository;
     private final ShopMapper shopMapper;
     private final UserService userService;
+    private final MediaService mediaService;
 
     @Override
     @Transactional
@@ -50,7 +54,7 @@ public class ShopServiceImpl implements ShopService {
 
         try {
             Shop savedShop = shopRepository.saveAndFlush(shop);
-            return shopMapper.toResponse(savedShop);
+            return toResponse(savedShop);
         } catch (DataIntegrityViolationException e) {
             throw new AppException(ErrorCode.SHOP_ALREADY_EXISTS);
         }
@@ -60,14 +64,14 @@ public class ShopServiceImpl implements ShopService {
     public ShopResponse getShopByOwnerId(UUID ownerId) {
         Shop shop = shopRepository.findByOwnerId(ownerId)
                 .orElseThrow(() -> new AppException(ErrorCode.SHOP_NOT_FOUND));
-        return shopMapper.toResponse(shop);
+        return toResponse(shop);
     }
 
     @Override
     public ShopResponse getShopById(UUID shopId) {
         Shop shop = shopRepository.findById(shopId)
                 .orElseThrow(() -> new AppException(ErrorCode.SHOP_NOT_FOUND));
-        return shopMapper.toResponse(shop);
+        return toResponse(shop);
     }
 
     @Override
@@ -78,7 +82,7 @@ public class ShopServiceImpl implements ShopService {
 
         shop.update(request.name(), request.description());
         Shop updatedShop = shopRepository.saveAndFlush(shop);
-        return shopMapper.toResponse(updatedShop);
+        return toResponse(updatedShop);
     }
 
     @Override
@@ -91,5 +95,20 @@ public class ShopServiceImpl implements ShopService {
     public Optional<ShopLookupData> findShopLookupDataByOwnerId(UUID ownerId) {
         return shopRepository.findByOwnerId(ownerId)
                 .map(shopMapper::toLookupData);
+    }
+
+    private ShopResponse toResponse(Shop shop) {
+        MediaAssetResponse logo = mediaService.findLatestReadyMedia(shop.getId(), "SHOP", MediaPurpose.SHOP_LOGO)
+                .orElse(null);
+        return ShopResponse.builder()
+                .id(shop.getId())
+                .ownerId(shop.getOwnerId())
+                .name(shop.getName())
+                .description(shop.getDescription())
+                .rating(shop.getRating())
+                .logo(logo)
+                .createdAt(shop.getCreatedAt())
+                .updatedAt(shop.getUpdatedAt())
+                .build();
     }
 }

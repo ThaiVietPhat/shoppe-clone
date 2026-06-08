@@ -1,5 +1,6 @@
 package com.shopee.monolith.modules.user.dto.response;
 
+import com.shopee.monolith.modules.media.dto.response.MediaAssetResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 
@@ -12,6 +13,9 @@ public record CurrentUserShopResponse(
         UUID id,
 
         @Schema(description = "Shop display name", example = "Shopee Mall Demo")
-        String name
+        String name,
+
+        @Schema(description = "Latest uploaded shop logo media, if any")
+        MediaAssetResponse logo
 ) {
 }

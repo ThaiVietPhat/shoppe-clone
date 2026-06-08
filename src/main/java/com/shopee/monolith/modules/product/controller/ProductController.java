@@ -124,6 +124,16 @@ public class ProductController {
             description = "Seller product list retrieved successfully.",
             content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponsePagedProductDetailResponse.class))
     )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "401",
+            description = "Authentication required.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "404",
+            description = "Current user does not own a shop.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
     @GetMapping("/api/seller/products")
     public ApiResponse<PagedResponse<ProductDetailResponse>> listSellerProducts(
             @Parameter(description = "Page index (0-indexed)") @RequestParam(defaultValue = "0") @Min(0) int page,
@@ -144,6 +154,21 @@ public class ProductController {
             responseCode = "200",
             description = "Seller product detail retrieved successfully.",
             content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponseProductDetailResponse.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "401",
+            description = "Authentication required.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "403",
+            description = "Shop owner permission required.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "404",
+            description = "Product not found.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
     @GetMapping("/api/seller/products/{productId}")
     public ApiResponse<ProductDetailResponse> getSellerProduct(
@@ -334,6 +359,26 @@ public class ProductController {
             description = "Product cannot be published in its current state.",
             content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
     )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "401",
+            description = "Authentication required.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "403",
+            description = "Shop owner permission required.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "404",
+            description = "Product not found.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "422",
+            description = "Product has no active priced variant.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
     @PostMapping("/api/products/{productId}/publish")
     public ApiResponse<ProductDetailResponse> publishProduct(
             @Parameter(description = "Product unique ID") @PathVariable UUID productId,
@@ -354,6 +399,21 @@ public class ProductController {
             description = "Product unpublished successfully.",
             content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponseProductDetailResponse.class))
     )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "401",
+            description = "Authentication required.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "403",
+            description = "Shop owner permission required.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "404",
+            description = "Product not found.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
     @PostMapping("/api/products/{productId}/unpublish")
     public ApiResponse<ProductDetailResponse> unpublishProduct(
             @Parameter(description = "Product unique ID") @PathVariable UUID productId,
@@ -369,7 +429,26 @@ public class ProductController {
             description = "Soft-deletes a seller product by setting status to DELETED.",
             security = @SecurityRequirement(name = "bearerAuth")
     )
-    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Product deleted successfully.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "Product deleted successfully.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "401",
+            description = "Authentication required.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "403",
+            description = "Shop owner permission required.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "404",
+            description = "Product not found.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
     @DeleteMapping("/api/products/{productId}")
     public ApiResponse<Void> deleteProduct(
             @Parameter(description = "Product unique ID") @PathVariable UUID productId,

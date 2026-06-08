@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -69,8 +70,6 @@ public class MediaServiceImpl implements MediaService {
         String objectKey = UUID.randomUUID() + "." + extension;
         String checksum = computeSha256(bytes);
 
-        storageService.store(bytes, objectKey, detectedContentType);
-
         MediaAsset asset = MediaAsset.builder()
                 .ownerId(ownerId)
                 .ownerType(MediaOwnerType.valueOf(ownerType))
@@ -83,9 +82,15 @@ public class MediaServiceImpl implements MediaService {
                 .status(MediaStatus.READY)
                 .build();
 
-        asset = mediaAssetRepository.save(asset);
-        String publicUrl = storageService.getPublicUrl(objectKey);
-        return mediaMapper.toResponse(asset, publicUrl);
+        storageService.store(bytes, objectKey, detectedContentType);
+        try {
+            asset = mediaAssetRepository.save(asset);
+            String publicUrl = storageService.getPublicUrl(objectKey);
+            return mediaMapper.toResponse(asset, publicUrl);
+        } catch (RuntimeException e) {
+            storageService.delete(objectKey);
+            throw e;
+        }
     }
 
     // ===================== Queries =====================
@@ -95,6 +100,13 @@ public class MediaServiceImpl implements MediaService {
         MediaAsset asset = mediaAssetRepository.findById(mediaId)
                 .orElseThrow(() -> new AppException(ErrorCode.MEDIA_NOT_FOUND));
         return mediaMapper.toResponse(asset, storageService.getPublicUrl(asset.getObjectKey()));
+    }
+
+    @Override
+    public Optional<MediaAssetResponse> findLatestReadyMedia(UUID ownerId, String ownerType, MediaPurpose purpose) {
+        return mediaAssetRepository.findFirstByOwnerIdAndOwnerTypeAndPurposeAndStatusOrderByCreatedAtDesc(
+                        ownerId, MediaOwnerType.valueOf(ownerType), purpose, MediaStatus.READY)
+                .map(asset -> mediaMapper.toResponse(asset, storageService.getPublicUrl(asset.getObjectKey())));
     }
 
     @Override
@@ -166,8 +178,9 @@ public class MediaServiceImpl implements MediaService {
     @Transactional
     public void replaceProductMedia(UUID shopOwnerId, UUID productShopId, UUID productId, List<UUID> mediaIds) {
         productMediaRepository.deleteAllByProductId(productId);
-        for (int i = 0; i < mediaIds.size(); i++) {
-            attachToProduct(shopOwnerId, productShopId, productId, mediaIds.get(i), i, i == 0);
+        List<UUID> uniqueMediaIds = new java.util.ArrayList<>(new LinkedHashSet<>(mediaIds));
+        for (int i = 0; i < uniqueMediaIds.size(); i++) {
+            attachToProduct(shopOwnerId, productShopId, productId, uniqueMediaIds.get(i), i, i == 0);
         }
     }
 

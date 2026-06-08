@@ -7,6 +7,7 @@ import com.shopee.monolith.modules.media.entity.MediaAsset;
 import com.shopee.monolith.modules.media.entity.MediaOwnerType;
 import com.shopee.monolith.modules.media.entity.MediaPurpose;
 import com.shopee.monolith.modules.media.entity.MediaStatus;
+import com.shopee.monolith.modules.media.entity.ProductMedia;
 import com.shopee.monolith.modules.media.mapper.MediaMapper;
 import com.shopee.monolith.modules.media.repository.MediaAssetRepository;
 import com.shopee.monolith.modules.media.repository.ProductMediaRepository;
@@ -18,6 +19,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -107,6 +109,24 @@ class MediaServiceImplTest {
     }
 
     @Test
+    void uploadImageWhenMetadataSaveFailsShouldDeleteStoredObject() {
+        when(mediaAssetRepository.save(any(MediaAsset.class))).thenThrow(new RuntimeException("db down"));
+
+        assertThrows(RuntimeException.class, () -> mediaService.uploadImage(
+                UUID.randomUUID(),
+                "SHOP",
+                MediaPurpose.PRODUCT_IMAGE,
+                "product.png",
+                PNG_BYTES,
+                "image/png"
+        ));
+
+        ArgumentCaptor<String> objectKeyCaptor = ArgumentCaptor.forClass(String.class);
+        verify(storageService).store(eq(PNG_BYTES), objectKeyCaptor.capture(), eq("image/png"));
+        verify(storageService).delete(objectKeyCaptor.getValue());
+    }
+
+    @Test
     void attachToProductWhenMediaBelongsToAnotherShopShouldThrowException() {
         UUID shopId = UUID.randomUUID();
         UUID productId = UUID.randomUUID();
@@ -149,5 +169,33 @@ class MediaServiceImplTest {
 
         verify(productMediaRepository).clearCoverByProductId(productId);
         verify(productMediaRepository).save(any());
+    }
+
+    @Test
+    void replaceProductMediaWhenDuplicateIdsShouldKeepSingleCoverAttachment() {
+        UUID shopId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        UUID mediaId = UUID.randomUUID();
+        MediaAsset asset = MediaAsset.builder()
+                .ownerId(shopId)
+                .ownerType(MediaOwnerType.SHOP)
+                .purpose(MediaPurpose.PRODUCT_IMAGE)
+                .objectKey("asset.png")
+                .contentType("image/png")
+                .sizeBytes(PNG_BYTES.length)
+                .status(MediaStatus.READY)
+                .build();
+
+        when(mediaAssetRepository.findByIdAndOwnerId(mediaId, shopId)).thenReturn(Optional.of(asset));
+        when(productMediaRepository.findByIdProductIdAndIdMediaId(productId, mediaId)).thenReturn(Optional.empty());
+
+        mediaService.replaceProductMedia(UUID.randomUUID(), shopId, productId, List.of(mediaId, mediaId));
+
+        ArgumentCaptor<ProductMedia> productMediaCaptor = ArgumentCaptor.forClass(ProductMedia.class);
+        verify(productMediaRepository).deleteAllByProductId(productId);
+        verify(productMediaRepository).save(productMediaCaptor.capture());
+        assertEquals(mediaId, productMediaCaptor.getValue().getId().getMediaId());
+        assertEquals(0, productMediaCaptor.getValue().getSortOrder());
+        assertEquals(true, productMediaCaptor.getValue().isCover());
     }
 }

@@ -7,6 +7,7 @@ import com.shopee.monolith.modules.cart.dto.request.UpdateCartItemRequest;
 import com.shopee.monolith.modules.cart.dto.response.CartResponse;
 import com.shopee.monolith.modules.product.entity.Category;
 import com.shopee.monolith.modules.product.entity.Product;
+import com.shopee.monolith.modules.product.entity.ProductStatus;
 import com.shopee.monolith.modules.product.entity.ProductVariant;
 import com.shopee.monolith.modules.product.repository.CategoryRepository;
 import com.shopee.monolith.modules.product.repository.ProductRepository;
@@ -95,6 +96,7 @@ class CartServiceIT extends BasePostgresRedisIntegrationTest {
                 .categoryId(category.getId())
                 .name("Cart test Product")
                 .description("Cart testing desc")
+                .status(ProductStatus.ACTIVE)
                 .build();
         product = productRepository.save(product);
 

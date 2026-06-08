@@ -37,7 +37,8 @@ public record ProductVariantDetailResponse(
         @Schema(description = "Available stock for this variant", example = "42")
         int availableStock,
 
-        @Schema(description = "Whether this variant can be added to cart (active + in stock)", example = "true")
+        @Schema(description = "Whether this variant can be added to cart (active + positive price + in stock)",
+                example = "true")
         boolean checkoutEligible,
 
         @Schema(description = "Variant cover/thumbnail image (if separately set)", nullable = true)

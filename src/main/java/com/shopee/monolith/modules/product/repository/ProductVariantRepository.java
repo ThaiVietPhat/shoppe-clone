@@ -19,6 +19,12 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
 
     List<ProductVariant> findAllByProductIdAndActive(UUID productId, boolean active);
 
+    @Query("SELECT v FROM ProductVariant v JOIN Product p ON p.id = v.productId "
+            + "WHERE v.id = :variantId AND v.active = true AND v.price > 0 AND p.status = :status")
+    Optional<ProductVariant> findActiveByIdAndProductStatus(
+            @Param("variantId") UUID variantId,
+            @Param("status") com.shopee.monolith.modules.product.entity.ProductStatus status);
+
     Optional<ProductVariant> findBySku(String sku);
 
     boolean existsBySku(String sku);

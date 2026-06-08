@@ -8,11 +8,16 @@ import com.shopee.monolith.modules.product.dto.request.CreateProductRequest;
 import com.shopee.monolith.modules.product.dto.request.CreateProductVariantRequest;
 import com.shopee.monolith.modules.product.dto.request.UpdateProductRequest;
 import com.shopee.monolith.modules.product.dto.request.UpdateProductVariantRequest;
+import com.shopee.monolith.modules.product.dto.internal.ProductLookupData;
+import com.shopee.monolith.modules.product.dto.internal.VariantLookupData;
 import com.shopee.monolith.modules.product.dto.response.CategoryResponse;
 import com.shopee.monolith.modules.product.dto.response.ProductResponse;
+import com.shopee.monolith.modules.product.dto.response.ProductDetailResponse;
+import com.shopee.monolith.modules.product.dto.response.ProductEligibilityIssue;
 import com.shopee.monolith.modules.product.dto.response.ProductVariantResponse;
 import com.shopee.monolith.modules.product.entity.Category;
 import com.shopee.monolith.modules.product.entity.Product;
+import com.shopee.monolith.modules.product.entity.ProductStatus;
 import com.shopee.monolith.modules.product.entity.ProductVariant;
 import com.shopee.monolith.modules.product.event.ProductCatalogSnapshotEvent;
 import com.shopee.monolith.modules.product.event.ProductCreatedEvent;
@@ -44,6 +49,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.lenient;
@@ -286,11 +292,52 @@ class ProductServiceImplTest {
         when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
         when(productVariantRepository.existsBySku("IPHONE-15-256")).thenReturn(false);
         when(productVariantRepository.saveAndFlush(any(ProductVariant.class))).thenReturn(variant);
+        when(productVariantRepository.findMinPriceByProductId(productId)).thenReturn(Optional.of(BigDecimal.valueOf(999.00)));
+        when(productVariantRepository.findMaxPriceByProductId(productId)).thenReturn(Optional.of(BigDecimal.valueOf(999.00)));
+        when(productRepository.save(product)).thenReturn(product);
+        when(productVariantRepository.findAllByProductId(productId)).thenReturn(List.of(variant));
         when(productMapper.toResponse(variant)).thenReturn(variantResponse);
 
         ProductVariantResponse result = productService.createVariant(ownerId, productId, req);
 
         assertEquals(variantResponse, result);
+        verify(eventPublisher).publishEvent(any(ProductUpdatedEvent.class));
+        verify(eventPublisher).publishEvent(any(ProductCatalogSnapshotEvent.class));
+    }
+
+    @Test
+    void createVariantWhenProductActiveShouldRecomputePriceRangeAndPublishSnapshot() {
+        Product activeProduct = Product.builder()
+                .id(productId)
+                .shopId(shopId)
+                .categoryId(categoryId)
+                .name("iPhone 15")
+                .status(ProductStatus.ACTIVE)
+                .build();
+        CreateProductVariantRequest req = CreateProductVariantRequest.builder()
+                .sku("IPHONE-15-256")
+                .name("256GB Black")
+                .price(BigDecimal.valueOf(999.00))
+                .build();
+
+        when(productRepository.findById(productId)).thenReturn(Optional.of(activeProduct));
+        when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
+        when(productVariantRepository.existsBySku("IPHONE-15-256")).thenReturn(false);
+        when(productVariantRepository.saveAndFlush(any(ProductVariant.class))).thenReturn(variant);
+        when(productVariantRepository.findMinPriceByProductId(productId)).thenReturn(Optional.of(BigDecimal.valueOf(999.00)));
+        when(productVariantRepository.findMaxPriceByProductId(productId)).thenReturn(Optional.of(BigDecimal.valueOf(999.00)));
+        when(productVariantRepository.countActiveVariantsWithPriceAbove(productId, BigDecimal.ZERO)).thenReturn(1L);
+        when(productRepository.save(activeProduct)).thenReturn(activeProduct);
+        when(productVariantRepository.findAllByProductId(productId)).thenReturn(List.of(variant));
+        when(productMapper.toResponse(variant)).thenReturn(variantResponse);
+
+        ProductVariantResponse result = productService.createVariant(ownerId, productId, req);
+
+        assertEquals(variantResponse, result);
+        assertEquals(BigDecimal.valueOf(999.00), activeProduct.getMinPrice());
+        assertEquals(BigDecimal.valueOf(999.00), activeProduct.getMaxPrice());
+        verify(eventPublisher).publishEvent(any(ProductUpdatedEvent.class));
+        verify(eventPublisher).publishEvent(any(ProductCatalogSnapshotEvent.class));
     }
 
     @Test
@@ -344,6 +391,29 @@ class ProductServiceImplTest {
         AppException ex = assertThrows(AppException.class, () -> productService.updateVariant(ownerId, productId, variantId, req));
 
         assertEquals(ErrorCode.SKU_ALREADY_EXISTS, ex.getErrorCode());
+    }
+
+    @Test
+    void updateVariantWhenProductDeletedShouldThrowException() {
+        UpdateProductVariantRequest req = UpdateProductVariantRequest.builder()
+                .sku("IPHONE-15-256")
+                .name("Updated variant")
+                .price(BigDecimal.valueOf(1099.00))
+                .build();
+        Product deletedProduct = Product.builder()
+                .id(productId)
+                .shopId(shopId)
+                .status(ProductStatus.DELETED)
+                .build();
+
+        when(productVariantRepository.findById(variantId)).thenReturn(Optional.of(variant));
+        when(productRepository.findById(productId)).thenReturn(Optional.of(deletedProduct));
+
+        AppException ex = assertThrows(AppException.class,
+                () -> productService.updateVariant(ownerId, productId, variantId, req));
+
+        assertEquals(ErrorCode.PRODUCT_NOT_FOUND, ex.getErrorCode());
+        verify(productVariantRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -412,5 +482,54 @@ class ProductServiceImplTest {
 
         AppException ex2 = assertThrows(AppException.class, () -> productService.listProductsByShop(shopId, 0, 0));
         assertEquals(ErrorCode.INVALID_REQUEST, ex2.getErrorCode());
+    }
+
+    @Test
+    void findActiveProductLookupDataByIdWhenProductIsNotActiveShouldReturnEmpty() {
+        when(productRepository.findByIdAndStatus(productId, ProductStatus.ACTIVE)).thenReturn(Optional.empty());
+
+        Optional<ProductLookupData> result = productService.findActiveProductLookupDataById(productId);
+
+        assertEquals(Optional.empty(), result);
+    }
+
+    @Test
+    void findActiveVariantLookupDataByIdWhenVariantOrProductIsNotActiveShouldReturnEmpty() {
+        when(productVariantRepository.findActiveByIdAndProductStatus(variantId, ProductStatus.ACTIVE))
+                .thenReturn(Optional.empty());
+
+        Optional<VariantLookupData> result = productService.findActiveVariantLookupDataById(variantId);
+
+        assertEquals(Optional.empty(), result);
+    }
+
+    @Test
+    void getProductDetailForSellerShouldExposeEligibilityIssues() {
+        Product draftProduct = Product.builder()
+                .id(productId)
+                .shopId(shopId)
+                .categoryId(categoryId)
+                .status(ProductStatus.DRAFT)
+                .name("Draft product")
+                .build();
+        ProductVariant zeroPriceVariant = ProductVariant.builder()
+                .id(variantId)
+                .productId(productId)
+                .sku("ZERO-PRICE")
+                .name("Zero price")
+                .price(BigDecimal.ZERO)
+                .active(true)
+                .build();
+
+        when(productRepository.findById(productId)).thenReturn(Optional.of(draftProduct));
+        when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
+        when(productVariantRepository.findAllByProductId(productId)).thenReturn(List.of(zeroPriceVariant));
+        when(stockSummaryProvider.getStockSummariesByVariantIds(List.of(variantId))).thenReturn(Map.of());
+
+        ProductDetailResponse result = productService.getProductDetailForSeller(ownerId, productId);
+
+        assertTrue(result.eligibilityIssues().contains(ProductEligibilityIssue.PRODUCT_NOT_ACTIVE));
+        assertTrue(result.eligibilityIssues().contains(ProductEligibilityIssue.NO_POSITIVE_PRICE));
+        assertTrue(result.eligibilityIssues().contains(ProductEligibilityIssue.NO_STOCK));
     }
 }

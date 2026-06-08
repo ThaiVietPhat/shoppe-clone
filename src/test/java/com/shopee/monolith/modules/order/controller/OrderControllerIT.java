@@ -10,6 +10,7 @@ import com.shopee.monolith.modules.inventory.service.InventoryService;
 import com.shopee.monolith.modules.order.dto.request.CheckoutRequest;
 import com.shopee.monolith.modules.product.entity.Category;
 import com.shopee.monolith.modules.product.entity.Product;
+import com.shopee.monolith.modules.product.entity.ProductStatus;
 import com.shopee.monolith.modules.product.entity.ProductVariant;
 import com.shopee.monolith.modules.product.repository.CategoryRepository;
 import com.shopee.monolith.modules.product.repository.ProductRepository;
@@ -149,6 +150,7 @@ class OrderControllerIT extends BasePostgresRedisIntegrationTest {
                 .categoryId(category.getId())
                 .name("Order Ctrl Product")
                 .description("Description")
+                .status(ProductStatus.ACTIVE)
                 .build();
         product = productRepository.save(product);
 

@@ -90,10 +90,10 @@ public class OrderServiceImpl implements OrderService {
         // Resolve variants and group by shopId OUTSIDE the DB transaction
         List<CartItemWithDetails> resolvedItems = new ArrayList<>();
         for (CartSnapshotItem item : cartSnapshot.items()) {
-            VariantLookupData variant = productService.findVariantLookupDataById(item.variantId())
+            VariantLookupData variant = productService.findActiveVariantLookupDataById(item.variantId())
                     .orElseThrow(() -> new AppException(ErrorCode.VARIANT_NOT_FOUND));
 
-            ProductLookupData product = productService.findProductLookupDataById(variant.productId())
+            ProductLookupData product = productService.findActiveProductLookupDataById(variant.productId())
                     .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
 
             resolvedItems.add(new CartItemWithDetails(item, variant, product));

@@ -126,8 +126,8 @@ class OrderServiceImplTest {
                 .name("Test Product")
                 .build();
 
-        when(productService.findVariantLookupDataById(variantId)).thenReturn(Optional.of(variant));
-        when(productService.findProductLookupDataById(variant.productId())).thenReturn(Optional.of(product));
+        when(productService.findActiveVariantLookupDataById(variantId)).thenReturn(Optional.of(variant));
+        when(productService.findActiveProductLookupDataById(variant.productId())).thenReturn(Optional.of(product));
 
         CheckoutResponse expectedResponse = CheckoutResponse.builder()
                 .checkoutSessionId(UUID.randomUUID())

@@ -4,6 +4,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shopee.monolith.BasePostgresRedisIntegrationTest;
 import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.modules.auth.security.JwtTokenProvider;
+import com.shopee.monolith.modules.media.entity.MediaAsset;
+import com.shopee.monolith.modules.media.entity.MediaOwnerType;
+import com.shopee.monolith.modules.media.entity.MediaPurpose;
+import com.shopee.monolith.modules.media.entity.MediaStatus;
+import com.shopee.monolith.modules.media.entity.ProductMedia;
+import com.shopee.monolith.modules.media.entity.ProductMediaId;
+import com.shopee.monolith.modules.media.repository.MediaAssetRepository;
+import com.shopee.monolith.modules.media.repository.ProductMediaRepository;
 import com.shopee.monolith.modules.product.dto.request.CreateProductRequest;
 import com.shopee.monolith.modules.product.dto.request.CreateProductVariantRequest;
 import com.shopee.monolith.modules.product.dto.request.UpdateProductRequest;
@@ -26,6 +34,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -33,6 +42,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.math.BigDecimal;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -63,6 +73,12 @@ class ProductControllerIT extends BasePostgresRedisIntegrationTest {
 
     @Autowired
     private ProductVariantRepository productVariantRepository;
+
+    @Autowired
+    private MediaAssetRepository mediaAssetRepository;
+
+    @Autowired
+    private ProductMediaRepository productMediaRepository;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -130,6 +146,8 @@ class ProductControllerIT extends BasePostgresRedisIntegrationTest {
 
     @AfterEach
     void tearDown() {
+        productMediaRepository.deleteAll();
+        mediaAssetRepository.deleteAll();
         productVariantRepository.deleteAll();
         productRepository.deleteAll();
         categoryRepository.deleteAll();
@@ -401,6 +419,38 @@ class ProductControllerIT extends BasePostgresRedisIntegrationTest {
         mockMvc.perform(get("/api/seller/products/" + product.getId())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void attachProductMediaWhenTwoCoverRowsExistShouldBeRejectedByDatabase() {
+        MediaAsset first = mediaAssetRepository.save(buildMediaAsset("first.png"));
+        MediaAsset second = mediaAssetRepository.save(buildMediaAsset("second.png"));
+        productMediaRepository.saveAndFlush(ProductMedia.builder()
+                .id(new ProductMediaId(product.getId(), first.getId()))
+                .sortOrder(0)
+                .cover(true)
+                .build());
+
+        ProductMedia duplicateCover = ProductMedia.builder()
+                .id(new ProductMediaId(product.getId(), second.getId()))
+                .sortOrder(1)
+                .cover(true)
+                .build();
+
+        assertThrows(DataIntegrityViolationException.class, () -> productMediaRepository.saveAndFlush(duplicateCover));
+    }
+
+    private MediaAsset buildMediaAsset(String objectKey) {
+        return MediaAsset.builder()
+                .ownerId(shop.getId())
+                .ownerType(MediaOwnerType.SHOP)
+                .purpose(MediaPurpose.PRODUCT_IMAGE)
+                .objectKey(objectKey)
+                .originalFilename(objectKey)
+                .contentType("image/png")
+                .sizeBytes(12)
+                .status(MediaStatus.READY)
+                .build();
     }
 
     @Test

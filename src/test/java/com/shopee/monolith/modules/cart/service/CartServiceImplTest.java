@@ -114,8 +114,8 @@ class CartServiceImplTest {
         when(hashOperations.entries("cart:" + userId + ":items")).thenReturn(hashEntries);
         when(valueOperations.get("cart:" + userId + ":version")).thenReturn("4");
 
-        when(productService.findVariantLookupDataById(variantId)).thenReturn(Optional.of(variantLookup));
-        when(productService.findProductLookupDataById(productId)).thenReturn(Optional.of(productLookup));
+        when(productService.findActiveVariantLookupDataById(variantId)).thenReturn(Optional.of(variantLookup));
+        when(productService.findActiveProductLookupDataById(productId)).thenReturn(Optional.of(productLookup));
 
         CartResponse response = cartService.getCart(userId);
 
@@ -136,7 +136,7 @@ class CartServiceImplTest {
     void addItemSuccessShouldAddAndIncrementVersion() {
         AddCartItemRequest request = new AddCartItemRequest(variantId, 2);
 
-        when(productService.findVariantLookupDataById(variantId)).thenReturn(Optional.of(variantLookup));
+        when(productService.findActiveVariantLookupDataById(variantId)).thenReturn(Optional.of(variantLookup));
         when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(cartProperties.getMaxQuantityPerItem()).thenReturn(99);
@@ -156,7 +156,7 @@ class CartServiceImplTest {
         hashEntries.put(variantId.toString(), "5");
         when(hashOperations.entries("cart:" + userId + ":items")).thenReturn(hashEntries);
         when(valueOperations.get("cart:" + userId + ":version")).thenReturn("6");
-        when(productService.findProductLookupDataById(productId)).thenReturn(Optional.of(productLookup));
+        when(productService.findActiveProductLookupDataById(productId)).thenReturn(Optional.of(productLookup));
 
         CartResponse response = cartService.addItem(userId, request);
 
@@ -176,7 +176,7 @@ class CartServiceImplTest {
     @Test
     void addItemWhenInvalidVariantShouldThrowNotFound() {
         AddCartItemRequest request = new AddCartItemRequest(variantId, 2);
-        when(productService.findVariantLookupDataById(variantId)).thenReturn(Optional.empty());
+        when(productService.findActiveVariantLookupDataById(variantId)).thenReturn(Optional.empty());
 
         AppException exception = assertThrows(AppException.class, () -> cartService.addItem(userId, request));
         assertEquals(ErrorCode.VARIANT_NOT_FOUND, exception.getErrorCode());
@@ -186,7 +186,7 @@ class CartServiceImplTest {
     void addItemWhenExceedsMaxQuantityShouldThrowInvalidRequest() {
         AddCartItemRequest request = new AddCartItemRequest(variantId, 90);
 
-        when(productService.findVariantLookupDataById(variantId)).thenReturn(Optional.of(variantLookup));
+        when(productService.findActiveVariantLookupDataById(variantId)).thenReturn(Optional.of(variantLookup));
         when(cartProperties.getMaxQuantityPerItem()).thenReturn(99);
         when(cartProperties.getTtl()).thenReturn(Duration.ofDays(7));
 

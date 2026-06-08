@@ -61,6 +61,9 @@ public record ProductDetailResponse(
         @Schema(description = "Product variants with stock and checkout eligibility")
         List<ProductVariantDetailResponse> variants,
 
+        @Schema(description = "Structured seller-visible publish or checkout eligibility issues")
+        List<ProductEligibilityIssue> eligibilityIssues,
+
         @Schema(description = "Shop summary")
         ShopSummaryDto shop,
 

@@ -16,6 +16,7 @@ import com.shopee.monolith.modules.order.repository.OrderItemRepository;
 import com.shopee.monolith.modules.order.repository.OrderRepository;
 import com.shopee.monolith.modules.product.entity.Category;
 import com.shopee.monolith.modules.product.entity.Product;
+import com.shopee.monolith.modules.product.entity.ProductStatus;
 import com.shopee.monolith.modules.product.entity.ProductVariant;
 import com.shopee.monolith.modules.product.repository.CategoryRepository;
 import com.shopee.monolith.modules.product.repository.ProductRepository;
@@ -121,6 +122,7 @@ class CheckoutTimeoutIT extends BasePostgresRedisIntegrationTest {
                 .shopId(shop.getId())
                 .categoryId(category.getId())
                 .name("Timeout Product")
+                .status(ProductStatus.ACTIVE)
                 .build();
         product = productRepository.save(product);
 

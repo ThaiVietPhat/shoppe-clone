@@ -3,12 +3,15 @@
 
 -- ==================== 1. products: new catalog fields ====================
 ALTER TABLE products
-    ADD COLUMN status       VARCHAR(50)   NOT NULL DEFAULT 'DRAFT',
+    ADD COLUMN status       VARCHAR(50)   NOT NULL DEFAULT 'ACTIVE',
     ADD COLUMN brand        VARCHAR(255),
     ADD COLUMN seller_sku   VARCHAR(100),
     ADD COLUMN attributes   JSONB,
     ADD COLUMN min_price    DECIMAL(15, 2),
     ADD COLUMN max_price    DECIMAL(15, 2);
+
+ALTER TABLE products
+    ALTER COLUMN status SET DEFAULT 'DRAFT';
 
 -- ==================== 2. categories: materialized path ====================
 ALTER TABLE categories
@@ -25,6 +28,17 @@ ALTER TABLE categories
 ALTER TABLE product_variants
     ADD COLUMN option_labels JSONB,
     ADD COLUMN active        BOOLEAN NOT NULL DEFAULT TRUE;
+
+UPDATE products p
+SET min_price = price_range.min_price,
+    max_price = price_range.max_price
+FROM (
+    SELECT product_id, MIN(price) AS min_price, MAX(price) AS max_price
+    FROM product_variants
+    WHERE active = TRUE
+    GROUP BY product_id
+) price_range
+WHERE p.id = price_range.product_id;
 
 -- ==================== 4. media_assets: upload metadata ====================
 CREATE TABLE media_assets (
@@ -57,5 +71,6 @@ CREATE TABLE product_media (
 CREATE INDEX idx_products_status_created  ON products (status, created_at DESC);
 CREATE INDEX idx_products_shop_status     ON products (shop_id, status);
 CREATE INDEX idx_product_media_sort       ON product_media (product_id, sort_order);
+CREATE UNIQUE INDEX uq_product_media_cover ON product_media (product_id) WHERE is_cover = TRUE;
 CREATE INDEX idx_media_assets_owner       ON media_assets (owner_id, purpose);
 CREATE INDEX idx_product_variants_product ON product_variants (product_id, active);

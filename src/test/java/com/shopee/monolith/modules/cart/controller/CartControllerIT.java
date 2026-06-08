@@ -9,6 +9,7 @@ import com.shopee.monolith.modules.cart.dto.request.UpdateCartItemRequest;
 import com.shopee.monolith.modules.cart.service.CartService;
 import com.shopee.monolith.modules.product.entity.Category;
 import com.shopee.monolith.modules.product.entity.Product;
+import com.shopee.monolith.modules.product.entity.ProductStatus;
 import com.shopee.monolith.modules.product.entity.ProductVariant;
 import com.shopee.monolith.modules.product.repository.CategoryRepository;
 import com.shopee.monolith.modules.product.repository.ProductRepository;
@@ -74,6 +75,7 @@ class CartControllerIT extends BasePostgresRedisIntegrationTest {
     private User buyer;
     private String buyerToken;
     private ProductVariant variant;
+    private ProductVariant zeroPriceVariant;
 
     @BeforeEach
     void setUp() {
@@ -112,6 +114,7 @@ class CartControllerIT extends BasePostgresRedisIntegrationTest {
                 .categoryId(category.getId())
                 .name("Cart Controller Product")
                 .description("Desc")
+                .status(ProductStatus.ACTIVE)
                 .build();
         product = productRepository.save(product);
 
@@ -122,6 +125,15 @@ class CartControllerIT extends BasePostgresRedisIntegrationTest {
                 .price(BigDecimal.valueOf(100.00))
                 .build();
         variant = productVariantRepository.save(variant);
+
+        zeroPriceVariant = ProductVariant.builder()
+                .productId(product.getId())
+                .sku("CART-CTRL-ZERO")
+                .name("Zero price Variant")
+                .price(BigDecimal.ZERO)
+                .active(true)
+                .build();
+        zeroPriceVariant = productVariantRepository.save(zeroPriceVariant);
     }
 
     @AfterEach
@@ -200,6 +212,17 @@ class CartControllerIT extends BasePostgresRedisIntegrationTest {
     @Test
     void addWhenVariantNotFoundShouldReturn404() throws Exception {
         AddCartItemRequest addRequest = new AddCartItemRequest(UUID.randomUUID(), 5);
+        mockMvc.perform(post("/api/cart/items")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + buyerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(addRequest)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(ErrorCode.VARIANT_NOT_FOUND.getHttpStatus()));
+    }
+
+    @Test
+    void addWhenVariantHasZeroPriceShouldReturn404() throws Exception {
+        AddCartItemRequest addRequest = new AddCartItemRequest(zeroPriceVariant.getId(), 1);
         mockMvc.perform(post("/api/cart/items")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + buyerToken)
                         .contentType(MediaType.APPLICATION_JSON)

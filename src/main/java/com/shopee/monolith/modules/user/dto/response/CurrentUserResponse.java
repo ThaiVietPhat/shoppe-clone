@@ -1,5 +1,6 @@
 package com.shopee.monolith.modules.user.dto.response;
 
+import com.shopee.monolith.modules.media.dto.response.MediaAssetResponse;
 import com.shopee.monolith.modules.user.model.Role;
 import com.shopee.monolith.modules.user.model.UserStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -21,6 +22,9 @@ public record CurrentUserResponse(
 
         @Schema(description = "Account status", example = "ACTIVE")
         UserStatus status,
+
+        @Schema(description = "Latest uploaded avatar media, if any")
+        MediaAssetResponse avatar,
 
         @Schema(description = "Owned shop summary if the user has one")
         CurrentUserShopResponse shop
