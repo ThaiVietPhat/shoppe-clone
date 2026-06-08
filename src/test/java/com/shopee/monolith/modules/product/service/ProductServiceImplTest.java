@@ -166,6 +166,7 @@ class ProductServiceImplTest {
                 .build();
 
         lenient().when(mediaService.listProductMedia(any())).thenReturn(List.of());
+        lenient().when(stockSummaryProvider.getStockSummariesByVariantIds(any())).thenReturn(Map.of());
     }
 
     @Test
@@ -211,9 +212,24 @@ class ProductServiceImplTest {
                 .attributes(Map.of("storage", "256GB"))
                 .build();
 
-        when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
+        ProductMediaSummary cover = ProductMediaSummary.builder()
+                .mediaId(UUID.randomUUID())
+                .publicUrl("http://localhost/media/cover.png")
+                .objectKey("cover.png")
+                .contentType("image/png")
+                .cover(true)
+                .build();
+        ShopLookupData ratedShop = ShopLookupData.builder()
+                .id(shopId)
+                .ownerId(ownerId)
+                .name("Seller Shop")
+                .rating(BigDecimal.valueOf(4.80))
+                .build();
+
+        when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(ratedShop));
         when(categoryRepository.existsById(categoryId)).thenReturn(true);
         when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
+        when(mediaService.listProductMedia(productId)).thenReturn(List.of(cover));
         when(productRepository.save(any(Product.class))).thenReturn(product);
         when(productMapper.toResponse(any(Product.class), any())).thenReturn(productResponse);
 
@@ -230,6 +246,14 @@ class ProductServiceImplTest {
         assertEquals("Electronics", snapshot.categoryPath());
         assertEquals("Apple", snapshot.brand());
         assertEquals(Map.of("storage", "256GB"), snapshot.attributes());
+        assertEquals("http://localhost/media/cover.png", snapshot.coverImageUrl());
+        assertEquals(cover.mediaId(), snapshot.coverMediaId());
+        assertEquals("cover.png", snapshot.coverMediaObjectKey());
+        assertEquals("image/png", snapshot.coverMediaContentType());
+        assertEquals("Seller Shop", snapshot.shopName());
+        assertEquals(BigDecimal.valueOf(4.80), snapshot.shopRating());
+        assertFalse(snapshot.checkoutEligible());
+        assertTrue(snapshot.eligibilityIssues().contains(ProductEligibilityIssue.NO_ACTIVE_VARIANT));
     }
 
     @Test
@@ -547,8 +571,8 @@ class ProductServiceImplTest {
                         .reservedStock(0)
                         .build()
         ));
-        when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(ratedShop));
-        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
+        when(shopService.findShopLookupDataByIds(List.of(shopId))).thenReturn(Map.of(shopId, ratedShop));
+        when(categoryRepository.findAllById(List.of(categoryId))).thenReturn(List.of(category));
 
         PagedResponse<ProductCardResponse> result = productService.listActiveProducts(0, 20);
         ProductCardResponse card = result.items().get(0);
@@ -558,6 +582,7 @@ class ProductServiceImplTest {
         assertEquals(BigDecimal.valueOf(4.85), card.shopRating());
         assertTrue(card.checkoutEligible());
         assertTrue(card.eligibilityIssues().isEmpty());
+        verify(shopService, never()).findShopLookupDataById(shopId);
     }
 
     @Test
@@ -577,8 +602,8 @@ class ProductServiceImplTest {
         when(mediaService.listProductMediaByProductIds(List.of(productId))).thenReturn(Map.of());
         when(productVariantRepository.findAllByProductIdIn(List.of(productId))).thenReturn(List.of(variant));
         when(stockSummaryProvider.getStockSummariesByVariantIds(List.of(variantId))).thenReturn(Map.of());
-        when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
-        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
+        when(shopService.findShopLookupDataByIds(List.of(shopId))).thenReturn(Map.of(shopId, shopLookup));
+        when(categoryRepository.findAllById(List.of(categoryId))).thenReturn(List.of(category));
 
         PagedResponse<ProductCardResponse> result = productService.listActiveProducts(0, 20);
         ProductCardResponse card = result.items().get(0);

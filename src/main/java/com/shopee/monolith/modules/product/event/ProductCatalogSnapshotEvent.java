@@ -1,5 +1,6 @@
 package com.shopee.monolith.modules.product.event;
 
+import com.shopee.monolith.modules.product.dto.response.ProductEligibilityIssue;
 import com.shopee.monolith.modules.product.entity.ProductStatus;
 
 import java.math.BigDecimal;
@@ -23,8 +24,14 @@ public record ProductCatalogSnapshotEvent(
         Map<String, Object> attributes,
         BigDecimal minPrice,
         BigDecimal maxPrice,
+        String coverImageUrl,
         UUID coverMediaId,
         String coverMediaObjectKey,
+        String coverMediaContentType,
+        String shopName,
+        BigDecimal shopRating,
+        boolean checkoutEligible,
+        List<ProductEligibilityIssue> eligibilityIssues,
         List<VariantSnapshot> variants
 ) {
 

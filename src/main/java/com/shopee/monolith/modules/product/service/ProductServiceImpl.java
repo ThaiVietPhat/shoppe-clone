@@ -579,6 +579,10 @@ public class ProductServiceImpl implements ProductService {
     private void publishCatalogSnapshot(Product product, List<ProductVariant> variants) {
         List<ProductMediaSummary> media = mediaService.listProductMedia(product.getId());
         ProductMediaSummary cover = media.stream().filter(ProductMediaSummary::cover).findFirst().orElse(null);
+        List<UUID> variantIds = variants.stream().map(ProductVariant::getId).toList();
+        Map<UUID, ProductStockSummaryDto> stockMap = stockSummaryProvider.getStockSummariesByVariantIds(variantIds);
+        List<ProductEligibilityIssue> eligibilityIssues = buildEligibilityIssues(product, variants, stockMap);
+        ShopLookupData shop = shopService.findShopLookupDataById(product.getShopId()).orElse(null);
 
         List<ProductCatalogSnapshotEvent.VariantSnapshot> variantSnapshots = variants.stream()
                 .map(v -> new ProductCatalogSnapshotEvent.VariantSnapshot(
@@ -596,8 +600,14 @@ public class ProductServiceImpl implements ProductService {
                 product.getAttributes(),
                 product.getMinPrice(),
                 product.getMaxPrice(),
+                cover != null ? cover.publicUrl() : null,
                 cover != null ? cover.mediaId() : null,
                 cover != null ? cover.objectKey() : null,
+                cover != null ? cover.contentType() : null,
+                shop != null ? shop.name() : null,
+                shop != null ? shop.rating() : null,
+                eligibilityIssues.isEmpty(),
+                eligibilityIssues,
                 variantSnapshots
         ));
     }
@@ -635,11 +645,19 @@ public class ProductServiceImpl implements ProductService {
                 .collect(Collectors.groupingBy(ProductVariant::getProductId));
         List<UUID> variantIds = allVariants.stream().map(ProductVariant::getId).toList();
         Map<UUID, ProductStockSummaryDto> stockMap = stockSummaryProvider.getStockSummariesByVariantIds(variantIds);
+        Map<UUID, ShopLookupData> shopMap = shopService.findShopLookupDataByIds(products.stream()
+                .map(Product::getShopId)
+                .distinct()
+                .toList());
+        Map<UUID, String> categoryPathMap = resolveCategoryPaths(products.stream()
+                .map(Product::getCategoryId)
+                .distinct()
+                .toList());
 
         List<ProductCardResponse> cards = products.stream().map(p -> {
             List<ProductMediaSummary> media = mediaMap.getOrDefault(p.getId(), List.of());
             ProductMediaSummary cover = media.stream().filter(ProductMediaSummary::cover).findFirst().orElse(null);
-            ShopLookupData shop = shopService.findShopLookupDataById(p.getShopId()).orElse(null);
+            ShopLookupData shop = shopMap.get(p.getShopId());
             List<ProductVariant> variants = variantsByProductId.getOrDefault(p.getId(), List.of());
             List<ProductEligibilityIssue> eligibilityIssues = buildEligibilityIssues(p, variants, stockMap);
             boolean checkoutEligible = eligibilityIssues.isEmpty();
@@ -658,7 +676,7 @@ public class ProductServiceImpl implements ProductService {
                     .shopId(p.getShopId())
                     .shopName(shop != null ? shop.name() : null)
                     .shopRating(shop != null ? shop.rating() : null)
-                    .categoryPath(resolveCategory(p.getCategoryId()))
+                    .categoryPath(categoryPathMap.get(p.getCategoryId()))
                     .checkoutEligible(checkoutEligible)
                     .eligibilityIssues(eligibilityIssues)
                     .createdAt(p.getCreatedAt())
@@ -666,5 +684,16 @@ public class ProductServiceImpl implements ProductService {
         }).toList();
 
         return PagedResponse.from(productPage, cards);
+    }
+
+    private Map<UUID, String> resolveCategoryPaths(List<UUID> categoryIds) {
+        List<UUID> nonNullCategoryIds = categoryIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        if (nonNullCategoryIds.isEmpty()) {
+            return Map.of();
+        }
+        return categoryRepository.findAllById(nonNullCategoryIds).stream()
+                .collect(Collectors.toMap(Category::getId, Category::getPath));
     }
 }

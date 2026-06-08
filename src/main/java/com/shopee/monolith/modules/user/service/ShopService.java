@@ -5,6 +5,8 @@ import com.shopee.monolith.modules.user.dto.request.CreateShopRequest;
 import com.shopee.monolith.modules.user.dto.request.UpdateShopRequest;
 import com.shopee.monolith.modules.user.dto.response.ShopResponse;
 
+import java.util.Collection;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -19,6 +21,8 @@ public interface ShopService {
     ShopResponse updateShop(UUID ownerId, UpdateShopRequest request);
 
     Optional<ShopLookupData> findShopLookupDataById(UUID shopId);
+
+    Map<UUID, ShopLookupData> findShopLookupDataByIds(Collection<UUID> shopIds);
 
     Optional<ShopLookupData> findShopLookupDataByOwnerId(UUID ownerId);
 }

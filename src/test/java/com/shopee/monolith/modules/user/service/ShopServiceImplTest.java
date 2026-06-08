@@ -24,6 +24,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -254,5 +256,16 @@ class ShopServiceImplTest {
         Optional<ShopLookupData> result = shopService.findShopLookupDataById(shopId);
 
         assertFalse(result.isPresent());
+    }
+
+    @Test
+    void findShopLookupDataByIdsWhenShopsExistShouldReturnLookupMap() {
+        when(shopRepository.findAllById(List.of(shopId))).thenReturn(List.of(shop));
+        when(shopMapper.toLookupData(shop)).thenReturn(lookupData);
+
+        Map<UUID, ShopLookupData> result = shopService.findShopLookupDataByIds(List.of(shopId));
+
+        assertEquals(1, result.size());
+        assertEquals(lookupData, result.get(shopId));
     }
 }

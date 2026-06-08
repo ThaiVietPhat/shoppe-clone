@@ -19,8 +19,11 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -89,6 +92,16 @@ public class ShopServiceImpl implements ShopService {
     public Optional<ShopLookupData> findShopLookupDataById(UUID shopId) {
         return shopRepository.findById(shopId)
                 .map(shopMapper::toLookupData);
+    }
+
+    @Override
+    public Map<UUID, ShopLookupData> findShopLookupDataByIds(Collection<UUID> shopIds) {
+        if (shopIds == null || shopIds.isEmpty()) {
+            return Map.of();
+        }
+        return shopRepository.findAllById(shopIds).stream()
+                .map(shopMapper::toLookupData)
+                .collect(Collectors.toMap(ShopLookupData::id, lookup -> lookup));
     }
 
     @Override
