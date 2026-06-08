@@ -67,7 +67,7 @@ public record ProductDetailResponse(
         @Schema(description = "Shop summary")
         ShopSummaryDto shop,
 
-        @Schema(description = "Total available stock across all active variants", example = "250")
+        @Schema(description = "Total available stock across checkout-eligible variants", example = "250")
         int totalAvailableStock,
 
         @Schema(description = "Timestamp when the product was created")

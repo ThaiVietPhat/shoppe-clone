@@ -44,6 +44,8 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -254,6 +256,37 @@ class ProductServiceImplTest {
         assertEquals(BigDecimal.valueOf(4.80), snapshot.shopRating());
         assertFalse(snapshot.checkoutEligible());
         assertTrue(snapshot.eligibilityIssues().contains(ProductEligibilityIssue.NO_ACTIVE_VARIANT));
+    }
+
+    @Test
+    void createProductWhenTransactionActiveShouldPublishSnapshotAfterCommit() {
+        CreateProductRequest req = CreateProductRequest.builder()
+                .shopId(shopId)
+                .categoryId(categoryId)
+                .name("iPhone 15")
+                .description("Titanium")
+                .brand("Apple")
+                .build();
+
+        when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
+        when(categoryRepository.existsById(categoryId)).thenReturn(true);
+        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
+        when(productRepository.save(any(Product.class))).thenReturn(product);
+        when(productMapper.toResponse(any(Product.class), any())).thenReturn(productResponse);
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            productService.createProduct(ownerId, req);
+
+            verify(eventPublisher, never()).publishEvent(any(ProductCatalogSnapshotEvent.class));
+            TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(TransactionSynchronization::afterCommit);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        verify(eventPublisher).publishEvent(any(ProductCatalogSnapshotEvent.class));
+        verify(eventPublisher).publishEvent(any(ProductCreatedEvent.class));
     }
 
     @Test
@@ -703,5 +736,50 @@ class ProductServiceImplTest {
         ProductDetailResponse result = productService.getProductDetailForSeller(ownerId, productId);
 
         assertEquals(BigDecimal.valueOf(4.85), result.shop().rating());
+    }
+
+    @Test
+    void getProductDetailForSellerShouldTotalOnlyCheckoutEligibleVariantStock() {
+        Product activeProduct = Product.builder()
+                .id(productId)
+                .shopId(shopId)
+                .categoryId(categoryId)
+                .status(ProductStatus.ACTIVE)
+                .name("Active product")
+                .build();
+        ProductVariant inactiveVariant = ProductVariant.builder()
+                .id(UUID.randomUUID())
+                .productId(productId)
+                .sku("INACTIVE")
+                .name("Inactive")
+                .price(BigDecimal.valueOf(999.00))
+                .active(false)
+                .build();
+        ProductVariant zeroPriceVariant = ProductVariant.builder()
+                .id(UUID.randomUUID())
+                .productId(productId)
+                .sku("ZERO")
+                .name("Zero")
+                .price(BigDecimal.ZERO)
+                .active(true)
+                .build();
+
+        when(productRepository.findById(productId)).thenReturn(Optional.of(activeProduct));
+        when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
+        when(productVariantRepository.findAllByProductId(productId))
+                .thenReturn(List.of(variant, inactiveVariant, zeroPriceVariant));
+        when(stockSummaryProvider.getStockSummariesByVariantIds(List.of(
+                variantId, inactiveVariant.getId(), zeroPriceVariant.getId()))).thenReturn(Map.of(
+                variantId,
+                ProductStockSummaryDto.builder().variantId(variantId).availableStock(7).build(),
+                inactiveVariant.getId(),
+                ProductStockSummaryDto.builder().variantId(inactiveVariant.getId()).availableStock(99).build(),
+                zeroPriceVariant.getId(),
+                ProductStockSummaryDto.builder().variantId(zeroPriceVariant.getId()).availableStock(88).build()
+        ));
+
+        ProductDetailResponse result = productService.getProductDetailForSeller(ownerId, productId);
+
+        assertEquals(7, result.totalAvailableStock());
     }
 }

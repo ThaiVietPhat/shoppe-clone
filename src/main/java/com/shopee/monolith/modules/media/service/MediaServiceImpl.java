@@ -97,7 +97,7 @@ public class MediaServiceImpl implements MediaService {
 
     @Override
     public MediaAssetResponse getMediaById(UUID mediaId) {
-        MediaAsset asset = mediaAssetRepository.findById(mediaId)
+        MediaAsset asset = mediaAssetRepository.findByIdAndStatus(mediaId, MediaStatus.READY)
                 .orElseThrow(() -> new AppException(ErrorCode.MEDIA_NOT_FOUND));
         return mediaMapper.toResponse(asset, storageService.getPublicUrl(asset.getObjectKey()));
     }

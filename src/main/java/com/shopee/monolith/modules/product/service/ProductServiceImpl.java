@@ -44,6 +44,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.util.Collections;
@@ -190,7 +192,7 @@ public class ProductServiceImpl implements ProductService {
             replaceProductMedia(ownerId, request.shopId(), product.getId(), request.mediaIds());
         }
 
-        eventPublisher.publishEvent(new ProductCreatedEvent(product.getId(), product.getShopId()));
+        publishAfterCommit(new ProductCreatedEvent(product.getId(), product.getShopId()));
         publishCatalogSnapshot(product, List.of());
 
         return productMapper.toResponse(product, List.of());
@@ -219,7 +221,7 @@ public class ProductServiceImpl implements ProductService {
         }
 
         List<ProductVariant> variants = productVariantRepository.findAllByProductId(productId);
-        eventPublisher.publishEvent(new ProductUpdatedEvent(product.getId(), product.getShopId()));
+        publishAfterCommit(new ProductUpdatedEvent(product.getId(), product.getShopId()));
         publishCatalogSnapshot(product, variants);
 
         List<ProductVariantResponse> variantResponses = variants.stream()
@@ -335,7 +337,7 @@ public class ProductServiceImpl implements ProductService {
 
         List<ProductVariant> variants = productVariantRepository.findAllByProductId(productId);
 
-        eventPublisher.publishEvent(new ProductListingStatusChangedEvent(
+        publishAfterCommit(new ProductListingStatusChangedEvent(
                 product.getId(), product.getShopId(), ProductStatus.ACTIVE));
         publishCatalogSnapshot(product, variants);
 
@@ -354,7 +356,7 @@ public class ProductServiceImpl implements ProductService {
 
         List<ProductVariant> variants = productVariantRepository.findAllByProductId(productId);
 
-        eventPublisher.publishEvent(new ProductListingStatusChangedEvent(
+        publishAfterCommit(new ProductListingStatusChangedEvent(
                 product.getId(), product.getShopId(), ProductStatus.INACTIVE));
         publishCatalogSnapshot(product, variants);
 
@@ -376,7 +378,7 @@ public class ProductServiceImpl implements ProductService {
         product.softDelete();
         productRepository.save(product);
 
-        eventPublisher.publishEvent(new ProductListingStatusChangedEvent(
+        publishAfterCommit(new ProductListingStatusChangedEvent(
                 product.getId(), product.getShopId(), ProductStatus.DELETED));
         List<ProductVariant> variants = productVariantRepository.findAllByProductId(productId);
         publishCatalogSnapshot(product, variants);
@@ -453,7 +455,12 @@ public class ProductServiceImpl implements ProductService {
         boolean hasCover = media.stream().anyMatch(ProductMediaSummary::cover);
         ProductMediaSummary coverMedia = media.stream().filter(ProductMediaSummary::cover).findFirst().orElse(null);
 
-        int totalStock = stockMap.values().stream().mapToInt(ProductStockSummaryDto::availableStock).sum();
+        int totalStock = variants.stream()
+                .filter(ProductVariant::isActive)
+                .filter(v -> v.getPrice().compareTo(BigDecimal.ZERO) > 0)
+                .map(v -> stockMap.getOrDefault(v.getId(), ProductStockSummaryDto.empty(v.getId())))
+                .mapToInt(ProductStockSummaryDto::availableStock)
+                .sum();
 
         List<ProductVariantDetailResponse> variantDetails = variants.stream()
                 .map(v -> {
@@ -564,10 +571,10 @@ public class ProductServiceImpl implements ProductService {
         product = productRepository.save(product);
         List<ProductVariant> variants = productVariantRepository.findAllByProductId(product.getId());
         if (unpublished) {
-            eventPublisher.publishEvent(new ProductListingStatusChangedEvent(
+            publishAfterCommit(new ProductListingStatusChangedEvent(
                     product.getId(), product.getShopId(), ProductStatus.INACTIVE));
         } else {
-            eventPublisher.publishEvent(new ProductUpdatedEvent(product.getId(), product.getShopId()));
+            publishAfterCommit(new ProductUpdatedEvent(product.getId(), product.getShopId()));
         }
         publishCatalogSnapshot(product, variants);
     }
@@ -589,7 +596,7 @@ public class ProductServiceImpl implements ProductService {
                         v.getId(), v.getSku(), v.getPrice(), v.getOptionLabels(), v.isActive()))
                 .toList();
 
-        eventPublisher.publishEvent(new ProductCatalogSnapshotEvent(
+        publishAfterCommit(new ProductCatalogSnapshotEvent(
                 product.getId(),
                 product.getShopId(),
                 product.getStatus(),
@@ -610,6 +617,19 @@ public class ProductServiceImpl implements ProductService {
                 eligibilityIssues,
                 variantSnapshots
         ));
+    }
+
+    private void publishAfterCommit(Object event) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            eventPublisher.publishEvent(event);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                eventPublisher.publishEvent(event);
+            }
+        });
     }
 
     private PagedResponse<ProductResponse> toPagedResponse(Page<Product> productPage) {

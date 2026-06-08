@@ -127,6 +127,17 @@ class MediaServiceImplTest {
     }
 
     @Test
+    void getMediaByIdWhenMediaIsDeletedShouldThrowNotFound() {
+        UUID mediaId = UUID.randomUUID();
+        when(mediaAssetRepository.findByIdAndStatus(mediaId, MediaStatus.READY)).thenReturn(Optional.empty());
+
+        AppException ex = assertThrows(AppException.class, () -> mediaService.getMediaById(mediaId));
+
+        assertEquals(ErrorCode.MEDIA_NOT_FOUND, ex.getErrorCode());
+        verify(storageService, never()).getPublicUrl(anyString());
+    }
+
+    @Test
     void attachToProductWhenMediaBelongsToAnotherShopShouldThrowException() {
         UUID shopId = UUID.randomUUID();
         UUID productId = UUID.randomUUID();

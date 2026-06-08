@@ -14,6 +14,8 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 
     Optional<MediaAsset> findByIdAndOwnerId(UUID id, UUID ownerId);
 
+    Optional<MediaAsset> findByIdAndStatus(UUID id, MediaStatus status);
+
     Optional<MediaAsset> findByObjectKeyAndStatus(String objectKey, MediaStatus status);
 
     List<MediaAsset> findAllByOwnerIdAndStatus(UUID ownerId, MediaStatus status);
