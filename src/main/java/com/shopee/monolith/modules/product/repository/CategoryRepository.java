@@ -17,4 +17,10 @@ public interface CategoryRepository extends JpaRepository<Category, UUID> {
     List<Category> findByIdOrParentId(@Param("id") UUID id);
 
     Optional<Category> findByName(String name);
+
+    /**
+     * Finds all categories whose materialized path starts with the given prefix.
+     * Used for category subtree browse: pass category.path + "/" to include all descendants.
+     */
+    List<Category> findAllByPathStartingWith(String pathPrefix);
 }

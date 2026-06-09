@@ -80,9 +80,13 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/shops/me").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/shops/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/categories").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/categories/*/products").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/products").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/products/homepage").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/products/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/shops/*/products").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/search/products").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/search/products/semantic").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/media/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/media/files/*").permitAll()
                         .requestMatchers(

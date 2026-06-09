@@ -10,6 +10,7 @@ import com.shopee.monolith.modules.product.dto.internal.ProductStockSummaryDto;
 import com.shopee.monolith.modules.product.dto.internal.VariantLookupData;
 import com.shopee.monolith.modules.product.dto.request.CreateProductRequest;
 import com.shopee.monolith.modules.product.dto.request.CreateProductVariantRequest;
+import com.shopee.monolith.modules.product.dto.request.ProductSortOrder;
 import com.shopee.monolith.modules.product.dto.request.UpdateProductRequest;
 import com.shopee.monolith.modules.product.dto.request.UpdateProductVariantRequest;
 import com.shopee.monolith.modules.product.dto.response.CategoryResponse;
@@ -100,6 +101,15 @@ public class ProductServiceImpl implements ProductService {
         return PageRequest.of(page, Math.min(size, 100), Sort.by(Sort.Direction.DESC, "createdAt"));
     }
 
+    private static Pageable buildPageableForSort(int page, int size, ProductSortOrder sort) {
+        Sort springSort = switch (sort) {
+            case PRICE_ASC -> Sort.by(Sort.Direction.ASC, "minPrice");
+            case PRICE_DESC -> Sort.by(Sort.Direction.DESC, "minPrice");
+            default -> Sort.by(Sort.Direction.DESC, "createdAt");
+        };
+        return PageRequest.of(page, Math.min(size, 100), springSort);
+    }
+
     // ===================== Category =====================
 
     @Override
@@ -133,6 +143,37 @@ public class ProductServiceImpl implements ProductService {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
         Page<Product> productPage = productRepository.findAllByShopIdAndStatus(shopId, ProductStatus.ACTIVE, buildPageable(page, size));
+        return toCardPagedResponse(productPage);
+    }
+
+    @Override
+    public PagedResponse<ProductCardResponse> listHomepageProducts(int page, int size) {
+        if (page < 0 || size < 1) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        Page<Product> productPage = productRepository.findAllByStatus(
+                ProductStatus.ACTIVE, buildPageable(page, size));
+        return toCardPagedResponse(productPage);
+    }
+
+    @Override
+    public PagedResponse<ProductCardResponse> listActiveProductsByCategory(
+            UUID categoryId, ProductSortOrder sort, int page, int size) {
+        if (page < 0 || size < 1) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        Category root = categoryRepository.findById(categoryId)
+                .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
+
+        // Collect root + all descendants via materialized path prefix
+        String pathPrefix = root.getPath() + "/";
+        List<UUID> subtreeCategoryIds = categoryRepository.findAllByPathStartingWith(pathPrefix)
+                .stream().map(Category::getId).collect(Collectors.toList());
+        subtreeCategoryIds.add(root.getId());
+
+        Pageable pageable = buildPageableForSort(page, size, sort != null ? sort : ProductSortOrder.NEWEST);
+        Page<Product> productPage = productRepository.findAllByStatusAndCategoryIdIn(
+                ProductStatus.ACTIVE, subtreeCategoryIds, pageable);
         return toCardPagedResponse(productPage);
     }
 
@@ -771,5 +812,63 @@ public class ProductServiceImpl implements ProductService {
         }
         return categoryRepository.findAllById(nonNullCategoryIds).stream()
                 .collect(Collectors.toMap(Category::getId, Category::getPath));
+    }
+
+    @Override
+    public List<ProductCardResponse> loadActiveProductCards(List<UUID> productIds) {
+        if (productIds == null || productIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Product> products = productRepository.findAllByIdInAndStatus(productIds, ProductStatus.ACTIVE);
+        if (products.isEmpty()) {
+            return Collections.emptyList();
+        }
+        // Preserve caller ordering
+        Map<UUID, Product> byId = products.stream().collect(Collectors.toMap(Product::getId, p -> p));
+        List<Product> ordered = productIds.stream()
+                .map(byId::get)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+
+        // Reuse batch-loading logic from toCardPagedResponse
+        List<UUID> ids = ordered.stream().map(Product::getId).toList();
+        Map<UUID, List<ProductMediaSummary>> mediaMap = mediaService.listProductMediaByProductIds(ids);
+        List<ProductVariant> allVariants = productVariantRepository.findAllByProductIdIn(ids);
+        Map<UUID, List<ProductVariant>> variantsByProductId = allVariants.stream()
+                .collect(Collectors.groupingBy(ProductVariant::getProductId));
+        List<UUID> variantIds = allVariants.stream().map(ProductVariant::getId).toList();
+        Map<UUID, ProductStockSummaryDto> stockMap = stockSummaryProvider.getStockSummariesByVariantIds(variantIds);
+        Map<UUID, ShopLookupData> shopMap = shopService.findShopLookupDataByIds(
+                ordered.stream().map(Product::getShopId).distinct().toList());
+        Map<UUID, String> categoryPathMap = resolveCategoryPaths(
+                ordered.stream().map(Product::getCategoryId).distinct().toList());
+
+        return ordered.stream().map(p -> {
+            List<ProductMediaSummary> media = mediaMap.getOrDefault(p.getId(), List.of());
+            ProductMediaSummary cover = media.stream().filter(ProductMediaSummary::cover).findFirst().orElse(null);
+            ShopLookupData shop = shopMap.get(p.getShopId());
+            List<ProductVariant> variants = variantsByProductId.getOrDefault(p.getId(), List.of());
+            List<ProductEligibilityIssue> eligibilityIssues = buildEligibilityIssues(p, variants, stockMap);
+            return ProductCardResponse.builder()
+                    .id(p.getId())
+                    .name(p.getName())
+                    .brand(p.getBrand())
+                    .sellerSku(p.getSellerSku())
+                    .coverImageUrl(cover != null ? cover.publicUrl() : null)
+                    .coverMediaId(cover != null ? cover.mediaId() : null)
+                    .coverObjectKey(cover != null ? cover.objectKey() : null)
+                    .coverContentType(cover != null ? cover.contentType() : null)
+                    .minPrice(p.getMinPrice())
+                    .maxPrice(p.getMaxPrice())
+                    .status(p.getStatus())
+                    .shopId(p.getShopId())
+                    .shopName(shop != null ? shop.name() : null)
+                    .shopRating(shop != null ? shop.rating() : null)
+                    .categoryPath(categoryPathMap.get(p.getCategoryId()))
+                    .checkoutEligible(eligibilityIssues.isEmpty())
+                    .eligibilityIssues(eligibilityIssues)
+                    .createdAt(p.getCreatedAt())
+                    .build();
+        }).toList();
     }
 }

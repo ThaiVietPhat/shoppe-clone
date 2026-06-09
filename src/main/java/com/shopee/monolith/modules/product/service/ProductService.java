@@ -5,6 +5,7 @@ import com.shopee.monolith.modules.product.dto.internal.ProductLookupData;
 import com.shopee.monolith.modules.product.dto.internal.VariantLookupData;
 import com.shopee.monolith.modules.product.dto.request.CreateProductRequest;
 import com.shopee.monolith.modules.product.dto.request.CreateProductVariantRequest;
+import com.shopee.monolith.modules.product.dto.request.ProductSortOrder;
 import com.shopee.monolith.modules.product.dto.request.UpdateProductRequest;
 import com.shopee.monolith.modules.product.dto.request.UpdateProductVariantRequest;
 import com.shopee.monolith.modules.product.dto.response.CategoryResponse;
@@ -30,6 +31,13 @@ public interface ProductService {
     PagedResponse<ProductCardResponse> listActiveProducts(int page, int size);
 
     PagedResponse<ProductCardResponse> listActiveProductsByShop(UUID shopId, int page, int size);
+
+    /** Newest ACTIVE products — deterministic homepage feed from PostgreSQL. */
+    PagedResponse<ProductCardResponse> listHomepageProducts(int page, int size);
+
+    /** ACTIVE products under a category subtree, sorted by caller preference. */
+    PagedResponse<ProductCardResponse> listActiveProductsByCategory(
+            UUID categoryId, ProductSortOrder sort, int page, int size);
 
     // ===================== Legacy public read (kept for backward compat) =====================
 
@@ -74,4 +82,11 @@ public interface ProductService {
     Optional<ProductLookupData> findActiveProductLookupDataByIdForCheckout(UUID productId);
 
     Optional<VariantLookupData> findActiveVariantLookupDataByIdForCheckout(UUID variantId);
+
+    /**
+     * Loads full ProductCardResponse for a given ordered list of product IDs.
+     * Non-ACTIVE or non-existent products are silently excluded.
+     * Used by SearchModule to revalidate and hydrate ES/pgvector search results.
+     */
+    List<ProductCardResponse> loadActiveProductCards(List<UUID> productIds);
 }

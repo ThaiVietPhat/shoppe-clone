@@ -28,8 +28,9 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @ActiveProfiles("test")
 public abstract class BasePostgresRedisIntegrationTest {
 
+    // pgvector/pgvector:pg16 bundles the vector extension required by V15 migration.
     @ServiceConnection
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("pgvector/pgvector:pg16")
             .withDatabaseName("shopee_db_test")
             .withUsername("test")
             .withPassword("test");

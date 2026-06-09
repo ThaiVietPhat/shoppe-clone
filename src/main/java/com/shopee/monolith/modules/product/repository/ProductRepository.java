@@ -35,4 +35,20 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     Optional<Product> findByIdAndStatusForUpdate(@Param("id") UUID id, @Param("status") ProductStatus status);
 
     List<Product> findAllByShopIdAndStatus(UUID shopId, ProductStatus status);
+
+    Page<Product> findAllByStatusAndCategoryIdIn(ProductStatus status, List<UUID> categoryIds, Pageable pageable);
+
+    List<Product> findAllByIdInAndStatus(List<UUID> ids, ProductStatus status);
+
+    /**
+     * Fallback text search: name or description contains keyword (case-insensitive).
+     * Used when Elasticsearch is unavailable.
+     */
+    @Query("SELECT p FROM Product p WHERE p.status = :status AND "
+            + "(LOWER(p.name) LIKE LOWER(CONCAT('%', :keyword, '%')) OR "
+            + "LOWER(p.description) LIKE LOWER(CONCAT('%', :keyword, '%')))")
+    Page<Product> findAllByStatusAndKeyword(
+            @Param("status") ProductStatus status,
+            @Param("keyword") String keyword,
+            Pageable pageable);
 }

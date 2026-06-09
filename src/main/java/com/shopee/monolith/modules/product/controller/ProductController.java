@@ -8,6 +8,7 @@ import com.shopee.monolith.common.response.SwaggerResponses;
 import com.shopee.monolith.modules.auth.dto.internal.AccessTokenClaims;
 import com.shopee.monolith.modules.product.dto.request.CreateProductRequest;
 import com.shopee.monolith.modules.product.dto.request.CreateProductVariantRequest;
+import com.shopee.monolith.modules.product.dto.request.ProductSortOrder;
 import com.shopee.monolith.modules.product.dto.request.UpdateProductRequest;
 import com.shopee.monolith.modules.product.dto.request.UpdateProductVariantRequest;
 import com.shopee.monolith.modules.product.dto.response.CategoryResponse;
@@ -58,6 +59,37 @@ public class ProductController {
     @GetMapping("/api/categories")
     public ApiResponse<List<CategoryResponse>> listCategories() {
         return ApiResponse.success(productService.listCategories());
+    }
+
+    @Operation(
+            summary = "Homepage product feed",
+            description = "Returns newest ACTIVE products for homepage display. "
+                    + "Deterministic — reads directly from PostgreSQL, never fails due to search or AI availability.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Homepage feed retrieved successfully.",
+            content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponsePagedProductCardResponse.class)))
+    @GetMapping("/api/products/homepage")
+    public ApiResponse<PagedResponse<ProductCardResponse>> listHomepageProducts(
+            @Parameter(description = "Page index (0-indexed)") @RequestParam(defaultValue = "0") @Min(0) int page,
+            @Parameter(description = "Page size (max 100)") @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        return ApiResponse.success(productService.listHomepageProducts(page, size));
+    }
+
+    @Operation(
+            summary = "Browse products by category",
+            description = "Returns ACTIVE products in a category and all its subcategories. "
+                    + "Sort options: NEWEST (default), PRICE_ASC, PRICE_DESC. "
+                    + "Deterministic — reads from PostgreSQL, no ES or AI dependency.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Category products retrieved successfully.",
+            content = @Content(schema = @Schema(implementation = ProductSwaggerResponses.ApiResponsePagedProductCardResponse.class)))
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Category not found.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class)))
+    @GetMapping("/api/categories/{categoryId}/products")
+    public ApiResponse<PagedResponse<ProductCardResponse>> listProductsByCategory(
+            @Parameter(description = "Category unique ID") @PathVariable UUID categoryId,
+            @Parameter(description = "Sort order: NEWEST, PRICE_ASC, PRICE_DESC") @RequestParam(defaultValue = "NEWEST") ProductSortOrder sort,
+            @Parameter(description = "Page index (0-indexed)") @RequestParam(defaultValue = "0") @Min(0) int page,
+            @Parameter(description = "Page size (max 100)") @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        return ApiResponse.success(productService.listActiveProductsByCategory(categoryId, sort, page, size));
     }
 
     @Operation(summary = "List active product cards", description = "Retrieves ACTIVE products for public catalog browsing.")
