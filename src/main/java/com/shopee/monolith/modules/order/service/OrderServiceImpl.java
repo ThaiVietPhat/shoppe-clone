@@ -54,7 +54,7 @@ public class OrderServiceImpl implements OrderService {
             IdempotencyKey existing = existingKeyOpt.get();
             if (existing.getExpiresAt().isAfter(Instant.now())
                     && existing.getStatus() == IdempotencyStatus.COMPLETED) {
-                if (!existing.getRequestBodyHash().equals(requestBodyHash)) {
+                if (!requestBodyMatches(existing, requestBodyHash) && !isLegacyBackfilledKey(existing)) {
                     throw new AppException(ErrorCode.IDEMPOTENCY_KEY_CONFLICT);
                 }
                 try {
@@ -109,6 +109,14 @@ public class OrderServiceImpl implements OrderService {
         );
 
         return response;
+    }
+
+    private boolean requestBodyMatches(IdempotencyKey key, String requestBodyHash) {
+        return key.getRequestBodyHash().equals(requestBodyHash);
+    }
+
+    private boolean isLegacyBackfilledKey(IdempotencyKey key) {
+        return key.getRequestBodyHash().equals(key.getRequestHash());
     }
 
     private String computeRequestBodyHash(CheckoutRequest request) {

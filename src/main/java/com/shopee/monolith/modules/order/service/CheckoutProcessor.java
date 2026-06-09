@@ -94,7 +94,7 @@ public class CheckoutProcessor {
                 activeKey.reset(requestHash, requestBodyHash, expiresAt);
                 idempotencyKeyRepository.save(activeKey);
             } else {
-                if (!activeKey.getRequestBodyHash().equals(requestBodyHash)) {
+                if (!requestBodyMatches(activeKey, requestBodyHash) && !legacyRequestMatches(activeKey, requestHash)) {
                     throw new AppException(ErrorCode.IDEMPOTENCY_KEY_CONFLICT);
                 }
                 if (!activeKey.getRequestHash().equals(requestHash)) {
@@ -249,6 +249,15 @@ public class CheckoutProcessor {
         }
 
         return response;
+    }
+
+    private boolean requestBodyMatches(IdempotencyKey key, String requestBodyHash) {
+        return key.getRequestBodyHash().equals(requestBodyHash);
+    }
+
+    private boolean legacyRequestMatches(IdempotencyKey key, String requestHash) {
+        return key.getRequestBodyHash().equals(key.getRequestHash())
+                && key.getRequestHash().equals(requestHash);
     }
 
     private record OrderCreationInfo(

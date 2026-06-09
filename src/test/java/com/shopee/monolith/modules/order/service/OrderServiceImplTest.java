@@ -151,4 +151,36 @@ class OrderServiceImplTest {
         assertEquals(ErrorCode.IDEMPOTENCY_KEY_CONFLICT, exception.getErrorCode());
         verify(checkoutProcessor, never()).processCheckout(any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
+
+    @Test
+    void checkoutWhenLegacyCompletedKeyAndCartClearedShouldReturnCachedResponse() throws Exception {
+        CheckoutResponse cachedResponse = CheckoutResponse.builder()
+                .checkoutSessionId(UUID.randomUUID())
+                .orderIds(List.of(UUID.randomUUID()))
+                .status("PENDING_PAYMENT")
+                .totalAmount(BigDecimal.TEN)
+                .expiresAt(Instant.now())
+                .build();
+        String legacyFullRequestHash = "legacy-full-request-hash";
+        IdempotencyKey completedKey = IdempotencyKey.builder()
+                .actorId(buyerId)
+                .operation("CHECKOUT")
+                .idempotencyKey(idempotencyKey)
+                .requestHash(legacyFullRequestHash)
+                .requestBodyHash(legacyFullRequestHash)
+                .status(IdempotencyStatus.COMPLETED)
+                .responseBody("{}")
+                .expiresAt(Instant.now().plusSeconds(60))
+                .build();
+
+        when(idempotencyKeyRepository.findByActorIdAndOperationAndIdempotencyKey(buyerId, "CHECKOUT", idempotencyKey))
+                .thenReturn(Optional.of(completedKey));
+        when(objectMapper.readValue("{}", CheckoutResponse.class)).thenReturn(cachedResponse);
+        when(cartService.getSnapshot(buyerId)).thenReturn(new CartSnapshot(buyerId, Collections.emptyList(), 2L));
+
+        CheckoutResponse response = orderService.checkout(buyerId, request, idempotencyKey);
+
+        assertEquals(cachedResponse, response);
+        verify(checkoutProcessor, never()).processCheckout(any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
 }

@@ -134,6 +134,43 @@ class CheckoutProcessorTest {
     }
 
     @Test
+    void processCheckoutWhenDuplicateLegacyCompletedKeySameRequestShouldReturnCachedResponse() throws Exception {
+        CheckoutResponse expectedResponse = CheckoutResponse.builder()
+                .checkoutSessionId(UUID.randomUUID())
+                .orderIds(List.of(UUID.randomUUID()))
+                .status("PENDING_PAYMENT")
+                .totalAmount(BigDecimal.TEN)
+                .expiresAt(Instant.now())
+                .build();
+
+        String responseBody = objectMapper.writeValueAsString(expectedResponse);
+
+        IdempotencyKey completedKey = IdempotencyKey.builder()
+                .actorId(buyerId)
+                .operation("CHECKOUT")
+                .idempotencyKey(idempotencyKey)
+                .requestHash(requestHash)
+                .requestBodyHash(requestHash)
+                .status(IdempotencyStatus.COMPLETED)
+                .responseBody(responseBody)
+                .expiresAt(Instant.now().plus(java.time.Duration.ofDays(1)))
+                .build();
+
+        when(idempotencyKeyRepository.tryInsert(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(0);
+        when(idempotencyKeyRepository.findByKeysForUpdate(buyerId, "CHECKOUT", idempotencyKey))
+                .thenReturn(Optional.of(completedKey));
+
+        CheckoutResponse actualResponse = checkoutProcessor.processCheckout(
+                buyerId, address, idempotencyKey, requestHash, requestBodyHash, keyId, expiresAt, List.of(), () -> {}
+        );
+
+        assertNotNull(actualResponse);
+        assertEquals(expectedResponse.checkoutSessionId(), actualResponse.checkoutSessionId());
+        assertEquals(expectedResponse.totalAmount(), actualResponse.totalAmount());
+    }
+
+    @Test
     void processCheckoutWhenDuplicateDifferentRequestShouldThrowConflict() {
         IdempotencyKey existingKey = IdempotencyKey.builder()
                 .actorId(buyerId)
