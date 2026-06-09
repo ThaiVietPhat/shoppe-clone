@@ -20,6 +20,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
@@ -182,7 +183,33 @@ class MediaServiceImplTest {
         mediaService.attachToProduct(UUID.randomUUID(), shopId, productId, mediaId, 0, true);
 
         verify(productMediaRepository).clearCoverByProductId(productId);
-        verify(productMediaRepository).save(any());
+        verify(productMediaRepository).saveAndFlush(any());
+    }
+
+    @Test
+    void attachToProductWhenCoverRaceViolatesUniqueIndexShouldThrowConflict() {
+        UUID shopId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        UUID mediaId = UUID.randomUUID();
+        MediaAsset asset = MediaAsset.builder()
+                .ownerId(shopId)
+                .ownerType(MediaOwnerType.SHOP)
+                .purpose(MediaPurpose.PRODUCT_IMAGE)
+                .objectKey("asset.png")
+                .contentType("image/png")
+                .sizeBytes(PNG_BYTES.length)
+                .status(MediaStatus.READY)
+                .build();
+
+        when(mediaAssetRepository.findByIdAndOwnerId(mediaId, shopId)).thenReturn(Optional.of(asset));
+        when(productMediaRepository.findByIdProductIdAndIdMediaId(productId, mediaId)).thenReturn(Optional.empty());
+        when(productMediaRepository.saveAndFlush(any(ProductMedia.class)))
+                .thenThrow(new DataIntegrityViolationException("uq_product_media_cover"));
+
+        AppException ex = assertThrows(AppException.class, () -> mediaService.attachToProduct(
+                UUID.randomUUID(), shopId, productId, mediaId, 0, true));
+
+        assertEquals(ErrorCode.CONFLICT, ex.getErrorCode());
     }
 
     @Test
@@ -207,7 +234,7 @@ class MediaServiceImplTest {
 
         assertEquals(ErrorCode.MEDIA_OWNERSHIP_VIOLATION, ex.getErrorCode());
         verify(productMediaRepository, never()).clearCoverByProductId(productId);
-        verify(productMediaRepository, never()).save(any());
+        verify(productMediaRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -232,7 +259,7 @@ class MediaServiceImplTest {
 
         ArgumentCaptor<ProductMedia> productMediaCaptor = ArgumentCaptor.forClass(ProductMedia.class);
         verify(productMediaRepository).deleteAllByProductId(productId);
-        verify(productMediaRepository).save(productMediaCaptor.capture());
+        verify(productMediaRepository).saveAndFlush(productMediaCaptor.capture());
         assertEquals(mediaId, productMediaCaptor.getValue().getId().getMediaId());
         assertEquals(0, productMediaCaptor.getValue().getSortOrder());
         assertEquals(true, productMediaCaptor.getValue().isCover());

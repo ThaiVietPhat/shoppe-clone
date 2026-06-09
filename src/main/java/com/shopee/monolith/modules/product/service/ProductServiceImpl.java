@@ -201,7 +201,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public ProductResponse updateProduct(UUID ownerId, UUID productId, UpdateProductRequest request) {
-        Product product = productRepository.findById(productId)
+        Product product = productRepository.findByIdForUpdate(productId)
                 .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
 
         if (product.getStatus() == ProductStatus.DELETED) {
@@ -239,7 +239,7 @@ public class ProductServiceImpl implements ProductService {
             throw new AppException(ErrorCode.INVALID_PRODUCT_PRICE);
         }
 
-        Product product = productRepository.findById(productId)
+        Product product = productRepository.findByIdForUpdate(productId)
                 .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
 
         if (product.getStatus() == ProductStatus.DELETED) {
@@ -284,7 +284,7 @@ public class ProductServiceImpl implements ProductService {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
 
-        Product product = productRepository.findById(productId)
+        Product product = productRepository.findByIdForUpdate(productId)
                 .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
 
         if (product.getStatus() == ProductStatus.DELETED) {
@@ -315,7 +315,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public ProductDetailResponse publishProduct(UUID ownerId, UUID productId) {
-        Product product = productRepository.findById(productId)
+        Product product = productRepository.findByIdForUpdate(productId)
                 .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
 
         validateShopOwner(ownerId, product.getShopId());
@@ -347,7 +347,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public ProductDetailResponse unpublishProduct(UUID ownerId, UUID productId) {
-        Product product = productRepository.findById(productId)
+        Product product = productRepository.findByIdForUpdate(productId)
                 .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
 
         validateShopOwner(ownerId, product.getShopId());
@@ -366,7 +366,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public void deleteProduct(UUID ownerId, UUID productId) {
-        Product product = productRepository.findById(productId)
+        Product product = productRepository.findByIdForUpdate(productId)
                 .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
 
         validateShopOwner(ownerId, product.getShopId());

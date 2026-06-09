@@ -3,6 +3,7 @@ package com.shopee.monolith.modules.media.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
@@ -20,6 +21,7 @@ import java.nio.file.Paths;
 @Slf4j
 @Service
 @Profile({"local", "test", "default"})
+@ConditionalOnProperty(prefix = "app.media.storage", name = "type", havingValue = "local", matchIfMissing = true)
 @RequiredArgsConstructor
 public class LocalFileSystemStorageService implements StorageService {
 

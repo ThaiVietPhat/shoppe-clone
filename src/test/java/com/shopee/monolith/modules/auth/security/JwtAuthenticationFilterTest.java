@@ -78,6 +78,32 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
+    void doFilterInternalWhenOAuth2ExchangeHasBadAuthorizationHeaderShouldContinueChain() throws ServletException, IOException {
+        when(request.getHeader(HttpHeaders.AUTHORIZATION)).thenReturn("Basic dXNlcjpwYXNz");
+        when(request.getServletPath()).thenReturn("/api/auth/oauth2/exchange");
+
+        jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
+
+        verify(filterChain).doFilter(request, response);
+        verify(securityErrorWriter, never()).writeError(response, ErrorCode.INVALID_TOKEN);
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+    }
+
+    @Test
+    void doFilterInternalWhenOAuth2ExchangeHasInvalidBearerTokenShouldContinueChain() throws ServletException, IOException {
+        String token = "invalid.token.here";
+        when(request.getHeader(HttpHeaders.AUTHORIZATION)).thenReturn("Bearer " + token);
+        when(request.getServletPath()).thenReturn("/api/auth/oauth2/exchange");
+        when(jwtTokenProvider.parseAccessToken(token)).thenThrow(new AppException(ErrorCode.INVALID_TOKEN));
+
+        jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
+
+        verify(filterChain).doFilter(request, response);
+        verify(securityErrorWriter, never()).writeError(response, ErrorCode.INVALID_TOKEN);
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+    }
+
+    @Test
     void doFilterInternalWhenBearerTokenIsEmptyShouldWriteInvalidTokenErrorAndAbort() throws ServletException, IOException {
         when(request.getHeader(HttpHeaders.AUTHORIZATION)).thenReturn("Bearer   ");
 

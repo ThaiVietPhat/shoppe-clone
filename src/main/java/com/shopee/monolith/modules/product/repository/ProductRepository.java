@@ -27,6 +27,10 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     Optional<Product> findByIdAndStatus(UUID id, ProductStatus status);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Product p where p.id = :id")
+    Optional<Product> findByIdForUpdate(@Param("id") UUID id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from Product p where p.id = :id and p.status = :status")
     Optional<Product> findByIdAndStatusForUpdate(@Param("id") UUID id, @Param("status") ProductStatus status);
 

@@ -131,6 +131,16 @@ app:
   media:
     max-file-size-mb: 10
     allowed-content-types: image/jpeg, image/png, image/webp
+    storage:
+      type: ${MEDIA_STORAGE_TYPE:local}
+      local-dir: ${MEDIA_LOCAL_DIR:${java.io.tmpdir}/shopee-media}
+      local-base-url: ${MEDIA_LOCAL_BASE_URL:http://localhost:8080/api/media/files}
+      r2:
+        endpoint: ${R2_ENDPOINT:}
+        access-key-id: ${R2_ACCESS_KEY_ID:}
+        secret-access-key: ${R2_SECRET_ACCESS_KEY:}
+        bucket: ${R2_BUCKET:}
+        public-base-url: ${R2_PUBLIC_BASE_URL:}
   security:
     refresh-token-cleanup:
       batch-size: 500

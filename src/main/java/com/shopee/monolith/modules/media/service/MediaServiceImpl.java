@@ -19,6 +19,7 @@ import com.shopee.monolith.modules.media.repository.ProductMediaRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -159,23 +160,27 @@ public class MediaServiceImpl implements MediaService {
             throw new AppException(ErrorCode.MEDIA_OWNERSHIP_VIOLATION);
         }
 
-        if (isCover) {
-            productMediaRepository.clearCoverByProductId(productId);
-        }
+        try {
+            if (isCover) {
+                productMediaRepository.clearCoverByProductId(productId);
+            }
 
-        Optional<ProductMedia> existing = productMediaRepository.findByIdProductIdAndIdMediaId(productId, mediaId);
-        if (existing.isPresent()) {
-            ProductMedia pm = existing.get();
-            pm.setCover(isCover);
-            pm.setSortOrder(sortOrder);
-            productMediaRepository.save(pm);
-        } else {
-            ProductMedia pm = ProductMedia.builder()
-                    .id(new ProductMediaId(productId, mediaId))
-                    .sortOrder(sortOrder)
-                    .cover(isCover)
-                    .build();
-            productMediaRepository.save(pm);
+            Optional<ProductMedia> existing = productMediaRepository.findByIdProductIdAndIdMediaId(productId, mediaId);
+            if (existing.isPresent()) {
+                ProductMedia pm = existing.get();
+                pm.setCover(isCover);
+                pm.setSortOrder(sortOrder);
+                productMediaRepository.saveAndFlush(pm);
+            } else {
+                ProductMedia pm = ProductMedia.builder()
+                        .id(new ProductMediaId(productId, mediaId))
+                        .sortOrder(sortOrder)
+                        .cover(isCover)
+                        .build();
+                productMediaRepository.saveAndFlush(pm);
+            }
+        } catch (DataIntegrityViolationException e) {
+            throw new AppException(ErrorCode.CONFLICT);
         }
     }
 

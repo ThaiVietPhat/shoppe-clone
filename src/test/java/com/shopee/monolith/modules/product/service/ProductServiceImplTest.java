@@ -297,7 +297,7 @@ class ProductServiceImplTest {
                 .description("Desc")
                 .build();
 
-        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdForUpdate(productId)).thenReturn(Optional.of(product));
         when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
         when(categoryRepository.existsById(categoryId)).thenReturn(true);
         when(productRepository.save(product)).thenReturn(product);
@@ -319,7 +319,7 @@ class ProductServiceImplTest {
                 .price(BigDecimal.valueOf(999.00))
                 .build();
 
-        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdForUpdate(productId)).thenReturn(Optional.of(product));
         when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
         when(productVariantRepository.existsBySku("IPHONE-15-256")).thenReturn(false);
         when(productVariantRepository.saveAndFlush(any(ProductVariant.class))).thenReturn(variant);
@@ -351,7 +351,7 @@ class ProductServiceImplTest {
                 .price(BigDecimal.valueOf(999.00))
                 .build();
 
-        when(productRepository.findById(productId)).thenReturn(Optional.of(activeProduct));
+        when(productRepository.findByIdForUpdate(productId)).thenReturn(Optional.of(activeProduct));
         when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
         when(productVariantRepository.existsBySku("IPHONE-15-256")).thenReturn(false);
         when(productVariantRepository.saveAndFlush(any(ProductVariant.class))).thenReturn(variant);
@@ -392,7 +392,7 @@ class ProductServiceImplTest {
                 .price(BigDecimal.valueOf(999.00))
                 .build();
 
-        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdForUpdate(productId)).thenReturn(Optional.of(product));
         when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
         when(productVariantRepository.existsBySku("IPHONE-15-256")).thenReturn(true);
 
@@ -415,7 +415,7 @@ class ProductServiceImplTest {
                 .build();
 
         when(productVariantRepository.findById(variantId)).thenReturn(Optional.of(variant));
-        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdForUpdate(productId)).thenReturn(Optional.of(product));
         when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
         when(productVariantRepository.findBySku("IPHONE-15-DUPLICATE")).thenReturn(Optional.of(anotherVariant));
 
@@ -442,7 +442,7 @@ class ProductServiceImplTest {
                 .build();
 
         when(productVariantRepository.findById(variantId)).thenReturn(Optional.of(inactiveVariant));
-        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdForUpdate(productId)).thenReturn(Optional.of(product));
         when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
         when(productVariantRepository.findBySku("IPHONE-15-256")).thenReturn(Optional.of(inactiveVariant));
         when(productVariantRepository.saveAndFlush(inactiveVariant)).thenReturn(inactiveVariant);
@@ -473,7 +473,7 @@ class ProductServiceImplTest {
                 .build();
 
         when(productVariantRepository.findById(variantId)).thenReturn(Optional.of(variant));
-        when(productRepository.findById(productId)).thenReturn(Optional.of(deletedProduct));
+        when(productRepository.findByIdForUpdate(productId)).thenReturn(Optional.of(deletedProduct));
 
         AppException ex = assertThrows(AppException.class,
                 () -> productService.updateVariant(ownerId, productId, variantId, req));
