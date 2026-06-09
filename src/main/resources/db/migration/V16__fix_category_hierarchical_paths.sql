@@ -7,28 +7,17 @@
 -- Uses a recursive CTE to compute the correct path for every category at any depth,
 -- then bulk-updates rows whose path has changed.
 
+-- Index to support LIKE prefix queries from findAllByPathStartingWith.
+-- text_pattern_ops enables B-tree index usage for LIKE 'prefix%' patterns.
+CREATE INDEX IF NOT EXISTS idx_categories_path ON categories USING btree (path text_pattern_ops);
+
 WITH RECURSIVE category_tree AS (
-
-    -- Base: root categories (no parent) keep path = name
-    SELECT
-        id,
-        name,
-        parent_id,
-        CAST(name AS VARCHAR(2000)) AS computed_path
-    FROM categories
-    WHERE parent_id IS NULL
-
+    SELECT id, name, parent_id, CAST(name AS VARCHAR(2000)) AS computed_path
+    FROM categories WHERE parent_id IS NULL
     UNION ALL
-
-    -- Recursive: children inherit parent path
-    SELECT
-        c.id,
-        c.name,
-        c.parent_id,
-        CAST(ct.computed_path || '/' || c.name AS VARCHAR(2000))
+    SELECT c.id, c.name, c.parent_id, CAST(ct.computed_path || '/' || c.name AS VARCHAR(2000))
     FROM categories c
     JOIN category_tree ct ON c.parent_id = ct.id
-
 )
 UPDATE categories c
 SET path = ct.computed_path
