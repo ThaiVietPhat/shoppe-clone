@@ -776,8 +776,7 @@ public class ProductServiceImpl implements ProductService {
             ShopLookupData shop = shopMap.get(p.getShopId());
             List<ProductVariant> variants = variantsByProductId.getOrDefault(p.getId(), List.of());
             List<ProductEligibilityIssue> eligibilityIssues = buildEligibilityIssues(p, variants, stockMap);
-            boolean checkoutEligible = eligibilityIssues.isEmpty();
-
+            String categoryPath = categoryPathMap.get(p.getCategoryId());
             return ProductCardResponse.builder()
                     .id(p.getId())
                     .name(p.getName())
@@ -793,8 +792,8 @@ public class ProductServiceImpl implements ProductService {
                     .shopId(p.getShopId())
                     .shopName(shop != null ? shop.name() : null)
                     .shopRating(shop != null ? shop.rating() : null)
-                    .categoryPath(categoryPathMap.get(p.getCategoryId()))
-                    .checkoutEligible(checkoutEligible)
+                    .categoryPath(categoryPath)
+                    .checkoutEligible(eligibilityIssues.isEmpty())
                     .eligibilityIssues(eligibilityIssues)
                     .createdAt(p.getCreatedAt())
                     .build();
@@ -803,34 +802,28 @@ public class ProductServiceImpl implements ProductService {
         return PagedResponse.from(productPage, cards);
     }
 
-    private Map<UUID, String> resolveCategoryPaths(List<UUID> categoryIds) {
-        List<UUID> nonNullCategoryIds = categoryIds.stream()
-                .filter(java.util.Objects::nonNull)
-                .toList();
-        if (nonNullCategoryIds.isEmpty()) {
-            return Map.of();
-        }
-        return categoryRepository.findAllById(nonNullCategoryIds).stream()
-                .collect(Collectors.toMap(Category::getId, Category::getPath));
-    }
-
+    /**
+     * Loads a batch of active product cards for the given IDs.
+     * Preserves caller ordering; silently drops IDs that are no longer ACTIVE.
+     * Used by SearchModule to revalidate and hydrate ES / pgvector candidates.
+     */
     @Override
     public List<ProductCardResponse> loadActiveProductCards(List<UUID> productIds) {
         if (productIds == null || productIds.isEmpty()) {
-            return Collections.emptyList();
+            return List.of();
         }
         List<Product> products = productRepository.findAllByIdInAndStatus(productIds, ProductStatus.ACTIVE);
         if (products.isEmpty()) {
-            return Collections.emptyList();
+            return List.of();
         }
-        // Preserve caller ordering
+
+        // Preserve caller ordering (pgvector returns by relevance score)
         Map<UUID, Product> byId = products.stream().collect(Collectors.toMap(Product::getId, p -> p));
         List<Product> ordered = productIds.stream()
                 .map(byId::get)
                 .filter(java.util.Objects::nonNull)
                 .toList();
 
-        // Reuse batch-loading logic from toCardPagedResponse
         List<UUID> ids = ordered.stream().map(Product::getId).toList();
         Map<UUID, List<ProductMediaSummary>> mediaMap = mediaService.listProductMediaByProductIds(ids);
         List<ProductVariant> allVariants = productVariantRepository.findAllByProductIdIn(ids);
@@ -849,6 +842,7 @@ public class ProductServiceImpl implements ProductService {
             ShopLookupData shop = shopMap.get(p.getShopId());
             List<ProductVariant> variants = variantsByProductId.getOrDefault(p.getId(), List.of());
             List<ProductEligibilityIssue> eligibilityIssues = buildEligibilityIssues(p, variants, stockMap);
+            String categoryPath = categoryPathMap.get(p.getCategoryId());
             return ProductCardResponse.builder()
                     .id(p.getId())
                     .name(p.getName())
@@ -864,11 +858,23 @@ public class ProductServiceImpl implements ProductService {
                     .shopId(p.getShopId())
                     .shopName(shop != null ? shop.name() : null)
                     .shopRating(shop != null ? shop.rating() : null)
-                    .categoryPath(categoryPathMap.get(p.getCategoryId()))
+                    .categoryPath(categoryPath)
                     .checkoutEligible(eligibilityIssues.isEmpty())
                     .eligibilityIssues(eligibilityIssues)
                     .createdAt(p.getCreatedAt())
                     .build();
         }).toList();
+    }
+
+    /**
+     * Batch-loads category paths for a list of category IDs.
+     * Returns a map of categoryId → materialized path string.
+     */
+    private Map<UUID, String> resolveCategoryPaths(List<UUID> categoryIds) {
+        if (categoryIds == null || categoryIds.isEmpty()) {
+            return Map.of();
+        }
+        return categoryRepository.findAllById(categoryIds).stream()
+                .collect(Collectors.toMap(Category::getId, c -> c.getPath() != null ? c.getPath() : c.getName()));
     }
 }
