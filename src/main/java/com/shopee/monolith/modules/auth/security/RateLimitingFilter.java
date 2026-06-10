@@ -98,6 +98,12 @@ public class RateLimitingFilter extends OncePerRequestFilter {
             }
             key = "rate_limit:oauth2:callback:" + provider + ":" + ip;
             limitProperties = properties.getRateLimit().getOauth2Callback();
+        } else if (isWebhookEndpoint(path, method)) {
+            // Provider call — never keyed by userId; bucket per provider + IP
+            String ip = ipResolver.resolveIp(request);
+            String provider = path.substring("/api/payments/webhook/".length());
+            key = "rate_limit:webhook:" + provider + ":" + ip;
+            limitProperties = properties.getRateLimit().getWebhook();
         } else if (isAuthenticated) {
             AccessTokenClaims claims = (AccessTokenClaims) authentication.getPrincipal();
             key = "rate_limit:user:" + claims.userId().toString();
@@ -119,7 +125,8 @@ public class RateLimitingFilter extends OncePerRequestFilter {
             if (isLogoutEndpoint(path, method)) {
                 // Fail-open for logout to let session revocation attempt DB removal
                 log.warn("Redis rate limiter down during logout. Failing open to allow DB revocation.");
-            } else if (isAuthenticated || isAbuseControlEndpoint(path, method) || isCsrfEndpoint(path, method)) {
+            } else if (isAuthenticated || isAbuseControlEndpoint(path, method) || isCsrfEndpoint(path, method)
+                    || isWebhookEndpoint(path, method)) {
                 // Fail-closed
                 securityErrorWriter.writeError(response, e.getErrorCode());
                 return;
@@ -146,6 +153,10 @@ public class RateLimitingFilter extends OncePerRequestFilter {
 
     private boolean isCsrfEndpoint(String path, String method) {
         return path != null && path.equals("/api/auth/csrf") && "GET".equalsIgnoreCase(method);
+    }
+
+    private boolean isWebhookEndpoint(String path, String method) {
+        return path != null && path.startsWith("/api/payments/webhook/") && "POST".equalsIgnoreCase(method);
     }
 
     private boolean isLogoutEndpoint(String path, String method) {

@@ -127,6 +127,16 @@ app:
       flat-fee-per-shop: 30000
   payment:
     pending-expiry-minutes: 15                     # Scheduled job quét và cancel order quá hạn
+    timeout:
+      attempt-timeout-minutes: 15                  # TTL của ONLINE payment attempt trước khi expire
+      batch-size: 50
+      fixed-delay: 30s
+    vnpay:
+      tmn-code: ${VNPAY_TMN_CODE:SANDBOX}
+      hash-secret: ${VNPAY_HASH_SECRET:sandbox-secret-change-me}
+      pay-url: ${VNPAY_PAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+      return-url: ${VNPAY_RETURN_URL:http://localhost:8080/api/payments/return/vnpay}
+      frontend-return-url: ${VNPAY_FRONTEND_RETURN_URL:http://localhost:3000/payment/return}
   order:
     timeout:
       batch-size: 50
@@ -192,4 +202,7 @@ app:
         window: 1m
       resend-verification:
         capacity: 3
+        window: 1m
+      webhook:
+        capacity: 120
         window: 1m

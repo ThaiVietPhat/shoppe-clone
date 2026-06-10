@@ -68,6 +68,8 @@ public enum ErrorCode {
     // ==================== Payment ====================
     PAYMENT_NOT_FOUND(404, "Payment not found"),
     INVALID_WEBHOOK_SIGNATURE(400, "Webhook signature verification failed"),
+    PAYMENT_ATTEMPT_IN_PROGRESS(409, "Another payment attempt is already in progress for this checkout session"),
+    CHECKOUT_SESSION_NOT_PAYABLE(409, "Checkout session is not payable in its current state"),
 
     // ==================== Voucher ====================
     VOUCHER_NOT_FOUND(404, "Voucher not found"),

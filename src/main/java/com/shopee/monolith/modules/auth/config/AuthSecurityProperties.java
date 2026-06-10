@@ -288,6 +288,10 @@ public class AuthSecurityProperties {
         @Valid
         @NotNull
         private BucketLimitProperties resendVerification = new BucketLimitProperties(3, java.time.Duration.ofMinutes(1));
+
+        @Valid
+        @NotNull
+        private BucketLimitProperties webhook = new BucketLimitProperties(120, java.time.Duration.ofMinutes(1));
     }
 
     @Getter

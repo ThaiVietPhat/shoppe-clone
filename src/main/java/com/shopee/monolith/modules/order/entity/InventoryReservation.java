@@ -45,4 +45,8 @@ public class InventoryReservation extends BaseEntity {
     public void release() {
         this.status = InventoryReservationStatus.RELEASED;
     }
+
+    public void confirm() {
+        this.status = InventoryReservationStatus.CONFIRMED;
+    }
 }

@@ -87,6 +87,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/shops/*/products").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/search/products").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/search/products/semantic").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/payments/webhook/vnpay").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/payments/return/vnpay").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/media/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/media/files/*").permitAll()
                         .requestMatchers(

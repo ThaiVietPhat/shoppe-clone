@@ -1,6 +1,7 @@
 package com.shopee.monolith.modules.order.entity;
 
 import com.shopee.monolith.common.entity.BaseEntity;
+import com.shopee.monolith.modules.order.model.OrderPaymentStatus;
 import com.shopee.monolith.modules.order.model.OrderStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -76,6 +77,14 @@ public class Order extends BaseEntity {
     @Column(name = "shipping_province_name", nullable = false)
     private String shippingProvinceName;
 
+    @Column(name = "payment_method", length = 20)
+    private String paymentMethod;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_status", nullable = false, length = 30)
+    @lombok.Builder.Default
+    private OrderPaymentStatus paymentStatus = OrderPaymentStatus.UNPAID;
+
     @Version
     @Column(name = "version", nullable = false)
     @lombok.Builder.Default
@@ -83,5 +92,21 @@ public class Order extends BaseEntity {
 
     public void cancel() {
         this.status = OrderStatus.CANCELLED;
+    }
+
+    public void markPaid(String method) {
+        this.status = OrderStatus.PAID;
+        this.paymentStatus = OrderPaymentStatus.PAID;
+        this.paymentMethod = method;
+    }
+
+    public void markPaymentExpired() {
+        this.status = OrderStatus.CANCELLED;
+        this.paymentStatus = OrderPaymentStatus.EXPIRED;
+    }
+
+    public void markPaymentFailed() {
+        this.status = OrderStatus.CANCELLED;
+        this.paymentStatus = OrderPaymentStatus.FAILED;
     }
 }

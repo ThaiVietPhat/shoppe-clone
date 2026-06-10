@@ -77,6 +77,18 @@ public class CheckoutSession extends BaseEntity {
         this.status = CheckoutSessionStatus.EXPIRED;
     }
 
+    public void complete() {
+        this.status = CheckoutSessionStatus.COMPLETED;
+    }
+
+    public void markPaymentExpired() {
+        this.status = CheckoutSessionStatus.PAYMENT_EXPIRED;
+    }
+
+    public void cancel() {
+        this.status = CheckoutSessionStatus.CANCELLED;
+    }
+
     public void updateTotalAmount(BigDecimal totalAmount) {
         this.totalAmount = totalAmount;
     }
