@@ -1,6 +1,8 @@
 package com.shopee.monolith.modules.cart.service;
 
 import com.shopee.monolith.BasePostgresRedisIntegrationTest;
+import com.shopee.monolith.common.exception.AppException;
+import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.modules.cart.dto.internal.CartSnapshot;
 import com.shopee.monolith.modules.cart.dto.request.AddCartItemRequest;
 import com.shopee.monolith.modules.cart.dto.request.UpdateCartItemRequest;
@@ -28,9 +30,12 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.UUID;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CartServiceIT extends BasePostgresRedisIntegrationTest {
@@ -181,6 +186,82 @@ class CartServiceIT extends BasePostgresRedisIntegrationTest {
         cartService.clearSnapshotIfVersionUnchanged(userId, 3L);
         assertFalse(stringRedisTemplate.hasKey(itemsKey));
         assertFalse(stringRedisTemplate.hasKey(versionKey));
+    }
+
+    @Test
+    void selectItemsShouldMarkItemAsSelectedAndIncrementVersion() {
+        UUID userId = buyer.getId();
+        cartService.addItem(userId, new AddCartItemRequest(variant1.getId(), 2));
+        long versionAfterAdd = cartService.getCart(userId).version();
+
+        CartResponse cart = cartService.selectItems(userId, List.of(variant1.getId()));
+
+        var item = cart.items().stream().filter(i -> i.variantId().equals(variant1.getId())).findFirst().orElseThrow();
+        assertTrue(item.selected());
+        assertEquals(versionAfterAdd + 1, cart.version());
+    }
+
+    @Test
+    void deselectItemsShouldUnmarkAndIncrementVersion() {
+        UUID userId = buyer.getId();
+        cartService.addItem(userId, new AddCartItemRequest(variant1.getId(), 2));
+        cartService.selectItems(userId, List.of(variant1.getId()));
+
+        CartResponse cart = cartService.deselectItems(userId, List.of(variant1.getId()));
+
+        var item = cart.items().stream().filter(i -> i.variantId().equals(variant1.getId())).findFirst().orElseThrow();
+        assertFalse(item.selected());
+    }
+
+    @Test
+    void removeItemShouldAlsoRemoveFromSelectedSet() {
+        UUID userId = buyer.getId();
+        cartService.addItem(userId, new AddCartItemRequest(variant1.getId(), 2));
+        cartService.selectItems(userId, List.of(variant1.getId()));
+
+        cartService.removeItem(userId, variant1.getId());
+
+        CartResponse cart = cartService.getCart(userId);
+        assertTrue(cart.items().stream().noneMatch(i -> i.variantId().equals(variant1.getId())));
+
+        CartSnapshot selected = cartService.getSelectedSnapshot(userId);
+        assertTrue(selected.items().isEmpty());
+    }
+
+    @Test
+    void clearCartShouldAlsoClearSelectedSet() {
+        UUID userId = buyer.getId();
+        cartService.addItem(userId, new AddCartItemRequest(variant1.getId(), 2));
+        cartService.selectItems(userId, List.of(variant1.getId()));
+
+        cartService.clearCart(userId);
+
+        CartSnapshot selected = cartService.getSelectedSnapshot(userId);
+        assertTrue(selected.items().isEmpty());
+    }
+
+    @Test
+    void selectNonExistentVariantShouldThrowInvalidRequest() {
+        UUID userId = buyer.getId();
+        AppException ex = assertThrows(AppException.class,
+                () -> cartService.selectItems(userId, List.of(UUID.randomUUID())));
+        assertEquals(ErrorCode.INVALID_REQUEST, ex.getErrorCode());
+    }
+
+    @Test
+    void selectItemsABASafeVersionShouldBeConsistent() {
+        UUID userId = buyer.getId();
+        cartService.addItem(userId, new AddCartItemRequest(variant1.getId(), 1));
+        cartService.addItem(userId, new AddCartItemRequest(variant2.getId(), 1));
+
+        long v1 = cartService.getCart(userId).version();
+        cartService.selectItems(userId, List.of(variant1.getId()));
+        long v2 = cartService.getCart(userId).version();
+        cartService.deselectItems(userId, List.of(variant1.getId()));
+        long v3 = cartService.getCart(userId).version();
+
+        assertTrue(v2 > v1);
+        assertTrue(v3 > v2);
     }
 
     @Test

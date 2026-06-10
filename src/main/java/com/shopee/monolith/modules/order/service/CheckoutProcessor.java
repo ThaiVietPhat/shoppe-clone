@@ -53,6 +53,7 @@ public class CheckoutProcessor {
     private final InventoryReservationRepository inventoryReservationRepository;
     private final InventoryService inventoryService;
     private final ProductService productService;
+    private final ShippingFeeEstimator shippingFeeEstimator;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -131,7 +132,7 @@ public class CheckoutProcessor {
         CheckoutSession session = CheckoutSession.builder()
                 .buyerId(buyerId)
                 .status(CheckoutSessionStatus.PENDING_PAYMENT)
-                .totalAmount(BigDecimal.ZERO) // temporary
+                .totalAmount(BigDecimal.ZERO) // updated after per-shop loop
                 .shippingRecipientName(address.recipientName())
                 .shippingPhone(address.phone())
                 .shippingAddressLine(address.addressLine())
@@ -146,15 +147,24 @@ public class CheckoutProcessor {
         session = checkoutSessionRepository.save(session);
 
         List<UUID> orderIds = new ArrayList<>();
+        BigDecimal sessionItemsSubtotal = BigDecimal.ZERO;
+        BigDecimal sessionShippingFee = BigDecimal.ZERO;
 
         for (Map.Entry<UUID, List<OrderServiceImpl.CartItemWithDetails>> entry : itemsByShop.entrySet()) {
             UUID shopId = entry.getKey();
             List<OrderServiceImpl.CartItemWithDetails> shopItems = entry.getValue();
 
-            BigDecimal shopTotal = shopItems.stream()
+            BigDecimal shopItemsSubtotal = shopItems.stream()
                     .map(item -> item.variant().price().multiply(BigDecimal.valueOf(item.cartItem().quantity())))
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+            List<com.shopee.monolith.modules.cart.dto.internal.CartSnapshotItem> shopCartItems =
+                    shopItems.stream().map(OrderServiceImpl.CartItemWithDetails::cartItem).toList();
+            BigDecimal shopShippingFee = shippingFeeEstimator.estimateFee(shopId, shopCartItems, address);
+            BigDecimal shopTotal = shopItemsSubtotal.add(shopShippingFee);
+
+            sessionItemsSubtotal = sessionItemsSubtotal.add(shopItemsSubtotal);
+            sessionShippingFee = sessionShippingFee.add(shopShippingFee);
             totalAmount = totalAmount.add(shopTotal);
 
             Order order = Order.builder()
@@ -162,6 +172,8 @@ public class CheckoutProcessor {
                     .shopId(shopId)
                     .checkoutSessionId(session.getId())
                     .status(OrderStatus.PENDING_PAYMENT)
+                    .itemsSubtotal(shopItemsSubtotal)
+                    .shippingFee(shopShippingFee)
                     .totalAmount(shopTotal)
                     .shippingRecipientName(address.recipientName())
                     .shippingPhone(address.phone())
@@ -195,7 +207,7 @@ public class CheckoutProcessor {
             orderCreationInfos.add(new OrderCreationInfo(order, orderItems));
         }
 
-        session.updateTotalAmount(totalAmount);
+        session.updateTotals(sessionItemsSubtotal, sessionShippingFee);
         checkoutSessionRepository.save(session);
 
         // Reserve inventory (this internally does SELECT FOR UPDATE on inventories table)
@@ -221,6 +233,8 @@ public class CheckoutProcessor {
                 .checkoutSessionId(session.getId())
                 .orderIds(orderIds)
                 .status(CheckoutSessionStatus.PENDING_PAYMENT.name())
+                .itemsSubtotal(sessionItemsSubtotal)
+                .shippingFee(sessionShippingFee)
                 .totalAmount(totalAmount)
                 .expiresAt(session.getExpiresAt())
                 .build();

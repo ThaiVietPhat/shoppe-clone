@@ -94,12 +94,12 @@ class OrderServiceImplTest {
 
     @Test
     void checkoutWhenCartIsEmptyShouldThrowException() {
-        when(cartService.getSnapshot(buyerId)).thenReturn(new CartSnapshot(buyerId, Collections.emptyList(), 1L));
+        when(cartService.getSelectedSnapshot(buyerId)).thenReturn(new CartSnapshot(buyerId, Collections.emptyList(), 1L));
 
         AppException exception = assertThrows(AppException.class, () ->
                 orderService.checkout(buyerId, request, idempotencyKey)
         );
-        assertEquals(ErrorCode.CART_EMPTY, exception.getErrorCode());
+        assertEquals(ErrorCode.CART_SELECTED_EMPTY, exception.getErrorCode());
     }
 
     @Test
@@ -108,7 +108,7 @@ class OrderServiceImplTest {
         
         UUID variantId = UUID.randomUUID();
         CartSnapshotItem item = new CartSnapshotItem(variantId, 2);
-        when(cartService.getSnapshot(buyerId)).thenReturn(new CartSnapshot(buyerId, List.of(item), 1L));
+        when(cartService.getSelectedSnapshot(buyerId)).thenReturn(new CartSnapshot(buyerId, List.of(item), 1L));
 
         CheckoutResponse expectedResponse = CheckoutResponse.builder()
                 .checkoutSessionId(UUID.randomUUID())
@@ -176,7 +176,6 @@ class OrderServiceImplTest {
         when(idempotencyKeyRepository.findByActorIdAndOperationAndIdempotencyKey(buyerId, "CHECKOUT", idempotencyKey))
                 .thenReturn(Optional.of(completedKey));
         when(objectMapper.readValue("{}", CheckoutResponse.class)).thenReturn(cachedResponse);
-        when(cartService.getSnapshot(buyerId)).thenReturn(new CartSnapshot(buyerId, Collections.emptyList(), 2L));
 
         CheckoutResponse response = orderService.checkout(buyerId, request, idempotencyKey);
 

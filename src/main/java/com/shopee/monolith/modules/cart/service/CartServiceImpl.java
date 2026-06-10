@@ -20,7 +20,10 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -30,28 +33,73 @@ public class CartServiceImpl implements CartService {
     private final ProductService productService;
     private final CartProperties cartProperties;
 
+    // KEYS[1]=items KEYS[2]=version KEYS[3]=selected
+    // ARGV[1]=version_to_match
     private static final RedisScript<Long> CLEAR_CART_SCRIPT = RedisScript.of(
-            "local currentVersion = redis.call('get', KEYS[2])\n" +
-            "if currentVersion == ARGV[1] then\n" +
-            "    redis.call('del', KEYS[1], KEYS[2])\n" +
-            "    return 1\n" +
-            "else\n" +
-            "    return 0\n" +
-            "end",
+            "local cur = redis.call('get', KEYS[2])\n"
+            + "if cur == ARGV[1] then\n"
+            + "    redis.call('del', KEYS[1], KEYS[2], KEYS[3])\n"
+            + "    return 1\n"
+            + "else\n"
+            + "    return 0\n"
+            + "end",
             Long.class
     );
 
+    // KEYS[1]=items KEYS[2]=version
+    // ARGV[1]=variantId ARGV[2]=qty ARGV[3]=maxQty ARGV[4]=ttl
     private static final RedisScript<Long> ADD_ITEM_SCRIPT = RedisScript.of(
-            "local currentQty = tonumber(redis.call('hget', KEYS[1], ARGV[1]) or '0')\n" +
-            "local newQty = currentQty + tonumber(ARGV[2])\n" +
-            "if newQty > tonumber(ARGV[3]) then\n" +
-            "    return -1\n" +
-            "end\n" +
-            "redis.call('hset', KEYS[1], ARGV[1], tostring(newQty))\n" +
-            "redis.call('incr', KEYS[2])\n" +
-            "redis.call('expire', KEYS[1], ARGV[4])\n" +
-            "redis.call('expire', KEYS[2], ARGV[4])\n" +
-            "return newQty",
+            "local cur = tonumber(redis.call('hget', KEYS[1], ARGV[1]) or '0')\n"
+            + "local nw = cur + tonumber(ARGV[2])\n"
+            + "if nw > tonumber(ARGV[3]) then return -1 end\n"
+            + "redis.call('hset', KEYS[1], ARGV[1], tostring(nw))\n"
+            + "redis.call('incr', KEYS[2])\n"
+            + "redis.call('expire', KEYS[1], ARGV[4])\n"
+            + "redis.call('expire', KEYS[2], ARGV[4])\n"
+            + "return nw",
+            Long.class
+    );
+
+    // KEYS[1]=items KEYS[2]=selected KEYS[3]=version
+    // ARGV[1]=ttl ARGV[2..n]=variantIds
+    // Returns -1 if any variantId not in items hash, else 1
+    private static final RedisScript<Long> SELECT_ITEMS_SCRIPT = RedisScript.of(
+            "local ttl = tonumber(ARGV[1])\n"
+            + "for i=2,#ARGV do\n"
+            + "    if redis.call('hexists', KEYS[1], ARGV[i]) == 0 then return -1 end\n"
+            + "end\n"
+            + "for i=2,#ARGV do redis.call('sadd', KEYS[2], ARGV[i]) end\n"
+            + "redis.call('incr', KEYS[3])\n"
+            + "redis.call('expire', KEYS[1], ttl)\n"
+            + "redis.call('expire', KEYS[2], ttl)\n"
+            + "redis.call('expire', KEYS[3], ttl)\n"
+            + "return 1",
+            Long.class
+    );
+
+    // KEYS[1]=selected KEYS[2]=version KEYS[3]=items
+    // ARGV[1]=ttl ARGV[2..n]=variantIds
+    private static final RedisScript<Long> DESELECT_ITEMS_SCRIPT = RedisScript.of(
+            "local ttl = tonumber(ARGV[1])\n"
+            + "for i=2,#ARGV do redis.call('srem', KEYS[1], ARGV[i]) end\n"
+            + "redis.call('incr', KEYS[2])\n"
+            + "redis.call('expire', KEYS[1], ttl)\n"
+            + "redis.call('expire', KEYS[2], ttl)\n"
+            + "redis.call('expire', KEYS[3], ttl)\n"
+            + "return 1",
+            Long.class
+    );
+
+    // KEYS[1]=items KEYS[2]=selected KEYS[3]=version
+    // ARGV[1]=variantId ARGV[2]=ttl
+    private static final RedisScript<Long> REMOVE_ITEM_SCRIPT = RedisScript.of(
+            "redis.call('hdel', KEYS[1], ARGV[1])\n"
+            + "redis.call('srem', KEYS[2], ARGV[1])\n"
+            + "redis.call('incr', KEYS[3])\n"
+            + "redis.call('expire', KEYS[1], ARGV[2])\n"
+            + "redis.call('expire', KEYS[2], ARGV[2])\n"
+            + "redis.call('expire', KEYS[3], ARGV[2])\n"
+            + "return 1",
             Long.class
     );
 
@@ -63,27 +111,30 @@ public class CartServiceImpl implements CartService {
         return "cart:" + userId + ":version";
     }
 
+    private String getSelectedKey(UUID userId) {
+        return "cart:" + userId + ":selected";
+    }
+
     @Override
     public CartResponse getCart(UUID userId) {
         if (userId == null) {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
-
         try {
             String itemsKey = getItemsKey(userId);
             String versionKey = getVersionKey(userId);
+            String selectedKey = getSelectedKey(userId);
 
             Map<Object, Object> entries = stringRedisTemplate.opsForHash().entries(itemsKey);
             String versionStr = stringRedisTemplate.opsForValue().get(versionKey);
             long version = versionStr != null ? Long.parseLong(versionStr) : 0L;
 
             if (entries.isEmpty()) {
-                return CartResponse.builder()
-                        .items(List.of())
-                        .totalItems(0)
-                        .version(version)
-                        .build();
+                return CartResponse.builder().items(List.of()).totalItems(0).version(version).build();
             }
+
+            Set<String> selectedSet = stringRedisTemplate.opsForSet().members(selectedKey);
+            Set<String> selected = selectedSet != null ? selectedSet : Set.of();
 
             List<CartItemResponse> items = new ArrayList<>();
             for (Map.Entry<Object, Object> entry : entries.entrySet()) {
@@ -92,10 +143,8 @@ public class CartServiceImpl implements CartService {
 
                 var variantOpt = productService.findActiveVariantLookupDataById(variantId);
                 if (variantOpt.isEmpty()) {
-                    // Skip variant if it no longer exists in the system
                     continue;
                 }
-
                 VariantLookupData variant = variantOpt.get();
                 UUID shopId = productService.findActiveProductLookupDataById(variant.productId())
                         .map(ProductLookupData::shopId)
@@ -109,14 +158,11 @@ public class CartServiceImpl implements CartService {
                         .sku(variant.sku())
                         .price(variant.price())
                         .quantity(quantity)
+                        .selected(selected.contains(variantId.toString()))
                         .build());
             }
 
-            return CartResponse.builder()
-                    .items(items)
-                    .totalItems(items.size())
-                    .version(version)
-                    .build();
+            return CartResponse.builder().items(items).totalItems(items.size()).version(version).build();
 
         } catch (AppException e) {
             throw e;
@@ -133,39 +179,30 @@ public class CartServiceImpl implements CartService {
         if (request.quantity() == null || request.quantity() <= 0) {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
-
-        // Validate variant exists
         var variantOpt = productService.findActiveVariantLookupDataById(request.variantId());
         if (variantOpt.isEmpty()) {
             throw new AppException(ErrorCode.VARIANT_NOT_FOUND);
         }
-
         try {
-            String itemsKey = getItemsKey(userId);
-            String versionKey = getVersionKey(userId);
-
             Long result = stringRedisTemplate.execute(
                     ADD_ITEM_SCRIPT,
-                    List.of(itemsKey, versionKey),
+                    List.of(getItemsKey(userId), getVersionKey(userId)),
                     request.variantId().toString(),
                     String.valueOf(request.quantity()),
                     String.valueOf(cartProperties.getMaxQuantityPerItem()),
                     String.valueOf(cartProperties.getTtl().toSeconds())
             );
-
             if (result == null) {
                 throw new AppException(ErrorCode.SERVICE_UNAVAILABLE);
             }
             if (result == -1) {
                 throw new AppException(ErrorCode.INVALID_REQUEST);
             }
-
         } catch (AppException e) {
             throw e;
         } catch (Exception e) {
             throw new AppException(ErrorCode.SERVICE_UNAVAILABLE);
         }
-
         return getCart(userId);
     }
 
@@ -174,44 +211,32 @@ public class CartServiceImpl implements CartService {
         if (userId == null || variantId == null || request == null || request.quantity() == null) {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
-
         int quantity = request.quantity();
         if (quantity < 0) {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
-
         if (quantity == 0) {
             removeItem(userId, variantId);
             return getCart(userId);
         }
-
-        // Validate variant exists
         var variantOpt = productService.findActiveVariantLookupDataById(variantId);
         if (variantOpt.isEmpty()) {
             throw new AppException(ErrorCode.VARIANT_NOT_FOUND);
         }
-
         if (quantity > cartProperties.getMaxQuantityPerItem()) {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
 
         try {
-            String itemsKey = getItemsKey(userId);
-            String versionKey = getVersionKey(userId);
-
-            stringRedisTemplate.opsForHash().put(itemsKey, variantId.toString(), String.valueOf(quantity));
-            stringRedisTemplate.opsForValue().increment(versionKey);
-
-            // Apply sliding TTL
-            stringRedisTemplate.expire(itemsKey, cartProperties.getTtl());
-            stringRedisTemplate.expire(versionKey, cartProperties.getTtl());
-
+            stringRedisTemplate.opsForHash().put(getItemsKey(userId), variantId.toString(), String.valueOf(quantity));
+            stringRedisTemplate.opsForValue().increment(getVersionKey(userId));
+            stringRedisTemplate.expire(getItemsKey(userId), cartProperties.getTtl());
+            stringRedisTemplate.expire(getVersionKey(userId), cartProperties.getTtl());
         } catch (AppException e) {
             throw e;
         } catch (Exception e) {
             throw new AppException(ErrorCode.SERVICE_UNAVAILABLE);
         }
-
         return getCart(userId);
     }
 
@@ -220,19 +245,13 @@ public class CartServiceImpl implements CartService {
         if (userId == null || variantId == null) {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
-
         try {
-            String itemsKey = getItemsKey(userId);
-            String versionKey = getVersionKey(userId);
-
-            // Delete variant from hash
-            stringRedisTemplate.opsForHash().delete(itemsKey, variantId.toString());
-            stringRedisTemplate.opsForValue().increment(versionKey);
-
-            // Apply sliding TTL
-            stringRedisTemplate.expire(itemsKey, cartProperties.getTtl());
-            stringRedisTemplate.expire(versionKey, cartProperties.getTtl());
-
+            stringRedisTemplate.execute(
+                    REMOVE_ITEM_SCRIPT,
+                    List.of(getItemsKey(userId), getSelectedKey(userId), getVersionKey(userId)),
+                    variantId.toString(),
+                    String.valueOf(cartProperties.getTtl().toSeconds())
+            );
         } catch (AppException e) {
             throw e;
         } catch (Exception e) {
@@ -245,17 +264,70 @@ public class CartServiceImpl implements CartService {
         if (userId == null) {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
-
         try {
-            String itemsKey = getItemsKey(userId);
-            String versionKey = getVersionKey(userId);
-
-            stringRedisTemplate.delete(itemsKey);
-            stringRedisTemplate.opsForValue().increment(versionKey);
-            stringRedisTemplate.expire(versionKey, cartProperties.getTtl());
+            stringRedisTemplate.delete(List.of(getItemsKey(userId), getSelectedKey(userId)));
+            stringRedisTemplate.opsForValue().increment(getVersionKey(userId));
+            stringRedisTemplate.expire(getVersionKey(userId), cartProperties.getTtl());
         } catch (Exception e) {
             throw new AppException(ErrorCode.SERVICE_UNAVAILABLE);
         }
+    }
+
+    @Override
+    public CartResponse selectItems(UUID userId, List<UUID> variantIds) {
+        if (userId == null || variantIds == null || variantIds.isEmpty()) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        try {
+            List<String> args = Stream.concat(
+                    Stream.of(String.valueOf(cartProperties.getTtl().toSeconds())),
+                    variantIds.stream().map(UUID::toString)
+            ).collect(Collectors.toList());
+
+            Long result = stringRedisTemplate.execute(
+                    SELECT_ITEMS_SCRIPT,
+                    List.of(getItemsKey(userId), getSelectedKey(userId), getVersionKey(userId)),
+                    args.toArray(new String[0])
+            );
+            if (result == null) {
+                throw new AppException(ErrorCode.SERVICE_UNAVAILABLE);
+            }
+            if (result == -1L) {
+                throw new AppException(ErrorCode.INVALID_REQUEST);
+            }
+        } catch (AppException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new AppException(ErrorCode.SERVICE_UNAVAILABLE);
+        }
+        return getCart(userId);
+    }
+
+    @Override
+    public CartResponse deselectItems(UUID userId, List<UUID> variantIds) {
+        if (userId == null || variantIds == null || variantIds.isEmpty()) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        try {
+            List<String> args = Stream.concat(
+                    Stream.of(String.valueOf(cartProperties.getTtl().toSeconds())),
+                    variantIds.stream().map(UUID::toString)
+            ).collect(Collectors.toList());
+
+            Long result = stringRedisTemplate.execute(
+                    DESELECT_ITEMS_SCRIPT,
+                    List.of(getSelectedKey(userId), getVersionKey(userId), getItemsKey(userId)),
+                    args.toArray(new String[0])
+            );
+            if (result == null) {
+                throw new AppException(ErrorCode.SERVICE_UNAVAILABLE);
+            }
+        } catch (AppException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new AppException(ErrorCode.SERVICE_UNAVAILABLE);
+        }
+        return getCart(userId);
     }
 
     @Override
@@ -263,28 +335,47 @@ public class CartServiceImpl implements CartService {
         if (userId == null) {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
-
         try {
-            String itemsKey = getItemsKey(userId);
-            String versionKey = getVersionKey(userId);
-
-            Map<Object, Object> entries = stringRedisTemplate.opsForHash().entries(itemsKey);
-            String versionStr = stringRedisTemplate.opsForValue().get(versionKey);
+            Map<Object, Object> entries = stringRedisTemplate.opsForHash().entries(getItemsKey(userId));
+            String versionStr = stringRedisTemplate.opsForValue().get(getVersionKey(userId));
             long version = versionStr != null ? Long.parseLong(versionStr) : 0L;
 
             List<CartSnapshotItem> items = new ArrayList<>();
             for (Map.Entry<Object, Object> entry : entries.entrySet()) {
-                UUID variantId = UUID.fromString((String) entry.getKey());
-                int quantity = Integer.parseInt((String) entry.getValue());
-                items.add(new CartSnapshotItem(variantId, quantity));
+                items.add(new CartSnapshotItem(
+                        UUID.fromString((String) entry.getKey()),
+                        Integer.parseInt((String) entry.getValue())
+                ));
+            }
+            return CartSnapshot.builder().userId(userId).items(items).version(version).build();
+        } catch (Exception e) {
+            throw new AppException(ErrorCode.SERVICE_UNAVAILABLE);
+        }
+    }
+
+    @Override
+    public CartSnapshot getSelectedSnapshot(UUID userId) {
+        if (userId == null) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+        try {
+            Set<String> selectedMembers = stringRedisTemplate.opsForSet().members(getSelectedKey(userId));
+            String versionStr = stringRedisTemplate.opsForValue().get(getVersionKey(userId));
+            long version = versionStr != null ? Long.parseLong(versionStr) : 0L;
+
+            if (selectedMembers == null || selectedMembers.isEmpty()) {
+                return CartSnapshot.builder().userId(userId).items(List.of()).version(version).build();
             }
 
-            return CartSnapshot.builder()
-                    .userId(userId)
-                    .items(items)
-                    .version(version)
-                    .build();
-
+            List<CartSnapshotItem> items = new ArrayList<>();
+            for (String member : selectedMembers) {
+                UUID variantId = UUID.fromString(member);
+                Object qtyObj = stringRedisTemplate.opsForHash().get(getItemsKey(userId), variantId.toString());
+                if (qtyObj != null) {
+                    items.add(new CartSnapshotItem(variantId, Integer.parseInt(qtyObj.toString())));
+                }
+            }
+            return CartSnapshot.builder().userId(userId).items(items).version(version).build();
         } catch (Exception e) {
             throw new AppException(ErrorCode.SERVICE_UNAVAILABLE);
         }
@@ -295,14 +386,10 @@ public class CartServiceImpl implements CartService {
         if (userId == null) {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
-
         try {
-            String itemsKey = getItemsKey(userId);
-            String versionKey = getVersionKey(userId);
-
             stringRedisTemplate.execute(
                     CLEAR_CART_SCRIPT,
-                    List.of(itemsKey, versionKey),
+                    List.of(getItemsKey(userId), getVersionKey(userId), getSelectedKey(userId)),
                     String.valueOf(version)
             );
         } catch (Exception e) {

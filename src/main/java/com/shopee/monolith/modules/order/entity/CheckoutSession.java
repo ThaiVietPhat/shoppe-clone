@@ -35,6 +35,14 @@ public class CheckoutSession extends BaseEntity {
     @Column(name = "total_amount", nullable = false, precision = 15, scale = 2)
     private BigDecimal totalAmount;
 
+    @Column(name = "items_subtotal", nullable = false, precision = 15, scale = 2)
+    @lombok.Builder.Default
+    private BigDecimal itemsSubtotal = BigDecimal.ZERO;
+
+    @Column(name = "shipping_fee", nullable = false, precision = 15, scale = 2)
+    @lombok.Builder.Default
+    private BigDecimal shippingFee = BigDecimal.ZERO;
+
     @Column(name = "shipping_recipient_name", nullable = false)
     private String shippingRecipientName;
 
@@ -71,5 +79,11 @@ public class CheckoutSession extends BaseEntity {
 
     public void updateTotalAmount(BigDecimal totalAmount) {
         this.totalAmount = totalAmount;
+    }
+
+    public void updateTotals(BigDecimal subtotal, BigDecimal fee) {
+        this.itemsSubtotal = subtotal;
+        this.shippingFee = fee;
+        this.totalAmount = subtotal.add(fee);
     }
 }

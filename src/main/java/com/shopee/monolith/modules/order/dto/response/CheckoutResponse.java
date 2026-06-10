@@ -20,7 +20,13 @@ public record CheckoutResponse(
         @Schema(description = "Status of the checkout session", example = "PENDING_PAYMENT")
         String status,
 
-        @Schema(description = "Total checkout amount", example = "80.00")
+        @Schema(description = "Sum of all item prices", example = "50.00")
+        BigDecimal itemsSubtotal,
+
+        @Schema(description = "Sum of all shipping fees", example = "30.00")
+        BigDecimal shippingFee,
+
+        @Schema(description = "Total checkout amount (itemsSubtotal + shippingFee)", example = "80.00")
         BigDecimal totalAmount,
 
         @Schema(description = "Expiration timestamp of the reservation", example = "2026-06-05T18:30:00Z")

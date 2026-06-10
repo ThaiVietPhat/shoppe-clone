@@ -28,5 +28,8 @@ public record CartItemResponse(
         BigDecimal price,
 
         @Schema(description = "Quantity of this variant in the cart")
-        int quantity
+        int quantity,
+
+        @Schema(description = "Whether this item is selected for checkout")
+        boolean selected
 ) {}

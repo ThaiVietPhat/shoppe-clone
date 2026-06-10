@@ -67,13 +67,13 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
-        // Proceed with checkout - Read cart snapshot from Redis OUTSIDE the DB transaction
-        CartSnapshot cartSnapshot = cartService.getSnapshot(buyerId);
+        // Proceed with checkout - Read selected items snapshot from Redis OUTSIDE the DB transaction
+        CartSnapshot cartSnapshot = cartService.getSelectedSnapshot(buyerId);
         if (cartSnapshot == null || cartSnapshot.items().isEmpty()) {
             if (cachedResponse != null) {
                 return cachedResponse;
             }
-            throw new AppException(ErrorCode.CART_EMPTY);
+            throw new AppException(ErrorCode.CART_SELECTED_EMPTY);
         }
 
         String requestHash = computeRequestHash(request, cartSnapshot);

@@ -16,4 +16,15 @@ public final class OrderSwaggerResponses {
 
             CheckoutResponse data
     ) {}
+
+    @Schema(name = "ApiResponseCheckoutPreviewResponse", description = "API response wrapper containing checkout preview")
+    public record ApiResponseCheckoutPreviewResponse(
+            @Schema(description = "HTTP code", example = "200")
+            int code,
+
+            @Schema(description = "Message description", example = "Success")
+            String message,
+
+            CheckoutPreviewResponse data
+    ) {}
 }

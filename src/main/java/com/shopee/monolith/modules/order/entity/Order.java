@@ -41,6 +41,14 @@ public class Order extends BaseEntity {
     @Column(name = "total_amount", nullable = false, precision = 15, scale = 2)
     private BigDecimal totalAmount;
 
+    @Column(name = "items_subtotal", nullable = false, precision = 15, scale = 2)
+    @lombok.Builder.Default
+    private BigDecimal itemsSubtotal = BigDecimal.ZERO;
+
+    @Column(name = "shipping_fee", nullable = false, precision = 15, scale = 2)
+    @lombok.Builder.Default
+    private BigDecimal shippingFee = BigDecimal.ZERO;
+
     @Column(name = "shipping_recipient_name", nullable = false)
     private String shippingRecipientName;
 

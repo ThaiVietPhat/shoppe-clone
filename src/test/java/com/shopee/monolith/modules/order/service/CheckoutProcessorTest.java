@@ -57,6 +57,8 @@ class CheckoutProcessorTest {
     private InventoryService inventoryService;
     @Mock
     private ProductService productService;
+    @Mock
+    private ShippingFeeEstimator shippingFeeEstimator;
 
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper().registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
@@ -239,6 +241,7 @@ class CheckoutProcessorTest {
                 .thenReturn(1);
         when(productService.findActiveVariantLookupDataByIdForCheckout(variantId)).thenReturn(Optional.of(variant));
         when(productService.findActiveProductLookupDataByIdForCheckout(variant.productId())).thenReturn(Optional.of(product));
+        when(shippingFeeEstimator.estimateFee(any(), any(), any())).thenReturn(BigDecimal.ZERO);
 
         CheckoutSession session = CheckoutSession.builder()
                 .id(UUID.randomUUID())

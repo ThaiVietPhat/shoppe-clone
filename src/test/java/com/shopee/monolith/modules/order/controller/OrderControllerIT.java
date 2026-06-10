@@ -6,6 +6,7 @@ import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.modules.auth.security.JwtTokenProvider;
 import com.shopee.monolith.modules.cart.dto.request.AddCartItemRequest;
 import com.shopee.monolith.modules.cart.service.CartService;
+import java.util.List;
 import com.shopee.monolith.modules.inventory.service.InventoryService;
 import com.shopee.monolith.modules.order.dto.request.CheckoutRequest;
 import com.shopee.monolith.modules.product.entity.Category;
@@ -40,6 +41,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @AutoConfigureMockMvc
+@org.springframework.test.context.TestPropertySource(properties = "app.checkout.mock-shipping.flat-fee-per-shop=0")
 class OrderControllerIT extends BasePostgresRedisIntegrationTest {
 
     @Autowired
@@ -216,13 +218,14 @@ class OrderControllerIT extends BasePostgresRedisIntegrationTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.message").value(ErrorCode.CART_EMPTY.getMessage()));
+                .andExpect(jsonPath("$.message").value(ErrorCode.CART_SELECTED_EMPTY.getMessage()));
     }
 
     @Test
     void checkoutWhenValidShouldSucceed() throws Exception {
         // Prepare cart
         cartService.addItem(buyer.getId(), new AddCartItemRequest(variant.getId(), 2));
+        cartService.selectItems(buyer.getId(), List.of(variant.getId()));
 
         CheckoutRequest request = CheckoutRequest.builder().addressId(defaultAddress.getId()).build();
         String idempotencyKey = UUID.randomUUID().toString();

@@ -122,6 +122,9 @@ app:
     retry:
       batch-size: 50
       fixed-delay: 5m
+  checkout:
+    mock-shipping:
+      flat-fee-per-shop: 30000
   payment:
     pending-expiry-minutes: 15                     # Scheduled job quét và cancel order quá hạn
   order:

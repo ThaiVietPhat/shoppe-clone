@@ -76,6 +76,8 @@ public enum ErrorCode {
 
     // ==================== Cart ====================
     CART_EMPTY(400, "Cart is empty"),
+    CART_SELECTED_EMPTY(400, "No items selected for checkout"),
+    ADDRESS_INVALID(400, "No valid shipping address found"),
 
     // ==================== Media ====================
     INVALID_FILE_TYPE(400, "File type is not allowed"),

@@ -18,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.RedisSystemException;
 import org.springframework.data.redis.core.HashOperations;
+import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.script.RedisScript;
@@ -29,14 +30,19 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -58,6 +64,9 @@ class CartServiceImplTest {
 
     @Mock
     private ValueOperations<String, String> valueOperations;
+
+    @Mock
+    private SetOperations<String, String> setOperations;
 
     @InjectMocks
     private CartServiceImpl cartService;
@@ -108,11 +117,13 @@ class CartServiceImplTest {
     void getCartWhenItemsExistShouldReturnPopulatedResponse() {
         when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);
 
         Map<Object, Object> hashEntries = new HashMap<>();
         hashEntries.put(variantId.toString(), "3");
         when(hashOperations.entries("cart:" + userId + ":items")).thenReturn(hashEntries);
         when(valueOperations.get("cart:" + userId + ":version")).thenReturn("4");
+        when(setOperations.members("cart:" + userId + ":selected")).thenReturn(Set.of(variantId.toString()));
 
         when(productService.findActiveVariantLookupDataById(variantId)).thenReturn(Optional.of(variantLookup));
         when(productService.findActiveProductLookupDataById(productId)).thenReturn(Optional.of(productLookup));
@@ -130,6 +141,7 @@ class CartServiceImplTest {
         assertEquals(shopId, item.shopId());
         assertEquals("Test Variant", item.name());
         assertEquals(3, item.quantity());
+        assertTrue(item.selected());
     }
 
     @Test
@@ -156,6 +168,8 @@ class CartServiceImplTest {
         hashEntries.put(variantId.toString(), "5");
         when(hashOperations.entries("cart:" + userId + ":items")).thenReturn(hashEntries);
         when(valueOperations.get("cart:" + userId + ":version")).thenReturn("6");
+        when(setOperations.members("cart:" + userId + ":selected")).thenReturn(Set.of());
+        when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);
         when(productService.findActiveProductLookupDataById(productId)).thenReturn(Optional.of(productLookup));
 
         CartResponse response = cartService.addItem(userId, request);
@@ -207,18 +221,23 @@ class CartServiceImplTest {
     void updateItemWhenQuantityZeroShouldRemoveItem() {
         UpdateCartItemRequest request = new UpdateCartItemRequest(0);
 
-        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
-        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(cartProperties.getTtl()).thenReturn(Duration.ofDays(7));
 
-        // Mock empty cart on subsequent getCart inside updateItem
+        // For subsequent getCart call
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(hashOperations.entries("cart:" + userId + ":items")).thenReturn(Collections.emptyMap());
         when(valueOperations.get("cart:" + userId + ":version")).thenReturn("2");
 
         CartResponse response = cartService.updateItem(userId, variantId, request);
 
-        verify(hashOperations).delete("cart:" + userId + ":items", variantId.toString());
-        verify(valueOperations).increment("cart:" + userId + ":version");
+        verify(stringRedisTemplate).execute(
+                any(RedisScript.class),
+                eq(List.of("cart:" + userId + ":items", "cart:" + userId + ":selected",
+                        "cart:" + userId + ":version")),
+                eq(variantId.toString()),
+                eq("604800")
+        );
         assertNotNull(response);
         assertEquals(0, response.items().size());
     }
@@ -232,26 +251,32 @@ class CartServiceImplTest {
     }
 
     @Test
-    void removeItemShouldCallRedisAndDelete() {
-        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
-        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+    void removeItemShouldExecuteLuaScriptAndRemoveFromSelectedSet() {
         when(cartProperties.getTtl()).thenReturn(Duration.ofDays(7));
+        doReturn(1L).when(stringRedisTemplate).execute(any(RedisScript.class), anyList(), any(), any());
 
         cartService.removeItem(userId, variantId);
 
-        verify(hashOperations).delete("cart:" + userId + ":items", variantId.toString());
-        verify(valueOperations).increment("cart:" + userId + ":version");
-        verify(stringRedisTemplate).expire("cart:" + userId + ":items", Duration.ofDays(7));
+        verify(stringRedisTemplate).execute(
+                any(RedisScript.class),
+                eq(List.of("cart:" + userId + ":items", "cart:" + userId + ":selected",
+                        "cart:" + userId + ":version")),
+                eq(variantId.toString()),
+                eq("604800")
+        );
     }
 
     @Test
-    void clearCartShouldDeleteKeys() {
+    void clearCartShouldDeleteItemsAndSelectedAndIncrementVersion() {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(cartProperties.getTtl()).thenReturn(Duration.ofDays(7));
 
         cartService.clearCart(userId);
 
-        verify(stringRedisTemplate).delete("cart:" + userId + ":items");
+        verify(stringRedisTemplate).delete(List.of(
+                "cart:" + userId + ":items",
+                "cart:" + userId + ":selected"
+        ));
         verify(valueOperations).increment("cart:" + userId + ":version");
         verify(stringRedisTemplate).expire("cart:" + userId + ":version", Duration.ofDays(7));
     }
@@ -282,7 +307,8 @@ class CartServiceImplTest {
 
         verify(stringRedisTemplate).execute(
                 any(RedisScript.class),
-                eq(List.of("cart:" + userId + ":items", "cart:" + userId + ":version")),
+                eq(List.of("cart:" + userId + ":items", "cart:" + userId + ":version",
+                        "cart:" + userId + ":selected")),
                 eq("10")
         );
     }
@@ -295,5 +321,105 @@ class CartServiceImplTest {
 
         AppException exception = assertThrows(AppException.class, () -> cartService.getCart(userId));
         assertEquals(ErrorCode.SERVICE_UNAVAILABLE, exception.getErrorCode());
+    }
+
+    // ==================== selectItems ====================
+
+    @Test
+    void selectItemsShouldIncrementVersionAndReturnCart() {
+        when(cartProperties.getTtl()).thenReturn(Duration.ofDays(7));
+        doReturn(1L).when(stringRedisTemplate).execute(any(RedisScript.class), anyList(), any(), any());
+
+        // Stub getCart
+        Map<Object, Object> hashEntries = new HashMap<>();
+        hashEntries.put(variantId.toString(), "2");
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);
+        when(hashOperations.entries("cart:" + userId + ":items")).thenReturn(hashEntries);
+        when(valueOperations.get("cart:" + userId + ":version")).thenReturn("3");
+        when(setOperations.members("cart:" + userId + ":selected")).thenReturn(Set.of(variantId.toString()));
+        when(productService.findActiveVariantLookupDataById(variantId)).thenReturn(Optional.of(variantLookup));
+        when(productService.findActiveProductLookupDataById(productId)).thenReturn(Optional.of(productLookup));
+
+        CartResponse response = cartService.selectItems(userId, List.of(variantId));
+
+        verify(stringRedisTemplate).execute(
+                any(RedisScript.class),
+                eq(List.of("cart:" + userId + ":items", "cart:" + userId + ":selected",
+                        "cart:" + userId + ":version")),
+                eq("604800"),
+                eq(variantId.toString())
+        );
+        assertTrue(response.items().get(0).selected());
+    }
+
+    @Test
+    void selectItemsWhenVariantNotInCartShouldThrowInvalidRequest() {
+        when(cartProperties.getTtl()).thenReturn(Duration.ofDays(7));
+        doReturn(-1L).when(stringRedisTemplate).execute(any(RedisScript.class), anyList(), any(), any());
+
+        AppException ex = assertThrows(AppException.class,
+                () -> cartService.selectItems(userId, List.of(variantId)));
+        assertEquals(ErrorCode.INVALID_REQUEST, ex.getErrorCode());
+    }
+
+    @Test
+    void deselectItemsShouldIncrementVersionAndReturnCart() {
+        when(cartProperties.getTtl()).thenReturn(Duration.ofDays(7));
+        doReturn(1L).when(stringRedisTemplate).execute(any(RedisScript.class), anyList(), any(), any());
+
+        // Stub getCart
+        Map<Object, Object> hashEntries = new HashMap<>();
+        hashEntries.put(variantId.toString(), "2");
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);
+        when(hashOperations.entries("cart:" + userId + ":items")).thenReturn(hashEntries);
+        when(valueOperations.get("cart:" + userId + ":version")).thenReturn("4");
+        when(setOperations.members("cart:" + userId + ":selected")).thenReturn(Set.of());
+        when(productService.findActiveVariantLookupDataById(variantId)).thenReturn(Optional.of(variantLookup));
+        when(productService.findActiveProductLookupDataById(productId)).thenReturn(Optional.of(productLookup));
+
+        CartResponse response = cartService.deselectItems(userId, List.of(variantId));
+
+        verify(stringRedisTemplate).execute(
+                any(RedisScript.class),
+                eq(List.of("cart:" + userId + ":selected", "cart:" + userId + ":version",
+                        "cart:" + userId + ":items")),
+                eq("604800"),
+                eq(variantId.toString())
+        );
+        assertFalse(response.items().get(0).selected());
+    }
+
+    @Test
+    void getSelectedSnapshotShouldReturnOnlySelectedItems() {
+        when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
+        when(setOperations.members("cart:" + userId + ":selected")).thenReturn(Set.of(variantId.toString()));
+        when(valueOperations.get("cart:" + userId + ":version")).thenReturn("5");
+        when(hashOperations.get("cart:" + userId + ":items", variantId.toString())).thenReturn("3");
+
+        CartSnapshot snapshot = cartService.getSelectedSnapshot(userId);
+
+        assertEquals(1, snapshot.items().size());
+        assertEquals(variantId, snapshot.items().get(0).variantId());
+        assertEquals(3, snapshot.items().get(0).quantity());
+        assertEquals(5L, snapshot.version());
+    }
+
+    @Test
+    void getSelectedSnapshotWhenNothingSelectedShouldReturnEmptyItems() {
+        when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(setOperations.members("cart:" + userId + ":selected")).thenReturn(Set.of());
+        when(valueOperations.get("cart:" + userId + ":version")).thenReturn("2");
+
+        CartSnapshot snapshot = cartService.getSelectedSnapshot(userId);
+
+        assertTrue(snapshot.items().isEmpty());
+        assertEquals(2L, snapshot.version());
     }
 }

@@ -6,6 +6,7 @@ import com.shopee.monolith.common.response.ApiResponse;
 import com.shopee.monolith.common.response.SwaggerResponses;
 import com.shopee.monolith.modules.auth.dto.internal.AccessTokenClaims;
 import com.shopee.monolith.modules.cart.dto.request.AddCartItemRequest;
+import com.shopee.monolith.modules.cart.dto.request.CartSelectRequest;
 import com.shopee.monolith.modules.cart.dto.request.UpdateCartItemRequest;
 import com.shopee.monolith.modules.cart.dto.response.CartResponse;
 import com.shopee.monolith.modules.cart.dto.response.CartSwaggerResponses;
@@ -205,5 +206,70 @@ public class CartController {
         }
         cartService.clearCart(claims.userId());
         return ApiResponse.success();
+    }
+
+    @Operation(
+            summary = "Select items for checkout",
+            description = "Marks the given variant IDs as selected. Only variants already in the cart can be selected.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "Items selected successfully.",
+            content = @Content(schema = @Schema(implementation = CartSwaggerResponses.ApiResponseCartResponse.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "400",
+            description = "One or more variant IDs are not in the cart.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "401",
+            description = "Authentication required.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "503",
+            description = "Redis service unavailable.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @PostMapping("/items/select")
+    public ApiResponse<CartResponse> selectItems(
+            @Valid @RequestBody CartSelectRequest request,
+            @AuthenticationPrincipal AccessTokenClaims claims) {
+        if (claims == null) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+        return ApiResponse.success(cartService.selectItems(claims.userId(), request.variantIds()));
+    }
+
+    @Operation(
+            summary = "Deselect items from checkout",
+            description = "Removes the given variant IDs from the selected set.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "Items deselected successfully.",
+            content = @Content(schema = @Schema(implementation = CartSwaggerResponses.ApiResponseCartResponse.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "401",
+            description = "Authentication required.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "503",
+            description = "Redis service unavailable.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @PostMapping("/items/deselect")
+    public ApiResponse<CartResponse> deselectItems(
+            @Valid @RequestBody CartSelectRequest request,
+            @AuthenticationPrincipal AccessTokenClaims claims) {
+        if (claims == null) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+        return ApiResponse.success(cartService.deselectItems(claims.userId(), request.variantIds()));
     }
 }

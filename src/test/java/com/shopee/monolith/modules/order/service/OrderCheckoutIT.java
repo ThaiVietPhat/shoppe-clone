@@ -49,6 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@org.springframework.test.context.TestPropertySource(properties = "app.checkout.mock-shipping.flat-fee-per-shop=0")
 class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
 
     @Autowired
@@ -226,6 +227,7 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
     void checkoutShouldCreateEntitiesAndReserveStockCorrectly() {
         cartService.addItem(buyer.getId(), new AddCartItemRequest(variant1.getId(), 2));
         cartService.addItem(buyer.getId(), new AddCartItemRequest(variant2.getId(), 3));
+        cartService.selectItems(buyer.getId(), List.of(variant1.getId(), variant2.getId()));
 
         CheckoutRequest request = CheckoutRequest.builder().addressId(defaultAddress.getId()).build();
         String idempotencyKey = UUID.randomUUID().toString();
@@ -272,6 +274,7 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
     @Test
     void checkoutWithDefaultAddressWhenAddressIdNullShouldSucceed() {
         cartService.addItem(buyer.getId(), new AddCartItemRequest(variant1.getId(), 2));
+        cartService.selectItems(buyer.getId(), List.of(variant1.getId()));
 
         CheckoutRequest request = CheckoutRequest.builder().addressId(null).build();
         String idempotencyKey = UUID.randomUUID().toString();
@@ -310,6 +313,7 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
                 .build();
         lockedAddress = addressRepository.save(lockedAddress);
         cartService.addItem(lockedBuyerId, new AddCartItemRequest(variant1.getId(), 1));
+        cartService.selectItems(lockedBuyerId, List.of(variant1.getId()));
 
         CheckoutRequest request = CheckoutRequest.builder().addressId(lockedAddress.getId()).build();
 
@@ -327,6 +331,7 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
     @Test
     void checkoutWhenCartMutatedAfterSnapshotShouldNotDeleteCartMutation() {
         cartService.addItem(buyer.getId(), new AddCartItemRequest(variant1.getId(), 2));
+        cartService.selectItems(buyer.getId(), List.of(variant1.getId()));
 
         // When inventoryService.reserve is called during checkout (mid-transaction), mutate the cart
         org.mockito.Mockito.doAnswer(invocation -> {
@@ -351,6 +356,7 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
     @Test
     void checkoutWithExpiredIdempotencyKeyShouldSucceedAndResetKey() {
         cartService.addItem(buyer.getId(), new AddCartItemRequest(variant1.getId(), 2));
+        cartService.selectItems(buyer.getId(), List.of(variant1.getId()));
 
         CheckoutRequest request = CheckoutRequest.builder().addressId(defaultAddress.getId()).build();
         String idempotencyKey = UUID.randomUUID().toString();
@@ -380,6 +386,7 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
 
         // 3. Add items to cart again since checkout cleared it
         cartService.addItem(buyer.getId(), new AddCartItemRequest(variant1.getId(), 3));
+        cartService.selectItems(buyer.getId(), List.of(variant1.getId()));
 
         // 4. Run second checkout with the SAME idempotency key but a different cart (different request/data)
         CheckoutResponse response2 = orderService.checkout(buyer.getId(), request, idempotencyKey);
