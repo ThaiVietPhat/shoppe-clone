@@ -51,7 +51,7 @@ class SemanticSearchServiceTest {
     // ===================== Happy path =====================
 
     @Test
-    void searchWhenProviderSucceedsShouldReturnNonDegradedResponse() {
+    void search_whenProviderSucceeds_shouldReturnNonDegradedResponse() {
         float[] embedding = new float[768];
         UUID id1 = UUID.randomUUID();
         UUID id2 = UUID.randomUUID();
@@ -70,7 +70,7 @@ class SemanticSearchServiceTest {
     }
 
     @Test
-    void searchShouldPassQueryTextToEmbeddingModel() {
+    void search_shouldPassQueryTextToEmbeddingModel() {
         float[] embedding = new float[768];
         when(embeddingModel.embed("wireless earbuds")).thenReturn(embedding);
         when(productEmbeddingRepository.findSimilarProductIdStrings(anyString(), anyInt()))
@@ -83,7 +83,7 @@ class SemanticSearchServiceTest {
     }
 
     @Test
-    void searchShouldRevalidateWithProductService() {
+    void search_shouldRevalidateWithProductService() {
         float[] embedding = new float[768];
         UUID id = UUID.randomUUID();
 
@@ -101,7 +101,7 @@ class SemanticSearchServiceTest {
     // ===================== Manual pagination =====================
 
     @Test
-    void searchWithPaginationShouldReturnCorrectPageSlice() {
+    void search_withPagination_shouldReturnCorrectPageSlice() {
         float[] embedding = new float[768];
         List<UUID> ids = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
         List<ProductCardResponse> cards = ids.stream()
@@ -123,7 +123,7 @@ class SemanticSearchServiceTest {
     }
 
     @Test
-    void searchWithPageBeyondResultsShouldReturnEmptyPage() {
+    void search_withPageBeyondResults_shouldReturnEmptyPage() {
         float[] embedding = new float[768];
         UUID id = UUID.randomUUID();
 
@@ -140,7 +140,7 @@ class SemanticSearchServiceTest {
     }
 
     @Test
-    void searchSizeShouldBeCappedAt50() {
+    void search_sizeShouldBeCappedAt50() {
         float[] embedding = new float[768];
         when(embeddingModel.embed(anyString())).thenReturn(embedding);
         when(productEmbeddingRepository.findSimilarProductIdStrings(anyString(), anyInt()))
@@ -157,7 +157,7 @@ class SemanticSearchServiceTest {
     // ===================== AI provider degradation =====================
 
     @Test
-    void searchWhenEmbeddingModelThrowsShouldReturnDegradedEmptyResponse() {
+    void search_whenEmbeddingModelThrows_shouldReturnDegradedEmptyResponse() {
         when(embeddingModel.embed(anyString())).thenThrow(new RuntimeException("Gemini API unavailable"));
 
         SearchResponse response = semanticSearchService.search("laptop", 0, 10);
@@ -169,7 +169,7 @@ class SemanticSearchServiceTest {
     }
 
     @Test
-    void searchWhenEmbeddingModelThrowsShouldNotCallProductService() {
+    void search_whenEmbeddingModelThrows_shouldNotCallProductService() {
         when(embeddingModel.embed(anyString())).thenThrow(new RuntimeException("Timeout"));
 
         SearchResponse response = semanticSearchService.search("query", 0, 10);
@@ -179,7 +179,7 @@ class SemanticSearchServiceTest {
     }
 
     @Test
-    void searchWhenEmbeddingModelThrowsShouldNotPropagateException() {
+    void search_whenEmbeddingModelThrows_shouldNotPropagateException() {
         when(embeddingModel.embed(anyString())).thenThrow(new RuntimeException("Fatal AI error"));
 
         // Must not throw
@@ -187,7 +187,7 @@ class SemanticSearchServiceTest {
     }
 
     @Test
-    void searchWhenRepositoryThrowsAfterEmbedShouldReturnDegradedResponse() {
+    void search_whenRepositoryThrowsAfterEmbed_shouldReturnDegradedResponse() {
         float[] embedding = new float[768];
         when(embeddingModel.embed(anyString())).thenReturn(embedding);
         when(productEmbeddingRepository.findSimilarProductIdStrings(anyString(), anyInt()))
@@ -200,7 +200,7 @@ class SemanticSearchServiceTest {
     }
 
     @Test
-    void searchDegradedResponseShouldHaveCorrectPageMetadata() {
+    void search_degradedResponse_shouldHaveCorrectPageMetadata() {
         when(embeddingModel.embed(anyString())).thenThrow(new RuntimeException("Down"));
 
         SearchResponse response = semanticSearchService.search("query", 2, 5);

@@ -7,6 +7,8 @@ import com.shopee.monolith.modules.search.service.EmbeddingIndexService;
 import com.shopee.monolith.modules.search.service.SearchIndexService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -24,6 +26,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * NOT propagate back to the publishing transaction.
  */
 @Component
+@ConditionalOnBean(ElasticsearchOperations.class)
 @RequiredArgsConstructor
 @Slf4j
 public class ProductCatalogEventListener {

@@ -3,6 +3,8 @@ package com.shopee.monolith;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.elasticsearch.ElasticsearchContainer;
@@ -32,16 +34,23 @@ public abstract class BaseIntegrationTest {
     static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7-alpine")
             .withExposedPorts(6379);
 
-    @ServiceConnection
     static final ElasticsearchContainer ELASTICSEARCH = new ElasticsearchContainer(
-            DockerImageName.parse("docker.elastic.co/elasticsearch/elasticsearch:8.13.0"))
+            DockerImageName.parse("docker.elastic.co/elasticsearch/elasticsearch:9.0.1")
+                    .asCompatibleSubstituteFor("docker.elastic.co/elasticsearch/elasticsearch"))
             .withEnv("discovery.type", "single-node")
             .withEnv("xpack.security.enabled", "false")
+            .withEnv("xpack.security.http.ssl.enabled", "false")
+            .withEnv("xpack.security.transport.ssl.enabled", "false")
             .withStartupTimeout(java.time.Duration.ofMinutes(3));
 
     static {
         POSTGRES.start();
         REDIS.start();
         ELASTICSEARCH.start();
+    }
+
+    @DynamicPropertySource
+    static void elasticsearchProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.elasticsearch.uris", ELASTICSEARCH::getHttpHostAddress);
     }
 }

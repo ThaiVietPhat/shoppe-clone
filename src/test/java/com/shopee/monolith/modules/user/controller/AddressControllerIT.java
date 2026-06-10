@@ -10,6 +10,7 @@ import com.shopee.monolith.modules.user.entity.User;
 import com.shopee.monolith.modules.user.model.Role;
 import com.shopee.monolith.modules.user.model.UserStatus;
 import com.shopee.monolith.modules.user.repository.AddressRepository;
+import com.shopee.monolith.modules.user.repository.ShopRepository;
 import com.shopee.monolith.modules.user.repository.UserRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,6 +46,9 @@ class AddressControllerIT extends BasePostgresRedisIntegrationTest {
     private AddressRepository addressRepository;
 
     @Autowired
+    private ShopRepository shopRepository;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     private User buyer;
@@ -76,6 +80,7 @@ class AddressControllerIT extends BasePostgresRedisIntegrationTest {
     @AfterEach
     void tearDown() {
         addressRepository.deleteAll();
+        shopRepository.deleteAll();
         userRepository.deleteAll();
     }
 

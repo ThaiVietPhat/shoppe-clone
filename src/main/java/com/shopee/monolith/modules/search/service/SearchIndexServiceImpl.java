@@ -2,23 +2,30 @@ package com.shopee.monolith.modules.search.service;
 
 import com.shopee.monolith.modules.product.event.ProductCatalogSnapshotEvent;
 import com.shopee.monolith.modules.search.document.ProductDocument;
-import com.shopee.monolith.modules.search.repository.ProductSearchRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
+import org.springframework.data.elasticsearch.core.IndexOperations;
+import org.springframework.data.elasticsearch.core.mapping.IndexCoordinates;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
 
 @Slf4j
 @Service
+@ConditionalOnBean(ElasticsearchOperations.class)
 @RequiredArgsConstructor
 public class SearchIndexServiceImpl implements SearchIndexService {
 
-    private final ProductSearchRepository productSearchRepository;
+    private final ElasticsearchOperations elasticsearchOperations;
+
+    private static final IndexCoordinates PRODUCTS_INDEX = IndexCoordinates.of("products");
 
     @Override
     public void upsertDocument(ProductCatalogSnapshotEvent event) {
         try {
+            ensureIndex();
             ProductDocument doc = ProductDocument.builder()
                     .productId(event.productId().toString())
                     .name(event.name())
@@ -36,7 +43,7 @@ public class SearchIndexServiceImpl implements SearchIndexService {
                     .status(event.status() != null ? event.status().name() : null)
                     .createdAt(null)
                     .build();
-            productSearchRepository.save(doc);
+            elasticsearchOperations.save(doc, PRODUCTS_INDEX);
             log.debug("ES upsert OK productId={}", event.productId());
         } catch (Exception ex) {
             log.warn("ES upsert failed productId={} — will retry via publication replay", event.productId(), ex);
@@ -46,10 +53,21 @@ public class SearchIndexServiceImpl implements SearchIndexService {
     @Override
     public void deleteDocument(UUID productId) {
         try {
-            productSearchRepository.deleteById(productId.toString());
+            elasticsearchOperations.delete(productId.toString(), PRODUCTS_INDEX);
             log.debug("ES delete OK productId={}", productId);
         } catch (Exception ex) {
             log.warn("ES delete failed productId={} — will retry via publication replay", productId, ex);
+        }
+    }
+
+    private void ensureIndex() {
+        IndexOperations indexOps = elasticsearchOperations.indexOps(ProductDocument.class);
+        try {
+            if (!indexOps.exists()) {
+                indexOps.createWithMapping();
+            }
+        } catch (Exception ex) {
+            log.warn("ES index check/create failed — proceeding anyway", ex);
         }
     }
 }

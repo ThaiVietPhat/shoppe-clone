@@ -16,7 +16,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.elasticsearch.client.elc.NativeQuery;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 
 import java.math.BigDecimal;
@@ -31,8 +30,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -59,14 +56,14 @@ class SearchServiceFallbackTest {
     // ===================== Elasticsearch success path =====================
 
     @Test
-    void searchWhenElasticsearchSucceedsShouldReturnNonDegradedResponse() {
+    void search_whenElasticsearchSucceeds_shouldReturnNonDegradedResponse() {
         UUID productId = UUID.randomUUID();
         SearchRequest request = new SearchRequest("laptop", null, null, null, null, "RELEVANCE", 0, 10);
 
         // Stub ES to return one hit
         org.springframework.data.elasticsearch.core.SearchHits<com.shopee.monolith.modules.search.document.ProductDocument> hits
                 = mockSearchHits(List.of(productId));
-        doReturn(hits).when(elasticsearchOperations).search(any(NativeQuery.class), any(Class.class));
+        when(elasticsearchOperations.search(any(), any())).thenReturn(hits);
 
         ProductCardResponse card = buildCard(productId, "Laptop");
         when(productService.loadActiveProductCards(List.of(productId))).thenReturn(List.of(card));
@@ -80,11 +77,11 @@ class SearchServiceFallbackTest {
     // ===================== Elasticsearch fallback path =====================
 
     @Test
-    void searchWhenElasticsearchThrowsShouldFallBackToDatabase() {
+    void search_whenElasticsearchThrows_shouldFallBackToDatabase() {
         SearchRequest request = new SearchRequest("phone", null, null, null, null, "RELEVANCE", 0, 10);
 
-        doThrow(new RuntimeException("ES connection refused"))
-                .when(elasticsearchOperations).search(any(NativeQuery.class), any(Class.class));
+        when(elasticsearchOperations.search(any(), any()))
+                .thenThrow(new RuntimeException("ES connection refused"));
 
         UUID productId = UUID.randomUUID();
         Product product = buildProduct(productId, "Phone");
@@ -105,11 +102,11 @@ class SearchServiceFallbackTest {
     }
 
     @Test
-    void searchWhenElasticsearchThrowsAndNoKeywordShouldUseFindAllByStatus() {
+    void search_whenElasticsearchThrowsAndNoKeyword_shouldUseFindAllByStatus() {
         SearchRequest request = new SearchRequest(null, null, null, null, null, "RELEVANCE", 0, 10);
 
-        doThrow(new RuntimeException("ES timeout"))
-                .when(elasticsearchOperations).search(any(NativeQuery.class), any(Class.class));
+        when(elasticsearchOperations.search(any(), any()))
+                .thenThrow(new RuntimeException("ES timeout"));
 
         Page<Product> dbPage = new PageImpl<>(Collections.emptyList());
         when(productRepository.findAllByStatus(eq(ProductStatus.ACTIVE), any(Pageable.class)))
@@ -123,11 +120,11 @@ class SearchServiceFallbackTest {
     }
 
     @Test
-    void searchWhenElasticsearchThrowsShouldNotPropagateException() {
+    void search_whenElasticsearchThrows_shouldNotPropagateException() {
         SearchRequest request = new SearchRequest("tv", null, null, null, null, "RELEVANCE", 0, 10);
 
-        doThrow(new RuntimeException("Fatal ES error"))
-                .when(elasticsearchOperations).search(any(NativeQuery.class), any(Class.class));
+        when(elasticsearchOperations.search(any(), any()))
+                .thenThrow(new RuntimeException("Fatal ES error"));
 
         Page<Product> dbPage = new PageImpl<>(Collections.emptyList());
         when(productRepository.findAllByStatusAndKeyword(any(), anyString(), any()))
@@ -140,11 +137,11 @@ class SearchServiceFallbackTest {
     }
 
     @Test
-    void searchDegradedResponseShouldContainValidPagedStructure() {
+    void search_degradedResponse_shouldContainValidPagedStructure() {
         SearchRequest request = new SearchRequest("camera", null, null, null, null, "NEWEST", 0, 5);
 
-        doThrow(new RuntimeException("ES down"))
-                .when(elasticsearchOperations).search(any(NativeQuery.class), any(Class.class));
+        when(elasticsearchOperations.search(any(), any()))
+                .thenThrow(new RuntimeException("ES down"));
 
         UUID id1 = UUID.randomUUID();
         UUID id2 = UUID.randomUUID();
@@ -167,7 +164,7 @@ class SearchServiceFallbackTest {
     // ===================== Helpers =====================
 
     private org.springframework.data.elasticsearch.core.SearchHits<com.shopee.monolith.modules.search.document.ProductDocument>
-            mockSearchHits(List<UUID> productIds) {
+    mockSearchHits(List<UUID> productIds) {
         com.shopee.monolith.modules.search.document.ProductDocument doc =
                 com.shopee.monolith.modules.search.document.ProductDocument.builder()
                         .productId(productIds.get(0).toString())

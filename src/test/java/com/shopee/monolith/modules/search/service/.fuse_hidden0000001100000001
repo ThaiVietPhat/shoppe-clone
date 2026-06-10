@@ -51,7 +51,7 @@ class EmbeddingIndexServiceTest {
     // ===================== buildEmbeddingText — no PII =====================
 
     @Test
-    void buildEmbeddingTextShouldContainPublicCatalogFields() {
+    void buildEmbeddingText_shouldContainPublicCatalogFields() {
         ProductCatalogSnapshotEvent event = buildEvent(
                 "iPhone 15 Pro", "Titanium body smartphone", "Electronics/Phones", "Apple",
                 Map.of("color", "Black", "storage", "256GB"));
@@ -67,7 +67,7 @@ class EmbeddingIndexServiceTest {
     }
 
     @Test
-    void buildEmbeddingTextShouldNotContainPiiFields() {
+    void buildEmbeddingText_shouldNotContainPiiFields() {
         // We verify that none of the user/PII context fields are included.
         // The event itself does not carry user email/phone/address/payment, but we
         // assert that shopId (UUID with no business meaning) is not embedded either.
@@ -82,14 +82,14 @@ class EmbeddingIndexServiceTest {
     }
 
     @Test
-    void buildEmbeddingTextWithNullOptionalFieldsShouldNotThrow() {
+    void buildEmbeddingText_withNullOptionalFields_shouldNotThrow() {
         ProductCatalogSnapshotEvent event = buildEvent("Gadget", null, null, null, null);
 
         assertDoesNotThrow(() -> embeddingIndexService.buildEmbeddingText(event));
     }
 
     @Test
-    void buildEmbeddingTextWithLongDescriptionShouldTruncateTo500Chars() {
+    void buildEmbeddingText_withLongDescription_shouldTruncateTo500Chars() {
         String longDescription = "A".repeat(1000);
         ProductCatalogSnapshotEvent event = buildEvent("Product", longDescription, "Cat", "Brand", Map.of());
 
@@ -101,7 +101,7 @@ class EmbeddingIndexServiceTest {
     }
 
     @Test
-    void buildEmbeddingTextWithEmptyNameShouldReturnBlankText() {
+    void buildEmbeddingText_withEmptyName_shouldReturnBlankText() {
         ProductCatalogSnapshotEvent event = buildEvent("", null, null, null, null);
 
         String text = embeddingIndexService.buildEmbeddingText(event);
@@ -112,7 +112,7 @@ class EmbeddingIndexServiceTest {
     // ===================== indexProduct — AI provider failure =====================
 
     @Test
-    void indexProductWhenProviderSucceedsShouldUpsertEmbedding() {
+    void indexProduct_whenProviderSucceeds_shouldUpsertEmbedding() {
         float[] embedding = new float[768];
         when(embeddingModel.embed(anyString())).thenReturn(embedding);
 
@@ -124,7 +124,7 @@ class EmbeddingIndexServiceTest {
     }
 
     @Test
-    void indexProductWhenProviderThrowsShouldNotPropagateException() {
+    void indexProduct_whenProviderThrows_shouldNotPropagateException() {
         when(embeddingModel.embed(anyString())).thenThrow(new RuntimeException("AI provider unavailable"));
 
         ProductCatalogSnapshotEvent event = buildEvent("TV", "4K TV", "Electronics", "Samsung", Map.of());
@@ -135,7 +135,7 @@ class EmbeddingIndexServiceTest {
     }
 
     @Test
-    void indexProductWhenRepositoryThrowsShouldNotPropagateException() {
+    void indexProduct_whenRepositoryThrows_shouldNotPropagateException() {
         float[] embedding = new float[768];
         when(embeddingModel.embed(anyString())).thenReturn(embedding);
         doThrow(new RuntimeException("DB upsert failed"))
@@ -147,7 +147,7 @@ class EmbeddingIndexServiceTest {
     }
 
     @Test
-    void indexProductWhenEmbeddingTextIsBlankShouldSkipEmbeddingCall() {
+    void indexProduct_whenEmbeddingTextIsBlank_shouldSkipEmbeddingCall() {
         ProductCatalogSnapshotEvent event = buildEvent("", null, null, null, null);
 
         embeddingIndexService.indexProduct(event);
@@ -159,14 +159,14 @@ class EmbeddingIndexServiceTest {
     // ===================== removeProduct =====================
 
     @Test
-    void removeProductWhenSuccessfulShouldDeleteById() {
+    void removeProduct_whenSuccessful_shouldDeleteById() {
         assertDoesNotThrow(() -> embeddingIndexService.removeProduct(productId));
 
         verify(productEmbeddingRepository, times(1)).deleteById(productId);
     }
 
     @Test
-    void removeProductWhenRepositoryThrowsShouldNotPropagateException() {
+    void removeProduct_whenRepositoryThrows_shouldNotPropagateException() {
         doThrow(new RuntimeException("DB error"))
                 .when(productEmbeddingRepository).deleteById(productId);
 
@@ -176,7 +176,7 @@ class EmbeddingIndexServiceTest {
     // ===================== toVectorLiteral =====================
 
     @Test
-    void toVectorLiteralShouldProduceValidPgvectorFormat() {
+    void toVectorLiteral_shouldProduceValidPgvectorFormat() {
         float[] vector = {0.1f, 0.2f, 0.3f};
         String literal = EmbeddingIndexServiceImpl.toVectorLiteral(vector);
 

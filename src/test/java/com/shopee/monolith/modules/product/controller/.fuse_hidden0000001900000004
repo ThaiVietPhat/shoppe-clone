@@ -137,13 +137,6 @@ class HomepageAndCategoryBrowseIT extends BasePostgresRedisIntegrationTest {
     void tearDown() {
         productVariantRepository.deleteAll();
         productRepository.deleteAll();
-        // Delete child categories before parents to respect FK constraint
-        if (childCategory != null && childCategory.getId() != null) {
-            categoryRepository.deleteById(childCategory.getId());
-        }
-        if (parentCategory != null && parentCategory.getId() != null) {
-            categoryRepository.deleteById(parentCategory.getId());
-        }
         categoryRepository.deleteAll();
         shopRepository.deleteAll();
         userRepository.deleteAll();
@@ -152,7 +145,7 @@ class HomepageAndCategoryBrowseIT extends BasePostgresRedisIntegrationTest {
     // ========================= Homepage =========================
 
     @Test
-    void listHomepageProductsWhenPublicShouldReturnOnlyActiveProducts() throws Exception {
+    void listHomepageProducts_whenPublic_shouldReturnOnlyActiveProducts() throws Exception {
         mockMvc.perform(get("/api/products/homepage")
                         .param("page", "0")
                         .param("size", "20"))
@@ -164,7 +157,7 @@ class HomepageAndCategoryBrowseIT extends BasePostgresRedisIntegrationTest {
     }
 
     @Test
-    void listHomepageProductsShouldExcludeDraftProducts() throws Exception {
+    void listHomepageProducts_shouldExcludeDraftProducts() throws Exception {
         mockMvc.perform(get("/api/products/homepage")
                         .param("page", "0")
                         .param("size", "20"))
@@ -174,7 +167,7 @@ class HomepageAndCategoryBrowseIT extends BasePostgresRedisIntegrationTest {
     }
 
     @Test
-    void listHomepageProductsWhenNoProductsShouldReturnEmptyPage() throws Exception {
+    void listHomepageProducts_whenNoProducts_shouldReturnEmptyPage() throws Exception {
         productVariantRepository.deleteAll();
         productRepository.deleteAll();
 
@@ -187,7 +180,7 @@ class HomepageAndCategoryBrowseIT extends BasePostgresRedisIntegrationTest {
     }
 
     @Test
-    void listHomepageProductsWithPaginationShouldReturnCorrectPage() throws Exception {
+    void listHomepageProducts_withPagination_shouldReturnCorrectPage() throws Exception {
         mockMvc.perform(get("/api/products/homepage")
                         .param("page", "0")
                         .param("size", "1"))
@@ -200,7 +193,7 @@ class HomepageAndCategoryBrowseIT extends BasePostgresRedisIntegrationTest {
     // ========================= Category Browse =========================
 
     @Test
-    void listProductsByCategoryWhenPublicAndValidCategoryShouldReturnActiveProducts() throws Exception {
+    void listProductsByCategory_whenPublicAndValidCategory_shouldReturnActiveProducts() throws Exception {
         mockMvc.perform(get("/api/categories/{categoryId}/products", parentCategory.getId())
                         .param("page", "0")
                         .param("size", "20"))
@@ -210,7 +203,7 @@ class HomepageAndCategoryBrowseIT extends BasePostgresRedisIntegrationTest {
     }
 
     @Test
-    void listProductsByCategoryShouldIncludeSubcategoryProducts() throws Exception {
+    void listProductsByCategory_shouldIncludeSubcategoryProducts() throws Exception {
         // Parent category browse should return products in parent AND child categories
         mockMvc.perform(get("/api/categories/{categoryId}/products", parentCategory.getId())
                         .param("page", "0")
@@ -220,7 +213,7 @@ class HomepageAndCategoryBrowseIT extends BasePostgresRedisIntegrationTest {
     }
 
     @Test
-    void listProductsByCategoryWithChildCategoryShouldReturnOnlyChildProducts() throws Exception {
+    void listProductsByCategory_withChildCategory_shouldReturnOnlyChildProducts() throws Exception {
         mockMvc.perform(get("/api/categories/{categoryId}/products", childCategory.getId())
                         .param("page", "0")
                         .param("size", "20"))
@@ -230,7 +223,7 @@ class HomepageAndCategoryBrowseIT extends BasePostgresRedisIntegrationTest {
     }
 
     @Test
-    void listProductsByCategoryWhenCategoryNotFoundShouldReturn404() throws Exception {
+    void listProductsByCategory_whenCategoryNotFound_shouldReturn404() throws Exception {
         mockMvc.perform(get("/api/categories/{categoryId}/products", UUID.randomUUID())
                         .param("page", "0")
                         .param("size", "20"))
@@ -238,7 +231,7 @@ class HomepageAndCategoryBrowseIT extends BasePostgresRedisIntegrationTest {
     }
 
     @Test
-    void listProductsByCategoryWithSortPriceAscShouldSucceed() throws Exception {
+    void listProductsByCategory_withSortPriceAsc_shouldSucceed() throws Exception {
         mockMvc.perform(get("/api/categories/{categoryId}/products", parentCategory.getId())
                         .param("sort", "PRICE_ASC")
                         .param("page", "0")
@@ -248,7 +241,7 @@ class HomepageAndCategoryBrowseIT extends BasePostgresRedisIntegrationTest {
     }
 
     @Test
-    void listProductsByCategoryWithSortPriceDescShouldSucceed() throws Exception {
+    void listProductsByCategory_withSortPriceDesc_shouldSucceed() throws Exception {
         mockMvc.perform(get("/api/categories/{categoryId}/products", parentCategory.getId())
                         .param("sort", "PRICE_DESC")
                         .param("page", "0")

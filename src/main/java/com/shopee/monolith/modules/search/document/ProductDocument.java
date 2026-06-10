@@ -17,7 +17,7 @@ import java.util.UUID;
  * Contains only public catalog fields — no PII or internal state.
  * Indexed after AFTER_COMMIT via ProductCatalogEventListener.
  */
-@Document(indexName = "products")
+@Document(indexName = "products", createIndex = false)
 @Getter
 @Builder
 public class ProductDocument {
