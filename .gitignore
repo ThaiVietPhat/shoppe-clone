@@ -84,4 +84,4 @@ replay_pid*
 # ==================== Local Reports ====================
 report/
 reports/
-monolith-design.md
+DESIGN.md
