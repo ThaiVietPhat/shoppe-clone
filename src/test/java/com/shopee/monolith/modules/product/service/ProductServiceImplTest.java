@@ -24,6 +24,7 @@ import com.shopee.monolith.modules.product.entity.ProductStatus;
 import com.shopee.monolith.modules.product.entity.ProductVariant;
 import com.shopee.monolith.modules.product.event.ProductCatalogSnapshotEvent;
 import com.shopee.monolith.modules.product.event.ProductCreatedEvent;
+import com.shopee.monolith.modules.product.event.ProductListingStatusChangedEvent;
 import com.shopee.monolith.modules.product.event.ProductUpdatedEvent;
 import com.shopee.monolith.modules.product.mapper.ProductMapper;
 import com.shopee.monolith.modules.product.repository.CategoryRepository;
@@ -623,6 +624,118 @@ class ProductServiceImplTest {
 
         AppException ex2 = assertThrows(AppException.class, () -> productService.listProducts(0, 0));
         assertEquals(ErrorCode.INVALID_REQUEST, ex2.getErrorCode());
+    }
+
+    @Test
+    void loadActiveProductCardsShouldPreserveCallerOrdering() {
+        UUID id1 = UUID.randomUUID();
+        UUID id2 = UUID.randomUUID();
+        UUID id3 = UUID.randomUUID();
+        Product p1 = Product.builder().id(id1).shopId(shopId).categoryId(categoryId)
+                .status(ProductStatus.ACTIVE).name("P1").createdAt(Instant.now()).build();
+        Product p2 = Product.builder().id(id2).shopId(shopId).categoryId(categoryId)
+                .status(ProductStatus.ACTIVE).name("P2").createdAt(Instant.now()).build();
+        Product p3 = Product.builder().id(id3).shopId(shopId).categoryId(categoryId)
+                .status(ProductStatus.ACTIVE).name("P3").createdAt(Instant.now()).build();
+
+        // Caller wants order: [id3, id1, id2]; repository may return in any order
+        List<UUID> requestedOrder = List.of(id3, id1, id2);
+        when(productRepository.findAllByIdInAndStatus(requestedOrder, ProductStatus.ACTIVE))
+                .thenReturn(List.of(p2, p3, p1)); // returned in a different order
+        when(mediaService.listProductMediaByProductIds(any())).thenReturn(Map.of());
+        when(productVariantRepository.findAllByProductIdIn(any())).thenReturn(List.of());
+        when(shopService.findShopLookupDataByIds(any())).thenReturn(Map.of());
+        when(categoryRepository.findAllById(any())).thenReturn(List.of(category));
+
+        List<ProductCardResponse> result = productService.loadActiveProductCards(requestedOrder);
+
+        assertEquals(3, result.size());
+        assertEquals(id3, result.get(0).id());
+        assertEquals(id1, result.get(1).id());
+        assertEquals(id2, result.get(2).id());
+    }
+
+    @Test
+    void loadActiveProductCardsShouldSilentlyDropNonActiveIds() {
+        // id2 is no longer ACTIVE (filtered by repository)
+        UUID id1 = UUID.randomUUID();
+        UUID id2 = UUID.randomUUID();
+        Product p1 = Product.builder().id(id1).shopId(shopId).categoryId(categoryId)
+                .status(ProductStatus.ACTIVE).name("P1").createdAt(Instant.now()).build();
+
+        when(productRepository.findAllByIdInAndStatus(List.of(id1, id2), ProductStatus.ACTIVE))
+                .thenReturn(List.of(p1)); // id2 is gone
+        when(mediaService.listProductMediaByProductIds(any())).thenReturn(Map.of());
+        when(productVariantRepository.findAllByProductIdIn(any())).thenReturn(List.of());
+        when(shopService.findShopLookupDataByIds(any())).thenReturn(Map.of());
+        when(categoryRepository.findAllById(any())).thenReturn(List.of(category));
+
+        List<ProductCardResponse> result = productService.loadActiveProductCards(List.of(id1, id2));
+
+        assertEquals(1, result.size());
+        assertEquals(id1, result.get(0).id());
+    }
+
+    @Test
+    void updateVariantWhenLastActiveVariantDeactivatedShouldAutoUnpublishProduct() {
+        Product activeProduct = Product.builder()
+                .id(productId)
+                .shopId(shopId)
+                .categoryId(categoryId)
+                .name("iPhone 15")
+                .status(ProductStatus.ACTIVE)
+                .build();
+        UpdateProductVariantRequest req = UpdateProductVariantRequest.builder()
+                .sku("IPHONE-15-256")
+                .name("256GB Black")
+                .price(BigDecimal.valueOf(999.00))
+                .active(false) // deactivating the variant
+                .build();
+
+        when(productVariantRepository.findById(variantId)).thenReturn(Optional.of(variant));
+        when(productRepository.findByIdForUpdate(productId)).thenReturn(Optional.of(activeProduct));
+        when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
+        when(productVariantRepository.findBySku("IPHONE-15-256")).thenReturn(Optional.of(variant));
+        when(productVariantRepository.saveAndFlush(any())).thenReturn(variant);
+        when(productVariantRepository.findMinPriceByProductId(productId)).thenReturn(Optional.empty());
+        when(productVariantRepository.findMaxPriceByProductId(productId)).thenReturn(Optional.empty());
+        // Zero active variants with positive price → triggers unpublish
+        when(productVariantRepository.countActiveVariantsWithPriceAbove(productId, BigDecimal.ZERO))
+                .thenReturn(0L);
+        when(productRepository.save(activeProduct)).thenReturn(activeProduct);
+        when(productVariantRepository.findAllByProductId(productId)).thenReturn(List.of(variant));
+        when(productMapper.toResponse(variant)).thenReturn(variantResponse);
+
+        productService.updateVariant(ownerId, productId, variantId, req);
+
+        // Product must be INACTIVE after auto-unpublish
+        assertEquals(ProductStatus.INACTIVE, activeProduct.getStatus());
+        // Must publish ProductListingStatusChangedEvent, not ProductUpdatedEvent
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher, org.mockito.Mockito.atLeast(1)).publishEvent(eventCaptor.capture());
+        boolean hasStatusChangedEvent = eventCaptor.getAllValues().stream()
+                .anyMatch(e -> e instanceof ProductListingStatusChangedEvent);
+        assertTrue(hasStatusChangedEvent, "ProductListingStatusChangedEvent should be published on auto-unpublish");
+    }
+
+    @Test
+    void createVariantWhenDuplicateSkuAtDbLevelShouldThrowSkuAlreadyExistsException() {
+        CreateProductVariantRequest req = CreateProductVariantRequest.builder()
+                .sku("IPHONE-15-256")
+                .name("256GB Black")
+                .price(BigDecimal.valueOf(999.00))
+                .build();
+
+        when(productRepository.findByIdForUpdate(productId)).thenReturn(Optional.of(product));
+        when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
+        when(productVariantRepository.existsBySku("IPHONE-15-256")).thenReturn(false);
+        when(productVariantRepository.saveAndFlush(any(ProductVariant.class)))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("unique constraint"));
+
+        AppException ex = assertThrows(AppException.class,
+                () -> productService.createVariant(ownerId, productId, req));
+
+        assertEquals(ErrorCode.SKU_ALREADY_EXISTS, ex.getErrorCode());
     }
 
     @Test

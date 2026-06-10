@@ -74,7 +74,7 @@ gradle/wrapper/gradle-wrapper.jar
 .DS_Store
 Thumbs.db
 desktop.ini
-
+.fuse_hidden*
 # ==================== Misc ====================
 *.ctxt
 .mtj.tmp/

@@ -93,7 +93,7 @@ public class ProductServiceImpl implements ProductService {
             return null;
         }
         return categoryRepository.findById(categoryId)
-                .map(Category::getPath)
+                .map(c -> c.getPath() != null ? c.getPath() : c.getName())
                 .orElse(null);
     }
 
@@ -663,15 +663,15 @@ public class ProductServiceImpl implements ProductService {
             product.unpublish();
             unpublished = true;
         }
-        product = productRepository.save(product);
-        List<ProductVariant> variants = productVariantRepository.findAllByProductId(product.getId());
+        Product savedProduct = productRepository.save(product);
+        List<ProductVariant> variants = productVariantRepository.findAllByProductId(savedProduct.getId());
         if (unpublished) {
             eventPublisher.publishEvent(new ProductListingStatusChangedEvent(
-                    product.getId(), product.getShopId(), ProductStatus.INACTIVE));
+                    savedProduct.getId(), savedProduct.getShopId(), ProductStatus.INACTIVE));
         } else {
-            eventPublisher.publishEvent(new ProductUpdatedEvent(product.getId(), product.getShopId()));
+            eventPublisher.publishEvent(new ProductUpdatedEvent(savedProduct.getId(), savedProduct.getShopId()));
         }
-        publishCatalogSnapshot(product, variants);
+        publishCatalogSnapshot(savedProduct, variants);
     }
 
     private void replaceProductMedia(UUID ownerId, UUID shopId, UUID productId, List<UUID> mediaIds) {
@@ -777,26 +777,7 @@ public class ProductServiceImpl implements ProductService {
             List<ProductVariant> variants = variantsByProductId.getOrDefault(p.getId(), List.of());
             List<ProductEligibilityIssue> eligibilityIssues = buildEligibilityIssues(p, variants, stockMap);
             String categoryPath = categoryPathMap.get(p.getCategoryId());
-            return ProductCardResponse.builder()
-                    .id(p.getId())
-                    .name(p.getName())
-                    .brand(p.getBrand())
-                    .sellerSku(p.getSellerSku())
-                    .coverImageUrl(cover != null ? cover.publicUrl() : null)
-                    .coverMediaId(cover != null ? cover.mediaId() : null)
-                    .coverObjectKey(cover != null ? cover.objectKey() : null)
-                    .coverContentType(cover != null ? cover.contentType() : null)
-                    .minPrice(p.getMinPrice())
-                    .maxPrice(p.getMaxPrice())
-                    .status(p.getStatus())
-                    .shopId(p.getShopId())
-                    .shopName(shop != null ? shop.name() : null)
-                    .shopRating(shop != null ? shop.rating() : null)
-                    .categoryPath(categoryPath)
-                    .checkoutEligible(eligibilityIssues.isEmpty())
-                    .eligibilityIssues(eligibilityIssues)
-                    .createdAt(p.getCreatedAt())
-                    .build();
+            return buildProductCard(p, cover, shop, categoryPath, eligibilityIssues);
         }).toList();
 
         return PagedResponse.from(productPage, cards);
@@ -843,27 +824,36 @@ public class ProductServiceImpl implements ProductService {
             List<ProductVariant> variants = variantsByProductId.getOrDefault(p.getId(), List.of());
             List<ProductEligibilityIssue> eligibilityIssues = buildEligibilityIssues(p, variants, stockMap);
             String categoryPath = categoryPathMap.get(p.getCategoryId());
-            return ProductCardResponse.builder()
-                    .id(p.getId())
-                    .name(p.getName())
-                    .brand(p.getBrand())
-                    .sellerSku(p.getSellerSku())
-                    .coverImageUrl(cover != null ? cover.publicUrl() : null)
-                    .coverMediaId(cover != null ? cover.mediaId() : null)
-                    .coverObjectKey(cover != null ? cover.objectKey() : null)
-                    .coverContentType(cover != null ? cover.contentType() : null)
-                    .minPrice(p.getMinPrice())
-                    .maxPrice(p.getMaxPrice())
-                    .status(p.getStatus())
-                    .shopId(p.getShopId())
-                    .shopName(shop != null ? shop.name() : null)
-                    .shopRating(shop != null ? shop.rating() : null)
-                    .categoryPath(categoryPath)
-                    .checkoutEligible(eligibilityIssues.isEmpty())
-                    .eligibilityIssues(eligibilityIssues)
-                    .createdAt(p.getCreatedAt())
-                    .build();
+            return buildProductCard(p, cover, shop, categoryPath, eligibilityIssues);
         }).toList();
+    }
+
+    private ProductCardResponse buildProductCard(
+            Product p,
+            ProductMediaSummary cover,
+            ShopLookupData shop,
+            String categoryPath,
+            List<ProductEligibilityIssue> eligibilityIssues) {
+        return ProductCardResponse.builder()
+                .id(p.getId())
+                .name(p.getName())
+                .brand(p.getBrand())
+                .sellerSku(p.getSellerSku())
+                .coverImageUrl(cover != null ? cover.publicUrl() : null)
+                .coverMediaId(cover != null ? cover.mediaId() : null)
+                .coverObjectKey(cover != null ? cover.objectKey() : null)
+                .coverContentType(cover != null ? cover.contentType() : null)
+                .minPrice(p.getMinPrice())
+                .maxPrice(p.getMaxPrice())
+                .status(p.getStatus())
+                .shopId(p.getShopId())
+                .shopName(shop != null ? shop.name() : null)
+                .shopRating(shop != null ? shop.rating() : null)
+                .categoryPath(categoryPath)
+                .checkoutEligible(eligibilityIssues.isEmpty())
+                .eligibilityIssues(eligibilityIssues)
+                .createdAt(p.getCreatedAt())
+                .build();
     }
 
     /**

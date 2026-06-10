@@ -108,6 +108,8 @@ public class SearchServiceImpl implements SearchService {
                 .items(cards)
                 .page(request.page())
                 .size(request.size())
+                // known: totalElements reflects ES hit count; post-revalidation drop of stale entries means
+                // items.size() may be < page size even when more pages exist — acceptable for demo scope
                 .totalElements(totalHits)
                 .totalPages(totalPages)
                 .last(request.page() >= totalPages - 1)
@@ -119,6 +121,7 @@ public class SearchServiceImpl implements SearchService {
     // ===================== PostgreSQL fallback path =====================
 
     private SearchResponse searchViaDatabase(SearchRequest request) {
+        // known: brand and price filters are dropped in DB fallback — only keyword and status are applied
         Pageable pageable = buildDbPageable(request);
         Page<Product> page;
 
