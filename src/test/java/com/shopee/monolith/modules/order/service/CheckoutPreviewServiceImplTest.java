@@ -138,8 +138,13 @@ class CheckoutPreviewServiceImplTest {
         CheckoutPreviewResponse response = previewService.preview(buyerId, new CheckoutPreviewRequest(null));
 
         assertFalse(response.allItemsValid());
-        // Orphan items (variant/product inactive) are excluded from shop groups
+        // Unresolvable items are excluded from shop groups but surfaced as invalidItems
         assertTrue(response.shops().isEmpty());
+        assertEquals(1, response.invalidItems().size());
+        var invalidItem = response.invalidItems().get(0);
+        assertFalse(invalidItem.valid());
+        assertEquals(variantId, invalidItem.variantId());
+        assertEquals(InvalidReasonCode.VARIANT_INACTIVE, invalidItem.invalidReasonCode());
     }
 
     @Test
@@ -156,6 +161,13 @@ class CheckoutPreviewServiceImplTest {
         CheckoutPreviewResponse response = previewService.preview(buyerId, new CheckoutPreviewRequest(null));
 
         assertFalse(response.allItemsValid());
+        assertEquals(1, response.invalidItems().size());
+        var invalidItem = response.invalidItems().get(0);
+        assertFalse(invalidItem.valid());
+        assertEquals(InvalidReasonCode.PRODUCT_INACTIVE, invalidItem.invalidReasonCode());
+        // variant resolved before product check, so client still sees variant details
+        assertEquals(variantId, invalidItem.variantId());
+        assertEquals(productId, invalidItem.productId());
     }
 
     @Test

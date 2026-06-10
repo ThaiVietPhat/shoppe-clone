@@ -156,7 +156,8 @@ class CartServiceImplTest {
 
         when(stringRedisTemplate.execute(
                 any(RedisScript.class),
-                eq(List.of("cart:" + userId + ":items", "cart:" + userId + ":version")),
+                eq(List.of("cart:" + userId + ":items", "cart:" + userId + ":version",
+                        "cart:" + userId + ":selected")),
                 eq(variantId.toString()),
                 eq("2"),
                 eq("99"),
@@ -176,7 +177,8 @@ class CartServiceImplTest {
 
         verify(stringRedisTemplate).execute(
                 any(RedisScript.class),
-                eq(List.of("cart:" + userId + ":items", "cart:" + userId + ":version")),
+                eq(List.of("cart:" + userId + ":items", "cart:" + userId + ":version",
+                        "cart:" + userId + ":selected")),
                 eq(variantId.toString()),
                 eq("2"),
                 eq("99"),
@@ -206,7 +208,8 @@ class CartServiceImplTest {
 
         when(stringRedisTemplate.execute(
                 any(RedisScript.class),
-                eq(List.of("cart:" + userId + ":items", "cart:" + userId + ":version")),
+                eq(List.of("cart:" + userId + ":items", "cart:" + userId + ":version",
+                        "cart:" + userId + ":selected")),
                 eq(variantId.toString()),
                 eq("90"),
                 eq("99"),
@@ -240,6 +243,40 @@ class CartServiceImplTest {
         );
         assertNotNull(response);
         assertEquals(0, response.items().size());
+    }
+
+    @Test
+    void updateItemWhenPositiveQuantityShouldExecuteAtomicLuaScript() {
+        UpdateCartItemRequest request = new UpdateCartItemRequest(5);
+
+        when(productService.findActiveVariantLookupDataById(variantId)).thenReturn(Optional.of(variantLookup));
+        when(cartProperties.getMaxQuantityPerItem()).thenReturn(99);
+        when(cartProperties.getTtl()).thenReturn(Duration.ofDays(7));
+        doReturn(1L).when(stringRedisTemplate).execute(any(RedisScript.class), anyList(), any(), any(), any());
+
+        // For subsequent getCart call
+        Map<Object, Object> hashEntries = new HashMap<>();
+        hashEntries.put(variantId.toString(), "5");
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);
+        when(hashOperations.entries("cart:" + userId + ":items")).thenReturn(hashEntries);
+        when(valueOperations.get("cart:" + userId + ":version")).thenReturn("7");
+        when(setOperations.members("cart:" + userId + ":selected")).thenReturn(Set.of());
+        when(productService.findActiveProductLookupDataById(productId)).thenReturn(Optional.of(productLookup));
+
+        CartResponse response = cartService.updateItem(userId, variantId, request);
+
+        verify(stringRedisTemplate).execute(
+                any(RedisScript.class),
+                eq(List.of("cart:" + userId + ":items", "cart:" + userId + ":version",
+                        "cart:" + userId + ":selected")),
+                eq(variantId.toString()),
+                eq("5"),
+                eq("604800")
+        );
+        assertNotNull(response);
+        assertEquals(5, response.items().get(0).quantity());
     }
 
     @Test

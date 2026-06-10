@@ -11,6 +11,8 @@ import java.util.UUID;
 @Schema(name = "CheckoutPreviewResponse", description = "Full cost breakdown for selected cart items — no inventory reserved")
 public record CheckoutPreviewResponse(
         @Schema(description = "Per-shop grouped items and fees") List<CheckoutPreviewShopGroup> shops,
+        @Schema(description = "Invalid items whose shop could not be resolved (variant or product inactive); "
+                + "always carry valid=false and an invalidReasonCode") List<CheckoutPreviewItemResult> invalidItems,
         @Schema(description = "Sum of all shop itemsSubtotals") BigDecimal totalItemsSubtotal,
         @Schema(description = "Sum of all shop shippingFees") BigDecimal totalShippingFee,
         @Schema(description = "totalItemsSubtotal + totalShippingFee") BigDecimal grandTotal,

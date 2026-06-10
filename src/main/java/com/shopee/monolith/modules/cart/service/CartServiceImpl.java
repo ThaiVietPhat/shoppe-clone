@@ -68,7 +68,7 @@ public class CartServiceImpl implements CartService {
             Long.class
     );
 
-    // KEYS[1]=items KEYS[2]=version
+    // KEYS[1]=items KEYS[2]=version KEYS[3]=selected
     // ARGV[1]=variantId ARGV[2]=qty ARGV[3]=maxQty ARGV[4]=ttl
     private static final RedisScript<Long> ADD_ITEM_SCRIPT = RedisScript.of(
             "local cur = tonumber(redis.call('hget', KEYS[1], ARGV[1]) or '0')\n"
@@ -78,6 +78,7 @@ public class CartServiceImpl implements CartService {
             + "redis.call('incr', KEYS[2])\n"
             + "redis.call('expire', KEYS[1], ARGV[4])\n"
             + "redis.call('expire', KEYS[2], ARGV[4])\n"
+            + "redis.call('expire', KEYS[3], ARGV[4])\n"
             + "return nw",
             Long.class
     );
@@ -208,7 +209,7 @@ public class CartServiceImpl implements CartService {
         try {
             Long result = stringRedisTemplate.execute(
                     ADD_ITEM_SCRIPT,
-                    List.of(getItemsKey(userId), getVersionKey(userId)),
+                    List.of(getItemsKey(userId), getVersionKey(userId), getSelectedKey(userId)),
                     request.variantId().toString(),
                     String.valueOf(request.quantity()),
                     String.valueOf(cartProperties.getMaxQuantityPerItem()),

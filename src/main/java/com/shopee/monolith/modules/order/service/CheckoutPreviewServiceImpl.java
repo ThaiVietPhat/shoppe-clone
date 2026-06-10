@@ -88,6 +88,13 @@ public class CheckoutPreviewServiceImpl implements CheckoutPreviewService {
                 .filter(r -> r.product() != null)
                 .collect(Collectors.groupingBy(r -> r.product().shopId()));
 
+        // Items whose shop cannot be resolved (variant/product inactive) are surfaced
+        // as top-level invalid items so the client can render per-item errors
+        List<CheckoutPreviewItemResult> invalidItems = resolved.stream()
+                .filter(r -> r.product() == null)
+                .map(r -> buildItemResult(r.cart(), r.variant(), null, r.reason()))
+                .toList();
+
         List<CheckoutPreviewShopGroup> shopGroups = new ArrayList<>();
 
         for (Map.Entry<UUID, List<ResolvedItem>> entry : byShop.entrySet()) {
@@ -127,6 +134,7 @@ public class CheckoutPreviewServiceImpl implements CheckoutPreviewService {
 
         return CheckoutPreviewResponse.builder()
                 .shops(shopGroups)
+                .invalidItems(invalidItems)
                 .totalItemsSubtotal(totalSubtotal)
                 .totalShippingFee(totalFee)
                 .grandTotal(totalSubtotal.add(totalFee))
