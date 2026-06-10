@@ -46,6 +46,28 @@ public class CartServiceImpl implements CartService {
             Long.class
     );
 
+    // KEYS[1]=items KEYS[2]=version KEYS[3]=selected
+    // ARGV[1]=ttl
+    private static final RedisScript<Long> FULL_CLEAR_CART_SCRIPT = RedisScript.of(
+            "redis.call('del', KEYS[1], KEYS[3])\n"
+            + "redis.call('incr', KEYS[2])\n"
+            + "redis.call('expire', KEYS[2], tonumber(ARGV[1]))\n"
+            + "return 1",
+            Long.class
+    );
+
+    // KEYS[1]=items KEYS[2]=version KEYS[3]=selected
+    // ARGV[1]=variantId ARGV[2]=qty ARGV[3]=ttl
+    private static final RedisScript<Long> UPDATE_ITEM_SCRIPT = RedisScript.of(
+            "redis.call('hset', KEYS[1], ARGV[1], ARGV[2])\n"
+            + "redis.call('incr', KEYS[2])\n"
+            + "redis.call('expire', KEYS[1], tonumber(ARGV[3]))\n"
+            + "redis.call('expire', KEYS[2], tonumber(ARGV[3]))\n"
+            + "redis.call('expire', KEYS[3], tonumber(ARGV[3]))\n"
+            + "return 1",
+            Long.class
+    );
+
     // KEYS[1]=items KEYS[2]=version
     // ARGV[1]=variantId ARGV[2]=qty ARGV[3]=maxQty ARGV[4]=ttl
     private static final RedisScript<Long> ADD_ITEM_SCRIPT = RedisScript.of(
@@ -228,10 +250,13 @@ public class CartServiceImpl implements CartService {
         }
 
         try {
-            stringRedisTemplate.opsForHash().put(getItemsKey(userId), variantId.toString(), String.valueOf(quantity));
-            stringRedisTemplate.opsForValue().increment(getVersionKey(userId));
-            stringRedisTemplate.expire(getItemsKey(userId), cartProperties.getTtl());
-            stringRedisTemplate.expire(getVersionKey(userId), cartProperties.getTtl());
+            stringRedisTemplate.execute(
+                    UPDATE_ITEM_SCRIPT,
+                    List.of(getItemsKey(userId), getVersionKey(userId), getSelectedKey(userId)),
+                    variantId.toString(),
+                    String.valueOf(quantity),
+                    String.valueOf(cartProperties.getTtl().toSeconds())
+            );
         } catch (AppException e) {
             throw e;
         } catch (Exception e) {
@@ -265,9 +290,11 @@ public class CartServiceImpl implements CartService {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
         try {
-            stringRedisTemplate.delete(List.of(getItemsKey(userId), getSelectedKey(userId)));
-            stringRedisTemplate.opsForValue().increment(getVersionKey(userId));
-            stringRedisTemplate.expire(getVersionKey(userId), cartProperties.getTtl());
+            stringRedisTemplate.execute(
+                    FULL_CLEAR_CART_SCRIPT,
+                    List.of(getItemsKey(userId), getVersionKey(userId), getSelectedKey(userId)),
+                    String.valueOf(cartProperties.getTtl().toSeconds())
+            );
         } catch (Exception e) {
             throw new AppException(ErrorCode.SERVICE_UNAVAILABLE);
         }
@@ -367,12 +394,15 @@ public class CartServiceImpl implements CartService {
                 return CartSnapshot.builder().userId(userId).items(List.of()).version(version).build();
             }
 
+            List<String> memberList = new ArrayList<>(selectedMembers);
+            List<Object> quantities = stringRedisTemplate.opsForHash().multiGet(
+                    getItemsKey(userId), new ArrayList<>(memberList));
             List<CartSnapshotItem> items = new ArrayList<>();
-            for (String member : selectedMembers) {
-                UUID variantId = UUID.fromString(member);
-                Object qtyObj = stringRedisTemplate.opsForHash().get(getItemsKey(userId), variantId.toString());
+            for (int i = 0; i < memberList.size(); i++) {
+                Object qtyObj = quantities.get(i);
                 if (qtyObj != null) {
-                    items.add(new CartSnapshotItem(variantId, Integer.parseInt(qtyObj.toString())));
+                    items.add(new CartSnapshotItem(UUID.fromString(memberList.get(i)),
+                            Integer.parseInt(qtyObj.toString())));
                 }
             }
             return CartSnapshot.builder().userId(userId).items(items).version(version).build();

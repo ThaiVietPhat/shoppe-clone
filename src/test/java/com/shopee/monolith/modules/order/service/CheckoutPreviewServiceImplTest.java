@@ -138,10 +138,8 @@ class CheckoutPreviewServiceImplTest {
         CheckoutPreviewResponse response = previewService.preview(buyerId, new CheckoutPreviewRequest(null));
 
         assertFalse(response.allItemsValid());
-        assertEquals(1, response.shops().size());
-        var item = response.shops().get(0).items().get(0);
-        assertFalse(item.valid());
-        assertEquals(InvalidReasonCode.VARIANT_INACTIVE, item.invalidReasonCode());
+        // Orphan items (variant/product inactive) are excluded from shop groups
+        assertTrue(response.shops().isEmpty());
     }
 
     @Test

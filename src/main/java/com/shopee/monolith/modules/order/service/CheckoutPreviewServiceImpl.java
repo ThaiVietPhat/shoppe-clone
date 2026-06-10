@@ -88,26 +88,7 @@ public class CheckoutPreviewServiceImpl implements CheckoutPreviewService {
                 .filter(r -> r.product() != null)
                 .collect(Collectors.groupingBy(r -> r.product().shopId()));
 
-        // Items whose product couldn't be resolved go into a special group if any
-        List<ResolvedItem> orphans = resolved.stream().filter(r -> r.product() == null).toList();
-
         List<CheckoutPreviewShopGroup> shopGroups = new ArrayList<>();
-
-        // Add orphan items under a null shop group if any
-        if (!orphans.isEmpty()) {
-            List<CheckoutPreviewItemResult> orphanResults = orphans.stream()
-                    .map(r -> buildItemResult(r.cart(), r.variant(), null, r.reason()))
-                    .toList();
-            BigDecimal orphanSubtotal = BigDecimal.ZERO;
-            shopGroups.add(CheckoutPreviewShopGroup.builder()
-                    .shopId(null)
-                    .shopName(null)
-                    .items(orphanResults)
-                    .itemsSubtotal(orphanSubtotal)
-                    .shippingFee(BigDecimal.ZERO)
-                    .shopTotal(orphanSubtotal)
-                    .build());
-        }
 
         for (Map.Entry<UUID, List<ResolvedItem>> entry : byShop.entrySet()) {
             UUID shopId = entry.getKey();
@@ -142,9 +123,7 @@ public class CheckoutPreviewServiceImpl implements CheckoutPreviewService {
         BigDecimal totalFee = shopGroups.stream()
                 .map(CheckoutPreviewShopGroup::shippingFee)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        boolean allValid = shopGroups.stream()
-                .flatMap(g -> g.items().stream())
-                .allMatch(CheckoutPreviewItemResult::valid);
+        boolean allValid = resolved.stream().allMatch(r -> r.reason() == null);
 
         return CheckoutPreviewResponse.builder()
                 .shops(shopGroups)

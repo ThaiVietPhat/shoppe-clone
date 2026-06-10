@@ -267,18 +267,18 @@ class CartServiceImplTest {
     }
 
     @Test
-    void clearCartShouldDeleteItemsAndSelectedAndIncrementVersion() {
-        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+    void clearCartShouldExecuteAtomicLuaScript() {
         when(cartProperties.getTtl()).thenReturn(Duration.ofDays(7));
+        doReturn(1L).when(stringRedisTemplate).execute(any(RedisScript.class), anyList(), any());
 
         cartService.clearCart(userId);
 
-        verify(stringRedisTemplate).delete(List.of(
-                "cart:" + userId + ":items",
-                "cart:" + userId + ":selected"
-        ));
-        verify(valueOperations).increment("cart:" + userId + ":version");
-        verify(stringRedisTemplate).expire("cart:" + userId + ":version", Duration.ofDays(7));
+        verify(stringRedisTemplate).execute(
+                any(RedisScript.class),
+                eq(List.of("cart:" + userId + ":items", "cart:" + userId + ":version",
+                        "cart:" + userId + ":selected")),
+                eq("604800")
+        );
     }
 
     @Test
@@ -400,7 +400,7 @@ class CartServiceImplTest {
         when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
         when(setOperations.members("cart:" + userId + ":selected")).thenReturn(Set.of(variantId.toString()));
         when(valueOperations.get("cart:" + userId + ":version")).thenReturn("5");
-        when(hashOperations.get("cart:" + userId + ":items", variantId.toString())).thenReturn("3");
+        when(hashOperations.multiGet(eq("cart:" + userId + ":items"), anyList())).thenReturn(List.of("3"));
 
         CartSnapshot snapshot = cartService.getSelectedSnapshot(userId);
 

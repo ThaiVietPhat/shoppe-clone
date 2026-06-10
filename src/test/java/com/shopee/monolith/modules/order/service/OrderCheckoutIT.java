@@ -269,6 +269,16 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
 
         // Verify cart is cleared
         assertTrue(cartService.getCart(buyer.getId()).items().isEmpty());
+
+        // Verify itemsSubtotal and shippingFee snapshots on each order
+        assertTrue(orders.stream().anyMatch(o ->
+                o.getShopId().equals(shop1.getId())
+                        && o.getItemsSubtotal().compareTo(new BigDecimal("20.00")) == 0
+                        && o.getShippingFee().compareTo(BigDecimal.ZERO) == 0));
+        assertTrue(orders.stream().anyMatch(o ->
+                o.getShopId().equals(shop2.getId())
+                        && o.getItemsSubtotal().compareTo(new BigDecimal("60.00")) == 0
+                        && o.getShippingFee().compareTo(BigDecimal.ZERO) == 0));
     }
 
     @Test
@@ -351,6 +361,30 @@ class OrderCheckoutIT extends BasePostgresRedisIntegrationTest {
         assertEquals(2, cart.items().size());
         assertTrue(cart.items().stream().anyMatch(i -> i.variantId().equals(variant1.getId())));
         assertTrue(cart.items().stream().anyMatch(i -> i.variantId().equals(variant2.getId())));
+    }
+
+    @Test
+    void checkoutShouldOnlyReserveSelectedItemsNotAllCartItems() {
+        // Add both variants to cart but only select variant1
+        cartService.addItem(buyer.getId(), new AddCartItemRequest(variant1.getId(), 1));
+        cartService.addItem(buyer.getId(), new AddCartItemRequest(variant2.getId(), 5));
+        cartService.selectItems(buyer.getId(), List.of(variant1.getId()));
+
+        CheckoutRequest request = CheckoutRequest.builder().addressId(defaultAddress.getId()).build();
+        CheckoutResponse response = orderService.checkout(buyer.getId(), request, UUID.randomUUID().toString());
+
+        assertNotNull(response);
+        assertEquals(1, response.orderIds().size());
+
+        // Only variant1 should have a reservation
+        List<InventoryReservation> reservations = inventoryReservationRepository.findAll();
+        assertEquals(1, reservations.size());
+        assertEquals(variant1.getId(), reservations.get(0).getVariantId());
+
+        // variant2 stock should be untouched
+        InventoryResponse inv2 = inventoryService.getInventoryByVariantId(variant2.getId(), seller2.getId(), seller2.getRole());
+        assertEquals(20, inv2.availableStock());
+        assertEquals(0, inv2.reservedStock());
     }
 
     @Test
