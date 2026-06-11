@@ -12,6 +12,7 @@ import com.shopee.monolith.modules.order.entity.CheckoutSession;
 import com.shopee.monolith.modules.order.entity.InventoryReservation;
 import com.shopee.monolith.modules.order.entity.Order;
 import com.shopee.monolith.modules.order.entity.OrderItem;
+import com.shopee.monolith.modules.order.event.CheckoutSessionCancelledEvent;
 import com.shopee.monolith.modules.order.mapper.BuyerOrderMapper;
 import com.shopee.monolith.modules.order.model.CheckoutSessionStatus;
 import com.shopee.monolith.modules.order.model.InventoryReservationStatus;
@@ -25,6 +26,7 @@ import com.shopee.monolith.modules.user.dto.internal.ShopLookupData;
 import com.shopee.monolith.modules.user.service.ShopService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -45,10 +47,10 @@ public class BuyerOrderServiceImpl implements BuyerOrderService {
     private final OrderItemRepository orderItemRepository;
     private final InventoryReservationRepository inventoryReservationRepository;
     private final CheckoutSessionRepository checkoutSessionRepository;
-    private final PaymentCancellationPort paymentCancellationPort;
     private final InventoryService inventoryService;
     private final ShopService shopService;
     private final BuyerOrderMapper buyerOrderMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional(readOnly = true)
@@ -149,8 +151,10 @@ public class BuyerOrderServiceImpl implements BuyerOrderService {
         session.cancel();
         checkoutSessionRepository.save(session);
 
-        // Expire any pending payment attempts so getPaymentStatus no longer returns PENDING + redirect URL
-        paymentCancellationPort.expirePendingAttemptsForSession(sessionId);
+        // Publish event so PaymentModule can expire non-terminal attempts after this transaction commits.
+        // Deferred to AFTER_COMMIT to avoid holding session lock while touching payment_attempt rows
+        // (would deadlock against webhook/timeout that locks attempt → session in opposite order).
+        eventPublisher.publishEvent(new CheckoutSessionCancelledEvent(sessionId));
 
         log.info("Buyer {} cancelled order {} — entire session {} cancelled, released {} reservations",
                 buyerId, orderId, sessionId, reservations.size());
