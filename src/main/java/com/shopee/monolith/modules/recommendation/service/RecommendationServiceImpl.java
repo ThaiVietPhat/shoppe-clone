@@ -4,6 +4,9 @@ import com.shopee.monolith.common.response.PagedResponse;
 import com.shopee.monolith.modules.cart.dto.internal.CartSnapshot;
 import com.shopee.monolith.modules.cart.dto.internal.CartSnapshotItem;
 import com.shopee.monolith.modules.cart.service.CartService;
+import com.shopee.monolith.modules.order.dto.response.BuyerOrderItemResponse;
+import com.shopee.monolith.modules.order.dto.response.BuyerOrderSummaryResponse;
+import com.shopee.monolith.modules.order.service.BuyerOrderService;
 import com.shopee.monolith.modules.product.dto.response.ProductCardResponse;
 import com.shopee.monolith.modules.product.service.ProductService;
 import com.shopee.monolith.modules.recommendation.dto.ChatRecommendRequest;
@@ -17,6 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,6 +43,7 @@ public class RecommendationServiceImpl implements RecommendationService {
     private static final int MAX_HOME_SIZE = 50;
     private static final int DEFAULT_CHAT_LIMIT = 5;
     private static final int MAX_CHAT_LIMIT = 20;
+    private static final int ORDER_SIGNAL_LIMIT = 5;
     private static final int VECTOR_CANDIDATE_MULTIPLIER = 4;
     private static final Pattern EMAIL_PATTERN =
             Pattern.compile("[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", Pattern.CASE_INSENSITIVE);
@@ -47,6 +52,7 @@ public class RecommendationServiceImpl implements RecommendationService {
 
     private final ProductService productService;
     private final CartService cartService;
+    private final BuyerOrderService buyerOrderService;
     private final ProductEmbeddingRepository productEmbeddingRepository;
     private final ObjectProvider<EmbeddingModel> embeddingModelProvider;
     private final ObjectProvider<ChatClient.Builder> chatClientBuilderProvider;
@@ -62,16 +68,19 @@ public class RecommendationServiceImpl implements RecommendationService {
         }
 
         List<ProductCardResponse> cartCards = loadCartSignalCards(userId);
-        if (cartCards.isEmpty()) {
+        List<ProductCardResponse> orderCards = loadOrderSignalCards(userId);
+        List<ProductCardResponse> signalCards = mergeSignalCards(cartCards, orderCards);
+        if (signalCards.isEmpty()) {
             return responseFromCards(fallback, RecommendationReasonCode.TRENDING, false, null, null);
         }
 
-        String query = buildInterestQuery(cartCards);
+        String query = buildInterestQuery(signalCards);
         try {
             List<ProductCardResponse> semanticCards = semanticCards(query, safeSize * VECTOR_CANDIDATE_MULTIPLIER);
             Map<UUID, EnumSet<RecommendationReasonCode>> reasons = new LinkedHashMap<>();
             addCards(reasons, semanticCards, RecommendationReasonCode.AI_SEMANTIC_MATCH);
             addCards(reasons, cartCards, RecommendationReasonCode.SIMILAR_TO_CART);
+            addCards(reasons, orderCards, RecommendationReasonCode.SIMILAR_TO_ORDER);
             addCards(reasons, fallback, RecommendationReasonCode.TRENDING);
             List<RecommendedProductResponse> items = toItems(reasons, safeSize);
             return RecommendationResponse.builder().items(items).degraded(false).build();
@@ -94,11 +103,13 @@ public class RecommendationServiceImpl implements RecommendationService {
         boolean degraded = false;
         String degradedReason = null;
         boolean retrievalSucceeded = true;
+        boolean semanticMatched = false;
         List<ProductCardResponse> cards;
         try {
             cards = semanticCards(sanitizedMessage, limit * VECTOR_CANDIDATE_MULTIPLIER);
             cards = filterAndRank(cards, request, limit);
-            if (cards.isEmpty()) {
+            semanticMatched = !cards.isEmpty();
+            if (!semanticMatched) {
                 cards = fallback;
             }
         } catch (Exception ex) {
@@ -110,7 +121,7 @@ public class RecommendationServiceImpl implements RecommendationService {
         }
 
         String explanation = null;
-        if (retrievalSucceeded && !cards.isEmpty()) {
+        if (retrievalSucceeded && semanticMatched) {
             try {
                 explanation = groundedExplanation(sanitizedMessage, cards);
             } catch (Exception ex) {
@@ -121,12 +132,16 @@ public class RecommendationServiceImpl implements RecommendationService {
         }
 
         Map<UUID, EnumSet<RecommendationReasonCode>> reasons = new LinkedHashMap<>();
-        addCards(reasons, cards, retrievalSucceeded
+        addCards(reasons, cards, retrievalSucceeded && semanticMatched
                 ? RecommendationReasonCode.AI_SEMANTIC_MATCH
                 : RecommendationReasonCode.TRENDING);
         List<ProductCardResponse> cartCards = userId != null ? loadCartSignalCards(userId) : List.of();
         if (!cartCards.isEmpty()) {
             addCards(reasons, cartCards, RecommendationReasonCode.SIMILAR_TO_CART);
+        }
+        List<ProductCardResponse> orderCards = userId != null ? loadOrderSignalCards(userId) : List.of();
+        if (!orderCards.isEmpty()) {
+            addCards(reasons, orderCards, RecommendationReasonCode.SIMILAR_TO_ORDER);
         }
         return RecommendationResponse.builder()
                 .items(toItems(reasons, limit))
@@ -153,6 +168,35 @@ public class RecommendationServiceImpl implements RecommendationService {
             log.debug("Skipping cart recommendation signal for user {}: {}", userId, ex.getMessage());
             return List.of();
         }
+    }
+
+    private List<ProductCardResponse> loadOrderSignalCards(UUID userId) {
+        try {
+            PagedResponse<BuyerOrderSummaryResponse> orders =
+                    buyerOrderService.listOrders(userId, PageRequest.of(0, ORDER_SIGNAL_LIMIT));
+            if (orders.items() == null || orders.items().isEmpty()) {
+                return List.of();
+            }
+            List<UUID> variantIds = orders.items().stream()
+                    .map(BuyerOrderSummaryResponse::orderId)
+                    .map(orderId -> buyerOrderService.getOrderDetail(userId, orderId))
+                    .flatMap(detail -> detail.items().stream())
+                    .map(BuyerOrderItemResponse::variantId)
+                    .distinct()
+                    .toList();
+            return productService.loadActiveProductCardsByVariantIds(variantIds);
+        } catch (Exception ex) {
+            log.debug("Skipping order recommendation signal for user {}: {}", userId, ex.getMessage());
+            return List.of();
+        }
+    }
+
+    private List<ProductCardResponse> mergeSignalCards(
+            List<ProductCardResponse> cartCards, List<ProductCardResponse> orderCards) {
+        Map<UUID, ProductCardResponse> cards = new LinkedHashMap<>();
+        cartCards.forEach(card -> cards.putIfAbsent(card.id(), card));
+        orderCards.forEach(card -> cards.putIfAbsent(card.id(), card));
+        return List.copyOf(cards.values());
     }
 
     private List<ProductCardResponse> semanticCards(String query, int limit) {

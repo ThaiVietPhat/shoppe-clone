@@ -4,6 +4,10 @@ import com.shopee.monolith.common.response.PagedResponse;
 import com.shopee.monolith.modules.cart.dto.internal.CartSnapshot;
 import com.shopee.monolith.modules.cart.dto.internal.CartSnapshotItem;
 import com.shopee.monolith.modules.cart.service.CartService;
+import com.shopee.monolith.modules.order.dto.response.BuyerOrderDetailResponse;
+import com.shopee.monolith.modules.order.dto.response.BuyerOrderItemResponse;
+import com.shopee.monolith.modules.order.dto.response.BuyerOrderSummaryResponse;
+import com.shopee.monolith.modules.order.service.BuyerOrderService;
 import com.shopee.monolith.modules.product.dto.response.ProductCardResponse;
 import com.shopee.monolith.modules.product.entity.ProductStatus;
 import com.shopee.monolith.modules.product.service.ProductService;
@@ -38,6 +42,7 @@ class RecommendationServiceImplTest {
 
     private ProductService productService;
     private CartService cartService;
+    private BuyerOrderService buyerOrderService;
     private ProductEmbeddingRepository productEmbeddingRepository;
     private ObjectProvider<EmbeddingModel> embeddingModelProvider;
     private ObjectProvider<ChatClient.Builder> chatClientBuilderProvider;
@@ -53,12 +58,14 @@ class RecommendationServiceImplTest {
     void setUp() {
         productService = mock(ProductService.class);
         cartService = mock(CartService.class);
+        buyerOrderService = mock(BuyerOrderService.class);
         productEmbeddingRepository = mock(ProductEmbeddingRepository.class);
         embeddingModelProvider = mock(ObjectProvider.class);
         chatClientBuilderProvider = mock(ObjectProvider.class);
         service = new RecommendationServiceImpl(
                 productService,
                 cartService,
+                buyerOrderService,
                 productEmbeddingRepository,
                 embeddingModelProvider,
                 chatClientBuilderProvider);
@@ -121,6 +128,63 @@ class RecommendationServiceImplTest {
         assertEquals(semanticProductId, response.items().get(0).product().id());
         assertTrue(response.items().get(0).reasonCodes().contains(RecommendationReasonCode.AI_SEMANTIC_MATCH));
         assertTrue(response.items().get(1).reasonCodes().contains(RecommendationReasonCode.SIMILAR_TO_CART));
+    }
+
+    @Test
+    void homeRecommendationsWhenLoggedInShouldUseOrderSignalReason() {
+        UUID userId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        EmbeddingModel embeddingModel = mock(EmbeddingModel.class);
+        when(cartService.getSnapshot(userId)).thenReturn(CartSnapshot.builder()
+                .userId(userId)
+                .items(List.of())
+                .version(1)
+                .build());
+        when(buyerOrderService.listOrders(eq(userId), any())).thenReturn(PagedResponse.<BuyerOrderSummaryResponse>builder()
+                .items(List.of(BuyerOrderSummaryResponse.builder()
+                        .orderId(orderId)
+                        .createdAt(Instant.parse("2026-06-02T00:00:00Z"))
+                        .build()))
+                .page(0)
+                .size(5)
+                .totalElements(1)
+                .totalPages(1)
+                .last(true)
+                .build());
+        when(buyerOrderService.getOrderDetail(userId, orderId)).thenReturn(BuyerOrderDetailResponse.builder()
+                .orderId(orderId)
+                .items(List.of(BuyerOrderItemResponse.builder()
+                        .variantId(variantId)
+                        .productName("Wireless Mouse")
+                        .build()))
+                .build());
+        when(productService.loadActiveProductCardsByVariantIds(List.of(variantId))).thenReturn(List.of(fallbackCard));
+        when(embeddingModelProvider.getIfAvailable()).thenReturn(embeddingModel);
+        when(embeddingModel.embed(any(String.class))).thenReturn(new float[]{0.1f, 0.2f});
+        when(productEmbeddingRepository.findSimilarProductIdStrings(any(String.class), eq(80))).thenReturn(List.of());
+
+        RecommendationResponse response = service.homeRecommendations(userId, 0, 20);
+
+        assertFalse(response.degraded());
+        assertEquals(1, response.items().size());
+        assertTrue(response.items().get(0).reasonCodes().contains(RecommendationReasonCode.SIMILAR_TO_ORDER));
+    }
+
+    @Test
+    void chatRecommendationsWhenSemanticReturnsEmptyShouldUseTrendingFallbackWithoutExplanation() {
+        EmbeddingModel embeddingModel = mock(EmbeddingModel.class);
+        when(embeddingModelProvider.getIfAvailable()).thenReturn(embeddingModel);
+        when(embeddingModel.embed(any(String.class))).thenReturn(new float[]{0.1f, 0.2f});
+        when(productEmbeddingRepository.findSimilarProductIdStrings(any(String.class), eq(20))).thenReturn(List.of());
+
+        RecommendationResponse response = service.chatRecommendations(null,
+                new ChatRecommendRequest("find gaming mouse", null, null, 5));
+
+        assertFalse(response.degraded());
+        assertEquals(1, response.items().size());
+        assertEquals(List.of(RecommendationReasonCode.TRENDING), response.items().get(0).reasonCodes());
+        assertNull(response.generatedText());
+        verify(chatClientBuilderProvider, never()).getIfAvailable();
     }
 
     @Test
