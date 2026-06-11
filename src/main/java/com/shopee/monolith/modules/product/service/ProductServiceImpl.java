@@ -50,6 +50,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.math.BigDecimal;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -826,6 +827,29 @@ public class ProductServiceImpl implements ProductService {
             String categoryPath = categoryPathMap.get(p.getCategoryId());
             return buildProductCard(p, cover, shop, categoryPath, eligibilityIssues);
         }).toList();
+    }
+
+    @Override
+    public List<ProductCardResponse> loadActiveProductCardsByVariantIds(List<UUID> variantIds) {
+        if (variantIds == null || variantIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<ProductVariant> variants = productVariantRepository.findAllByIdIn(variantIds);
+        if (variants.isEmpty()) {
+            return List.of();
+        }
+
+        Map<UUID, ProductVariant> byId = variants.stream()
+                .collect(Collectors.toMap(ProductVariant::getId, v -> v));
+        List<UUID> orderedProductIds = variantIds.stream()
+                .map(byId::get)
+                .filter(java.util.Objects::nonNull)
+                .map(ProductVariant::getProductId)
+                .collect(Collectors.collectingAndThen(
+                        Collectors.toCollection(LinkedHashSet::new),
+                        List::copyOf));
+        return loadActiveProductCards(orderedProductIds);
     }
 
     private ProductCardResponse buildProductCard(

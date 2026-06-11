@@ -92,6 +92,12 @@ public interface ProductService {
     List<ProductCardResponse> loadActiveProductCards(List<UUID> productIds);
 
     /**
+     * Loads active product cards for a given ordered list of variant IDs.
+     * Used by RecommendationModule to turn cart/order signals into public product cards.
+     */
+    List<ProductCardResponse> loadActiveProductCardsByVariantIds(List<UUID> variantIds);
+
+    /**
      * Counts a shop's products grouped by listing status name.
      * Used by the seller dashboard read model; cross-module-safe (no entity types exposed).
      */

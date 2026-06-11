@@ -93,7 +93,7 @@ public class EmbeddingIndexServiceImpl implements EmbeddingIndexService {
     /**
      * Converts a float[] to a pgvector literal string: "[v1,v2,...,vN]".
      */
-    static String toVectorLiteral(float[] vector) {
+    public static String toVectorLiteral(float[] vector) {
         StringBuilder sb = new StringBuilder("[");
         for (int i = 0; i < vector.length; i++) {
             if (i > 0) {

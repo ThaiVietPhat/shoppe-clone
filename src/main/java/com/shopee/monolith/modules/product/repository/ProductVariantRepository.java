@@ -19,6 +19,8 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
 
     List<ProductVariant> findAllByProductIdIn(Collection<UUID> productIds);
 
+    List<ProductVariant> findAllByIdIn(Collection<UUID> variantIds);
+
     List<ProductVariant> findAllByProductIdAndActive(UUID productId, boolean active);
 
     @Query("SELECT v FROM ProductVariant v JOIN Product p ON p.id = v.productId "
