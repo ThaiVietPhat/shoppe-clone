@@ -55,6 +55,12 @@ class SellerOrderServiceImplTest {
     @Mock
     private BuyerOrderMapper buyerOrderMapper;
 
+    @Mock
+    private com.shopee.monolith.common.observability.DemoMetrics demoMetrics;
+
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private SellerOrderServiceImpl sellerOrderService;
 

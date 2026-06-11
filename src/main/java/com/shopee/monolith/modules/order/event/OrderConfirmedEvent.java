@@ -9,6 +9,7 @@ import java.util.UUID;
  */
 public record OrderConfirmedEvent(
         UUID checkoutSessionId,
+        UUID buyerId,
         List<UUID> orderIds,
         String paymentMethod
 ) {

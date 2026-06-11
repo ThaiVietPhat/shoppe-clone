@@ -18,6 +18,7 @@ public class CheckoutTimeoutService {
 
     private final CheckoutSessionRepository checkoutSessionRepository;
     private final CheckoutTimeoutProcessor timeoutProcessor;
+    private final com.shopee.monolith.common.observability.DemoMetrics demoMetrics;
 
     public void processExpiredCheckouts(int batchSize) {
         if (batchSize <= 0) {
@@ -35,6 +36,7 @@ public class CheckoutTimeoutService {
         }
 
         log.info("Found {} expired checkout sessions to process", expiredSessionIds.size());
+        demoMetrics.incrementSchedulerProcessed("checkout-timeout", expiredSessionIds.size());
 
         for (UUID sessionId : expiredSessionIds) {
             try {

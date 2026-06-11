@@ -56,6 +56,7 @@ public class RecommendationServiceImpl implements RecommendationService {
     private final ProductEmbeddingRepository productEmbeddingRepository;
     private final ObjectProvider<EmbeddingModel> embeddingModelProvider;
     private final ObjectProvider<ChatClient.Builder> chatClientBuilderProvider;
+    private final com.shopee.monolith.common.observability.DemoMetrics demoMetrics;
 
     @Override
     public RecommendationResponse homeRecommendations(UUID userId, int page, int size) {
@@ -117,6 +118,7 @@ public class RecommendationServiceImpl implements RecommendationService {
             cards = fallback;
             degraded = true;
             degradedReason = DEGRADED_REASON_AI;
+            demoMetrics.incrementAiFallback();
             retrievalSucceeded = false;
         }
 
@@ -128,6 +130,7 @@ public class RecommendationServiceImpl implements RecommendationService {
                 log.warn("Chat recommendation explanation failed: {}", ex.getMessage());
                 degraded = true;
                 degradedReason = DEGRADED_REASON_AI;
+                demoMetrics.incrementAiFallback();
             }
         }
 

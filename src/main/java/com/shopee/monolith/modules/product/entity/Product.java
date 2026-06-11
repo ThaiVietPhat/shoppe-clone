@@ -58,6 +58,14 @@ public class Product extends BaseEntity {
     @Column(name = "max_price", precision = 15, scale = 2)
     private BigDecimal maxPrice;
 
+    @Column(name = "rating_avg", nullable = false, precision = 3, scale = 2)
+    @lombok.Builder.Default
+    private BigDecimal ratingAvg = BigDecimal.ZERO;
+
+    @Column(name = "rating_count", nullable = false)
+    @lombok.Builder.Default
+    private long ratingCount = 0;
+
     // ===================== Domain Methods =====================
 
     public void update(UUID categoryId, String name, String description,
@@ -103,6 +111,14 @@ public class Product extends BaseEntity {
     public void recomputePriceRange(BigDecimal min, BigDecimal max) {
         this.minPrice = min;
         this.maxPrice = max;
+    }
+
+    /**
+     * Refresh review rating read-model counters (called from review event listener).
+     */
+    public void refreshRatingSummary(BigDecimal ratingAvg, long ratingCount) {
+        this.ratingAvg = ratingAvg;
+        this.ratingCount = ratingCount;
     }
 
     public boolean isPublishable() {

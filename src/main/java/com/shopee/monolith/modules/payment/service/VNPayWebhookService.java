@@ -37,6 +37,7 @@ public class VNPayWebhookService {
     private final VNPaySignatureVerifier signatureVerifier;
     private final PaymentAttemptRepository paymentAttemptRepository;
     private final PaymentWebhookEventRepository webhookEventRepository;
+    private final com.shopee.monolith.common.observability.DemoMetrics demoMetrics;
     private final CheckoutSettlementService checkoutSettlementService;
 
     public enum WebhookResult {
@@ -59,6 +60,7 @@ public class VNPayWebhookService {
                 sha256(signatureVerifier.buildHashData(params)));
         if (claimed == 0) {
             log.info("Duplicate VNPay webhook event {} — no-op", providerEventId);
+            demoMetrics.incrementWebhookDuplicate();
             return WebhookResult.DUPLICATE;
         }
 

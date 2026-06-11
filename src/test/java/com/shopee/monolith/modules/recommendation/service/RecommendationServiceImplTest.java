@@ -68,7 +68,9 @@ class RecommendationServiceImplTest {
                 buyerOrderService,
                 productEmbeddingRepository,
                 embeddingModelProvider,
-                chatClientBuilderProvider);
+                chatClientBuilderProvider,
+                new com.shopee.monolith.common.observability.DemoMetrics(
+                        new io.micrometer.core.instrument.simple.SimpleMeterRegistry()));
 
         productId = UUID.randomUUID();
         semanticProductId = UUID.randomUUID();

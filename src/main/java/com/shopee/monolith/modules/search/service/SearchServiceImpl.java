@@ -39,6 +39,7 @@ public class SearchServiceImpl implements SearchService {
     private final ElasticsearchOperations elasticsearchOperations;
     private final ProductService productService;
     private final ProductRepository productRepository;
+    private final com.shopee.monolith.common.observability.DemoMetrics demoMetrics;
 
     @Override
     public SearchResponse search(SearchRequest request) {
@@ -135,6 +136,7 @@ public class SearchServiceImpl implements SearchService {
         List<UUID> productIds = page.getContent().stream().map(Product::getId).toList();
         List<ProductCardResponse> cards = productService.loadActiveProductCards(productIds);
         PagedResponse<ProductCardResponse> paged = PagedResponse.from(page, cards);
+        demoMetrics.incrementSearchDegraded();
         return SearchResponse.degraded(paged, DEGRADED_REASON_ES);
     }
 

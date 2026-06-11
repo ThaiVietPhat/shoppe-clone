@@ -36,6 +36,9 @@ class EmbeddingIndexServiceTest {
     @Mock
     private ProductEmbeddingRepository productEmbeddingRepository;
 
+    @Mock
+    private com.shopee.monolith.common.observability.DemoMetrics demoMetrics;
+
     @InjectMocks
     private EmbeddingIndexServiceImpl embeddingIndexService;
 

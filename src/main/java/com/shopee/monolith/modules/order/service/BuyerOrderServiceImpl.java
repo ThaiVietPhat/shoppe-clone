@@ -5,6 +5,7 @@ import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.common.response.PagedResponse;
 import com.shopee.monolith.modules.inventory.dto.command.ReleaseInventoryCommand;
 import com.shopee.monolith.modules.inventory.service.InventoryService;
+import com.shopee.monolith.modules.order.dto.internal.OrderItemReviewData;
 import com.shopee.monolith.modules.order.dto.response.BuyerOrderDetailResponse;
 import com.shopee.monolith.modules.order.dto.response.BuyerOrderSummaryResponse;
 import com.shopee.monolith.modules.order.dto.response.BuyerOrderTimelineEvent;
@@ -35,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -158,6 +160,24 @@ public class BuyerOrderServiceImpl implements BuyerOrderService {
 
         log.info("Buyer {} cancelled order {} — entire session {} cancelled, released {} reservations",
                 buyerId, orderId, sessionId, reservations.size());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<OrderItemReviewData> findOrderItemReviewData(UUID orderItemId) {
+        return orderItemRepository.findById(orderItemId).flatMap(item ->
+                orderRepository.findById(item.getOrderId()).map(order ->
+                        OrderItemReviewData.builder()
+                                .orderItemId(item.getId())
+                                .orderId(order.getId())
+                                .buyerId(order.getBuyerId())
+                                .shopId(order.getShopId())
+                                .variantId(item.getVariantId())
+                                .productName(item.getProductName())
+                                .variantName(item.getVariantName())
+                                .reviewable(order.getStatus() == OrderStatus.DELIVERED
+                                        || order.getStatus() == OrderStatus.COMPLETED)
+                                .build()));
     }
 
     private List<BuyerOrderTimelineEvent> buildTimeline(Order order) {

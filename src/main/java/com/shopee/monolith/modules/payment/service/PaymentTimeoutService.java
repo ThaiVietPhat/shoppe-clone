@@ -25,6 +25,7 @@ public class PaymentTimeoutService {
 
     private final PaymentAttemptRepository paymentAttemptRepository;
     private final PaymentTimeoutProcessor timeoutProcessor;
+    private final com.shopee.monolith.common.observability.DemoMetrics demoMetrics;
 
     public void processExpiredAttempts(int batchSize) {
         if (batchSize <= 0) {
@@ -37,6 +38,7 @@ public class PaymentTimeoutService {
             return;
         }
         log.info("Found {} expired payment attempts to process", expiredIds.size());
+        demoMetrics.incrementSchedulerProcessed("payment-timeout", expiredIds.size());
         for (UUID attemptId : expiredIds) {
             try {
                 timeoutProcessor.processTimeout(attemptId, now);

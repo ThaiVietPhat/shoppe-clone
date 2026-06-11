@@ -53,6 +53,9 @@ class SearchServiceFallbackTest {
     @Mock
     private ProductRepository productRepository;
 
+    @Mock
+    private com.shopee.monolith.common.observability.DemoMetrics demoMetrics;
+
     @InjectMocks
     private SearchServiceImpl searchService;
 

@@ -888,6 +888,15 @@ public class ProductServiceImpl implements ProductService {
                         row -> (Long) row[1]));
     }
 
+    @Override
+    @Transactional
+    public void refreshRatingSummary(UUID productId, BigDecimal ratingAvg, long ratingCount) {
+        productRepository.findById(productId).ifPresent(product -> {
+            product.refreshRatingSummary(ratingAvg, ratingCount);
+            productRepository.save(product);
+        });
+    }
+
     /**
      * Batch-loads category paths for a list of category IDs.
      * Returns a map of categoryId → materialized path string.

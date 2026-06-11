@@ -25,6 +25,7 @@ public class EmbeddingIndexServiceImpl implements EmbeddingIndexService {
 
     private final EmbeddingModel embeddingModel;
     private final ProductEmbeddingRepository productEmbeddingRepository;
+    private final com.shopee.monolith.common.observability.DemoMetrics demoMetrics;
 
     @Override
     @Transactional
@@ -44,6 +45,7 @@ public class EmbeddingIndexServiceImpl implements EmbeddingIndexService {
             // Spring Modulith publication log will replay after provider recovers.
             log.warn("Embedding indexing failed for productId={} — will retry via publication replay: {}",
                     event.productId(), ex.getMessage());
+            demoMetrics.incrementIndexingFailure();
         }
     }
 

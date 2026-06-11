@@ -45,6 +45,9 @@ class SemanticSearchServiceTest {
     @Mock
     private ProductService productService;
 
+    @Mock
+    private com.shopee.monolith.common.observability.DemoMetrics demoMetrics;
+
     @InjectMocks
     private SemanticSearchServiceImpl semanticSearchService;
 

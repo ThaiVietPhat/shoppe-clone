@@ -1,10 +1,12 @@
 package com.shopee.monolith.modules.order.service;
 
 import com.shopee.monolith.common.response.PagedResponse;
+import com.shopee.monolith.modules.order.dto.internal.OrderItemReviewData;
 import com.shopee.monolith.modules.order.dto.response.BuyerOrderDetailResponse;
 import com.shopee.monolith.modules.order.dto.response.BuyerOrderSummaryResponse;
 import org.springframework.data.domain.Pageable;
 
+import java.util.Optional;
 import java.util.UUID;
 
 public interface BuyerOrderService {
@@ -18,4 +20,10 @@ public interface BuyerOrderService {
      * Any other state is rejected with ORDER_CANNOT_BE_CANCELLED.
      */
     void cancelOrder(UUID buyerId, UUID orderId);
+
+    /**
+     * Cross-module lookup for ReviewModule: order item snapshot plus
+     * whether the parent order is in a reviewable (DELIVERED/COMPLETED) state.
+     */
+    Optional<OrderItemReviewData> findOrderItemReviewData(UUID orderItemId);
 }

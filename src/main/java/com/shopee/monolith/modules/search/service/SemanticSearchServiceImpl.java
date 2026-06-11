@@ -30,6 +30,7 @@ public class SemanticSearchServiceImpl implements SemanticSearchService {
     private final EmbeddingModel embeddingModel;
     private final ProductEmbeddingRepository productEmbeddingRepository;
     private final ProductService productService;
+    private final com.shopee.monolith.common.observability.DemoMetrics demoMetrics;
 
     @Override
     public SearchResponse search(String query, int page, int size) {
@@ -83,6 +84,7 @@ public class SemanticSearchServiceImpl implements SemanticSearchService {
                 .totalPages(0)
                 .last(true)
                 .build();
+        demoMetrics.incrementAiFallback();
         return SearchResponse.degraded(empty, DEGRADED_REASON_AI);
     }
 }

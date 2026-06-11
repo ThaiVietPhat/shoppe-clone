@@ -91,6 +91,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/recommendations/chat").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/payments/webhook/vnpay").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/payments/return/vnpay").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/products/*/reviews").permitAll()
+                        // WebSocket handshake is public; JWT auth happens at STOMP CONNECT
+                        .requestMatchers("/ws/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/media/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/media/files/*").permitAll()
                         .requestMatchers(

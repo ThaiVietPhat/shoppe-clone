@@ -91,7 +91,8 @@ public class CheckoutSettlementServiceImpl implements CheckoutSettlementService 
         checkoutSessionRepository.save(session);
 
         List<UUID> orderIds = payableOrders.stream().map(Order::getId).toList();
-        eventPublisher.publishEvent(new OrderConfirmedEvent(checkoutSessionId, orderIds, paymentMethod));
+        eventPublisher.publishEvent(new OrderConfirmedEvent(
+                checkoutSessionId, payableOrders.get(0).getBuyerId(), orderIds, paymentMethod));
         log.info("Checkout session {} confirmed with {} orders via {}", checkoutSessionId, payableOrders.size(), paymentMethod);
         return true;
     }

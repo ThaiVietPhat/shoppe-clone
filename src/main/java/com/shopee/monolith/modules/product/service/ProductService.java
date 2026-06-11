@@ -102,4 +102,10 @@ public interface ProductService {
      * Used by the seller dashboard read model; cross-module-safe (no entity types exposed).
      */
     Map<String, Long> countShopProductsByStatus(UUID shopId);
+
+    /**
+     * Refreshes the product's review rating counters (read model).
+     * Called by ReviewModule's after-commit listener; idempotent.
+     */
+    void refreshRatingSummary(UUID productId, java.math.BigDecimal ratingAvg, long ratingCount);
 }

@@ -32,6 +32,9 @@ class CheckoutTimeoutServiceTest {
     @Mock
     private CheckoutTimeoutProcessor timeoutProcessor;
 
+    @Mock
+    private com.shopee.monolith.common.observability.DemoMetrics demoMetrics;
+
     @InjectMocks
     private CheckoutTimeoutService checkoutTimeoutService;
 

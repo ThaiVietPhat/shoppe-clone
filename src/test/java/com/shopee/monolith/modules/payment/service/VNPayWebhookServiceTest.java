@@ -46,6 +46,9 @@ class VNPayWebhookServiceTest {
     @Mock
     private CheckoutSettlementService checkoutSettlementService;
 
+    @Mock
+    private com.shopee.monolith.common.observability.DemoMetrics demoMetrics;
+
     @InjectMocks
     private VNPayWebhookService webhookService;
 

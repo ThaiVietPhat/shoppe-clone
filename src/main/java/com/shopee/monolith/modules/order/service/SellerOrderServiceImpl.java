@@ -8,6 +8,7 @@ import com.shopee.monolith.modules.order.dto.response.SellerOrderDetailResponse;
 import com.shopee.monolith.modules.order.dto.response.SellerOrderSummaryResponse;
 import com.shopee.monolith.modules.order.entity.Order;
 import com.shopee.monolith.modules.order.entity.OrderItem;
+import com.shopee.monolith.modules.order.event.OrderFulfillmentChangedEvent;
 import com.shopee.monolith.modules.order.mapper.BuyerOrderMapper;
 import com.shopee.monolith.modules.order.model.FulfillmentStatus;
 import com.shopee.monolith.modules.order.model.OrderPaymentStatus;
@@ -42,6 +43,7 @@ public class SellerOrderServiceImpl implements SellerOrderService {
     private final ShopService shopService;
     private final ProductService productService;
     private final BuyerOrderMapper buyerOrderMapper;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional(readOnly = true)
@@ -76,6 +78,8 @@ public class SellerOrderServiceImpl implements SellerOrderService {
         Order order = lockOwnOrder(sellerId, orderId);
         order.ship();
         order = orderRepository.save(order);
+        eventPublisher.publishEvent(new OrderFulfillmentChangedEvent(
+                order.getId(), order.getBuyerId(), order.getFulfillmentStatus().name()));
         log.info("Seller {} shipped order {}", sellerId, orderId);
         return toDetail(order);
     }
@@ -86,6 +90,8 @@ public class SellerOrderServiceImpl implements SellerOrderService {
         Order order = lockOwnOrder(sellerId, orderId);
         order.deliver();
         order = orderRepository.save(order);
+        eventPublisher.publishEvent(new OrderFulfillmentChangedEvent(
+                order.getId(), order.getBuyerId(), order.getFulfillmentStatus().name()));
         log.info("Seller {} marked order {} delivered", sellerId, orderId);
         return toDetail(order);
     }

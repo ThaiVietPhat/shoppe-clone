@@ -82,6 +82,18 @@ public enum ErrorCode {
     CART_SELECTED_EMPTY(400, "No items selected for checkout"),
     ADDRESS_INVALID(400, "No valid shipping address found"),
 
+    // ==================== Review ====================
+    REVIEW_NOT_FOUND(404, "Review not found"),
+    REVIEW_ALREADY_EXISTS(409, "This order item has already been reviewed"),
+    ORDER_NOT_REVIEWABLE(409, "Order must be delivered or completed before reviewing"),
+
+    // ==================== Notification ====================
+    NOTIFICATION_NOT_FOUND(404, "Notification not found"),
+
+    // ==================== Chat ====================
+    CHAT_ROOM_NOT_FOUND(404, "Chat room not found"),
+    CHAT_ROOM_ACCESS_DENIED(403, "You are not a participant of this chat room"),
+
     // ==================== Media ====================
     INVALID_FILE_TYPE(400, "File type is not allowed"),
     FILE_TOO_LARGE(400, "File size exceeds the maximum allowed limit"),
