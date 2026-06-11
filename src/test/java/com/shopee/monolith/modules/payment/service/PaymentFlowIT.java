@@ -20,6 +20,7 @@ import com.shopee.monolith.modules.order.repository.InventoryReservationReposito
 import com.shopee.monolith.modules.order.repository.OrderItemRepository;
 import com.shopee.monolith.modules.order.repository.OrderRepository;
 import com.shopee.monolith.modules.order.service.BuyerOrderService;
+import com.shopee.monolith.modules.order.service.CheckoutTimeoutService;
 import com.shopee.monolith.modules.order.service.OrderService;
 import com.shopee.monolith.modules.payment.dto.request.InitiatePaymentRequest;
 import com.shopee.monolith.modules.payment.dto.response.PaymentStatusResponse;
@@ -74,6 +75,8 @@ class PaymentFlowIT extends BasePostgresRedisIntegrationTest {
     private OrderService orderService;
     @Autowired
     private BuyerOrderService buyerOrderService;
+    @Autowired
+    private CheckoutTimeoutService checkoutTimeoutService;
     @Autowired
     private CartService cartService;
     @Autowired
@@ -473,8 +476,42 @@ class PaymentFlowIT extends BasePostgresRedisIntegrationTest {
         assertEquals(0, inventoryAfterLateSuccess.getReservedStock());
     }
 
+    @Test
+    void checkoutTimeoutShouldExpirePendingPaymentAttemptSoGetStatusNoLongerReturnsPendingUrl() {
+        CheckoutResponse checkout = checkout(2);
+        paymentService.initiatePayment(buyer.getId(),
+                new InitiatePaymentRequest(checkout.checkoutSessionId(), PaymentMethod.VNPAY));
+        PaymentAttempt attempt = latestAttempt(checkout.checkoutSessionId());
+        assertEquals(PaymentAttemptStatus.PENDING, attempt.getStatus());
+        assertNotNull(attempt.getExpiresAt());
+
+        // Force checkout session to be past its expiry
+        forceCheckoutSessionExpiry(checkout.checkoutSessionId());
+
+        // Checkout timeout job processes expired sessions
+        checkoutTimeoutService.processExpiredCheckouts(10);
+
+        // Session must be EXPIRED (checkout timeout uses EXPIRED; payment timeout uses PAYMENT_EXPIRED)
+        var session = checkoutSessionRepository.findById(checkout.checkoutSessionId()).orElseThrow();
+        assertEquals(CheckoutSessionStatus.EXPIRED, session.getStatus());
+
+        // Payment attempt must be EXPIRED — getPaymentStatus should no longer return PENDING + VNPay URL
+        attempt = paymentAttemptRepository.findById(attempt.getId()).orElseThrow();
+        assertEquals(PaymentAttemptStatus.EXPIRED, attempt.getStatus());
+
+        // Inventory fully released
+        var inventory = inventoryRepository.findByVariantId(variant.getId()).orElseThrow();
+        assertEquals(10, inventory.getAvailableStock());
+        assertEquals(0, inventory.getReservedStock());
+    }
+
     private void forceAttemptExpiry(UUID attemptId) {
         jdbcTemplate.update("UPDATE payment_attempts SET expires_at = ? WHERE id = ?",
                 Timestamp.from(Instant.now().minusSeconds(60)), attemptId);
+    }
+
+    private void forceCheckoutSessionExpiry(UUID sessionId) {
+        jdbcTemplate.update("UPDATE checkout_sessions SET expires_at = ? WHERE id = ?",
+                Timestamp.from(Instant.now().minusSeconds(60)), sessionId);
     }
 }

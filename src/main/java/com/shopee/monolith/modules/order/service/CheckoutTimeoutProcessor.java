@@ -5,6 +5,7 @@ import com.shopee.monolith.modules.inventory.service.InventoryService;
 import com.shopee.monolith.modules.order.entity.CheckoutSession;
 import com.shopee.monolith.modules.order.entity.InventoryReservation;
 import com.shopee.monolith.modules.order.entity.Order;
+import com.shopee.monolith.modules.order.event.CheckoutSessionCancelledEvent;
 import com.shopee.monolith.modules.order.model.CheckoutSessionStatus;
 import com.shopee.monolith.modules.order.model.InventoryReservationStatus;
 import com.shopee.monolith.modules.order.repository.CheckoutSessionRepository;
@@ -12,6 +13,7 @@ import com.shopee.monolith.modules.order.repository.InventoryReservationReposito
 import com.shopee.monolith.modules.order.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +32,7 @@ public class CheckoutTimeoutProcessor {
     private final InventoryReservationRepository inventoryReservationRepository;
     private final OrderRepository orderRepository;
     private final InventoryService inventoryService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void processTimeout(UUID sessionId, Instant now) {
@@ -82,5 +85,10 @@ public class CheckoutTimeoutProcessor {
         session.expire();
         checkoutSessionRepository.save(session);
         log.info("Checkout session {} is now EXPIRED", sessionId);
+
+        // Expire any pending payment attempts after this REQUIRES_NEW transaction commits.
+        // Same mechanism as buyer cancel — deferred so we don't hold session lock
+        // while touching payment_attempt rows (avoids deadlock with webhook/timeout).
+        eventPublisher.publishEvent(new CheckoutSessionCancelledEvent(sessionId));
     }
 }
