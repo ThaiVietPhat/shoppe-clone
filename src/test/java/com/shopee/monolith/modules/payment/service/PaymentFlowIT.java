@@ -11,6 +11,7 @@ import com.shopee.monolith.modules.order.dto.request.CheckoutRequest;
 import com.shopee.monolith.modules.order.dto.response.CheckoutResponse;
 import com.shopee.monolith.modules.order.entity.CheckoutSession;
 import com.shopee.monolith.modules.order.entity.Order;
+import com.shopee.monolith.modules.order.model.OrderStatus;
 import com.shopee.monolith.modules.order.model.CheckoutSessionStatus;
 import com.shopee.monolith.modules.order.model.InventoryReservationStatus;
 import com.shopee.monolith.modules.order.model.OrderPaymentStatus;
@@ -19,6 +20,7 @@ import com.shopee.monolith.modules.order.repository.CheckoutSessionRepository;
 import com.shopee.monolith.modules.order.repository.InventoryReservationRepository;
 import com.shopee.monolith.modules.order.repository.OrderItemRepository;
 import com.shopee.monolith.modules.order.repository.OrderRepository;
+import com.shopee.monolith.modules.order.service.BuyerOrderService;
 import com.shopee.monolith.modules.order.service.OrderService;
 import com.shopee.monolith.modules.payment.dto.request.InitiatePaymentRequest;
 import com.shopee.monolith.modules.payment.dto.response.PaymentStatusResponse;
@@ -71,6 +73,8 @@ class PaymentFlowIT extends BasePostgresRedisIntegrationTest {
 
     @Autowired
     private OrderService orderService;
+    @Autowired
+    private BuyerOrderService buyerOrderService;
     @Autowired
     private CartService cartService;
     @Autowired
@@ -400,6 +404,70 @@ class PaymentFlowIT extends BasePostgresRedisIntegrationTest {
             assertEquals(CheckoutSessionStatus.PAYMENT_EXPIRED, session.getStatus());
             assertEquals(10, inventory.getAvailableStock());
         }
+    }
+
+    @Test
+    void cancelledOrderShouldNotBeRevivedByLaterVNPaySuccessWebhook() {
+        CheckoutResponse checkout = checkout(2);
+        paymentService.initiatePayment(buyer.getId(),
+                new InitiatePaymentRequest(checkout.checkoutSessionId(), PaymentMethod.VNPAY));
+        PaymentAttempt attempt = latestAttempt(checkout.checkoutSessionId());
+
+        // Buyer cancels order before payment completes
+        buyerOrderService.cancelOrder(buyer.getId(), checkout.orderIds().get(0));
+
+        // Success webhook arrives after cancel
+        webhookService.processWebhook(signedWebhookParams(attempt, "00"));
+
+        // Session must be CANCELLED (not COMPLETED)
+        CheckoutSession session = checkoutSessionRepository.findById(checkout.checkoutSessionId()).orElseThrow();
+        assertEquals(CheckoutSessionStatus.CANCELLED, session.getStatus());
+
+        // Order must remain CANCELLED (not revived to PAID)
+        Order order = orderRepository.findById(checkout.orderIds().get(0)).orElseThrow();
+        assertEquals(OrderStatus.CANCELLED, order.getStatus());
+
+        // Inventory must be fully released (reserved by checkout, released by cancel)
+        var inventory = inventoryRepository.findByVariantId(variant.getId()).orElseThrow();
+        assertEquals(10, inventory.getAvailableStock());
+        assertEquals(0, inventory.getReservedStock());
+
+        // Attempt flagged for reconciliation since session was not payable
+        attempt = paymentAttemptRepository.findById(attempt.getId()).orElseThrow();
+        assertEquals(PaymentAttemptStatus.REQUIRES_RECONCILIATION, attempt.getStatus());
+    }
+
+    @Test
+    void lateVNPaySuccessAfterTimeoutShouldFlagReconciliationWithoutInventoryChange() {
+        CheckoutResponse checkout = checkout(2);
+        paymentService.initiatePayment(buyer.getId(),
+                new InitiatePaymentRequest(checkout.checkoutSessionId(), PaymentMethod.VNPAY));
+        PaymentAttempt attempt = latestAttempt(checkout.checkoutSessionId());
+
+        // Force timeout and process it
+        forceAttemptExpiry(attempt.getId());
+        paymentTimeoutProcessor.processTimeout(attempt.getId(), Instant.now());
+
+        attempt = paymentAttemptRepository.findById(attempt.getId()).orElseThrow();
+        assertEquals(PaymentAttemptStatus.EXPIRED, attempt.getStatus());
+
+        // Inventory already released by timeout
+        var inventoryAfterTimeout = inventoryRepository.findByVariantId(variant.getId()).orElseThrow();
+        assertEquals(10, inventoryAfterTimeout.getAvailableStock());
+        assertEquals(0, inventoryAfterTimeout.getReservedStock());
+
+        // Late success webhook arrives
+        webhookService.processWebhook(signedWebhookParams(attempt, "00"));
+
+        // Attempt must be REQUIRES_RECONCILIATION, not SUCCEEDED
+        attempt = paymentAttemptRepository.findById(attempt.getId()).orElseThrow();
+        assertEquals(PaymentAttemptStatus.REQUIRES_RECONCILIATION, attempt.getStatus());
+        assertTrue(attempt.getReconciliationReason().startsWith("LATE_SUCCESS_AFTER_"));
+
+        // Inventory must NOT be re-confirmed
+        var inventoryAfterLateSuccess = inventoryRepository.findByVariantId(variant.getId()).orElseThrow();
+        assertEquals(10, inventoryAfterLateSuccess.getAvailableStock());
+        assertEquals(0, inventoryAfterLateSuccess.getReservedStock());
     }
 
     private void forceAttemptExpiry(UUID attemptId) {

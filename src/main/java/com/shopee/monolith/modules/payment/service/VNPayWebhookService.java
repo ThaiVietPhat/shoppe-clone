@@ -4,6 +4,7 @@ import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.modules.order.service.CheckoutSettlementService;
 import com.shopee.monolith.modules.payment.entity.PaymentAttempt;
+import com.shopee.monolith.modules.payment.model.PaymentAttemptStatus;
 import com.shopee.monolith.modules.payment.model.PaymentMethod;
 import com.shopee.monolith.modules.payment.repository.PaymentAttemptRepository;
 import com.shopee.monolith.modules.payment.repository.PaymentWebhookEventRepository;
@@ -62,7 +63,14 @@ public class VNPayWebhookService {
         }
 
         if (attempt.getStatus().isTerminal()) {
-            log.info("VNPay webhook for terminal attempt {} ({}) — no-op", attempt.getId(), attempt.getStatus());
+            if (isLateSuccessWebhook(attempt, params)) {
+                attempt.requireReconciliation("LATE_SUCCESS_AFTER_" + attempt.getStatus().name());
+                paymentAttemptRepository.save(attempt);
+                log.warn("Late VNPay success for {} attempt {} — flagged REQUIRES_RECONCILIATION",
+                        attempt.getStatus(), attempt.getId());
+            } else {
+                log.info("VNPay webhook for terminal attempt {} ({}) — no-op", attempt.getId(), attempt.getStatus());
+            }
             return WebhookResult.PROCESSED;
         }
 
@@ -93,6 +101,13 @@ public class VNPayWebhookService {
             attempt.fail(externalTxId);
             checkoutSettlementService.markCheckoutPaymentFailed(attempt.getCheckoutSessionId());
         }
+    }
+
+    private boolean isLateSuccessWebhook(PaymentAttempt attempt, Map<String, String> params) {
+        return (attempt.getStatus() == PaymentAttemptStatus.FAILED
+                || attempt.getStatus() == PaymentAttemptStatus.EXPIRED)
+                && SUCCESS_RESPONSE_CODE.equals(params.get("vnp_ResponseCode"))
+                && amountMatches(attempt, params.get("vnp_Amount"));
     }
 
     private boolean amountMatches(PaymentAttempt attempt, String vnpAmount) {

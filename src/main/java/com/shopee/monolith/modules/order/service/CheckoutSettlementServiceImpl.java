@@ -10,6 +10,7 @@ import com.shopee.monolith.modules.order.entity.Order;
 import com.shopee.monolith.modules.order.event.OrderConfirmedEvent;
 import com.shopee.monolith.modules.order.model.CheckoutSessionStatus;
 import com.shopee.monolith.modules.order.model.InventoryReservationStatus;
+import com.shopee.monolith.modules.order.model.OrderStatus;
 import com.shopee.monolith.modules.order.repository.CheckoutSessionRepository;
 import com.shopee.monolith.modules.order.repository.InventoryReservationRepository;
 import com.shopee.monolith.modules.order.repository.OrderRepository;
@@ -72,15 +73,26 @@ public class CheckoutSettlementServiceImpl implements CheckoutSettlementService 
         }
 
         List<Order> orders = orderRepository.findAllByCheckoutSessionIdForUpdate(checkoutSessionId);
-        orders.forEach(order -> order.markPaid(paymentMethod));
-        orderRepository.saveAll(orders);
+        List<Order> payableOrders = orders.stream()
+                .filter(o -> o.getStatus() == OrderStatus.PENDING_PAYMENT)
+                .toList();
+
+        if (payableOrders.isEmpty()) {
+            log.info("Checkout session {} has no payable orders — cancelling session", checkoutSessionId);
+            session.cancel();
+            checkoutSessionRepository.save(session);
+            return false;
+        }
+
+        payableOrders.forEach(order -> order.markPaid(paymentMethod));
+        orderRepository.saveAll(payableOrders);
 
         session.complete();
         checkoutSessionRepository.save(session);
 
-        List<UUID> orderIds = orders.stream().map(Order::getId).toList();
+        List<UUID> orderIds = payableOrders.stream().map(Order::getId).toList();
         eventPublisher.publishEvent(new OrderConfirmedEvent(checkoutSessionId, orderIds, paymentMethod));
-        log.info("Checkout session {} confirmed with {} orders via {}", checkoutSessionId, orders.size(), paymentMethod);
+        log.info("Checkout session {} confirmed with {} orders via {}", checkoutSessionId, payableOrders.size(), paymentMethod);
         return true;
     }
 

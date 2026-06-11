@@ -145,7 +145,7 @@ class VNPayWebhookServiceTest {
     }
 
     @Test
-    void processWebhookWhenAttemptAlreadyTerminalShouldNoOpMonotonically() {
+    void processWebhookWhenExpiredAttemptReceivesSuccessShouldFlagReconciliation() {
         attempt.expire();
         when(signatureVerifier.verify(any())).thenReturn(true);
         when(paymentAttemptRepository.findByIdForUpdate(attemptId)).thenReturn(Optional.of(attempt));
@@ -153,7 +153,21 @@ class VNPayWebhookServiceTest {
 
         webhookService.processWebhook(successParams());
 
-        assertEquals(PaymentAttemptStatus.EXPIRED, attempt.getStatus());
+        assertEquals(PaymentAttemptStatus.REQUIRES_RECONCILIATION, attempt.getStatus());
+        assertEquals("LATE_SUCCESS_AFTER_EXPIRED", attempt.getReconciliationReason());
+        verify(checkoutSettlementService, never()).confirmCheckoutSession(any(), anyString());
+    }
+
+    @Test
+    void processWebhookWhenAlreadySucceededShouldNoOp() {
+        attempt.succeed("prev-tx-id");
+        when(signatureVerifier.verify(any())).thenReturn(true);
+        when(paymentAttemptRepository.findByIdForUpdate(attemptId)).thenReturn(Optional.of(attempt));
+        when(webhookEventRepository.tryClaim(any(), anyString(), anyString(), any(), anyString())).thenReturn(1);
+
+        webhookService.processWebhook(successParams());
+
+        assertEquals(PaymentAttemptStatus.SUCCEEDED, attempt.getStatus());
         verify(checkoutSettlementService, never()).confirmCheckoutSession(any(), anyString());
     }
 

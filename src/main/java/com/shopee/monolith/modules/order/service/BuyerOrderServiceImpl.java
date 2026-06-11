@@ -12,9 +12,12 @@ import com.shopee.monolith.modules.order.entity.InventoryReservation;
 import com.shopee.monolith.modules.order.entity.Order;
 import com.shopee.monolith.modules.order.entity.OrderItem;
 import com.shopee.monolith.modules.order.mapper.BuyerOrderMapper;
+import com.shopee.monolith.modules.order.entity.CheckoutSession;
+import com.shopee.monolith.modules.order.model.CheckoutSessionStatus;
 import com.shopee.monolith.modules.order.model.InventoryReservationStatus;
 import com.shopee.monolith.modules.order.model.OrderPaymentStatus;
 import com.shopee.monolith.modules.order.model.OrderStatus;
+import com.shopee.monolith.modules.order.repository.CheckoutSessionRepository;
 import com.shopee.monolith.modules.order.repository.InventoryReservationRepository;
 import com.shopee.monolith.modules.order.repository.OrderItemRepository;
 import com.shopee.monolith.modules.order.repository.OrderRepository;
@@ -41,6 +44,7 @@ public class BuyerOrderServiceImpl implements BuyerOrderService {
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
     private final InventoryReservationRepository inventoryReservationRepository;
+    private final CheckoutSessionRepository checkoutSessionRepository;
     private final InventoryService inventoryService;
     private final ShopService shopService;
     private final BuyerOrderMapper buyerOrderMapper;
@@ -126,6 +130,21 @@ public class BuyerOrderServiceImpl implements BuyerOrderService {
         order.cancel();
         orderRepository.save(order);
         log.info("Buyer {} cancelled order {} and released {} reservations", buyerId, orderId, reservations.size());
+
+        cancelSessionIfAllOrdersCancelled(order.getCheckoutSessionId());
+    }
+
+    private void cancelSessionIfAllOrdersCancelled(UUID checkoutSessionId) {
+        List<Order> allOrders = orderRepository.findAllByCheckoutSessionIdOrderByIdAsc(checkoutSessionId);
+        boolean allCancelled = allOrders.stream().allMatch(o -> o.getStatus() == OrderStatus.CANCELLED);
+        if (allCancelled) {
+            CheckoutSession session = checkoutSessionRepository.findByIdForUpdate(checkoutSessionId).orElse(null);
+            if (session != null && session.getStatus() == CheckoutSessionStatus.PENDING_PAYMENT) {
+                session.cancel();
+                checkoutSessionRepository.save(session);
+                log.info("Checkout session {} cancelled because all orders are cancelled", checkoutSessionId);
+            }
+        }
     }
 
     private List<BuyerOrderTimelineEvent> buildTimeline(Order order) {
