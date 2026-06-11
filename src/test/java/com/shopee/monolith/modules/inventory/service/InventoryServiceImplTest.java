@@ -7,7 +7,10 @@ import com.shopee.monolith.modules.inventory.dto.command.ReleaseInventoryCommand
 import com.shopee.monolith.modules.inventory.dto.command.ReserveInventoryCommand;
 import com.shopee.monolith.modules.inventory.dto.response.InventoryResponse;
 import com.shopee.monolith.modules.inventory.entity.Inventory;
+import com.shopee.monolith.modules.inventory.entity.InventoryMovement;
+import com.shopee.monolith.modules.inventory.entity.InventoryMovementType;
 import com.shopee.monolith.modules.inventory.mapper.InventoryMapper;
+import com.shopee.monolith.modules.inventory.repository.InventoryMovementRepository;
 import com.shopee.monolith.modules.inventory.repository.InventoryRepository;
 import com.shopee.monolith.modules.product.dto.internal.ProductLookupData;
 import com.shopee.monolith.modules.product.dto.internal.VariantLookupData;
@@ -18,6 +21,7 @@ import com.shopee.monolith.modules.user.service.ShopService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -41,6 +45,9 @@ class InventoryServiceImplTest {
 
     @Mock
     private InventoryRepository inventoryRepository;
+
+    @Mock
+    private InventoryMovementRepository inventoryMovementRepository;
 
     @Mock
     private InventoryMapper inventoryMapper;
@@ -410,5 +417,87 @@ class InventoryServiceImplTest {
 
         AppException ex = assertThrows(AppException.class, () -> inventoryService.release(commands));
         assertEquals(ErrorCode.INVALID_REQUEST, ex.getErrorCode());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void reserveWhenValidShouldRecordReserveMovements() {
+        List<ReserveInventoryCommand> commands = Collections.singletonList(
+                new ReserveInventoryCommand(variantId, 10)
+        );
+
+        when(inventoryRepository.findAllByVariantIdInForUpdate(Collections.singletonList(variantId)))
+                .thenReturn(Collections.singletonList(inventory));
+
+        inventoryService.reserve(commands);
+
+        ArgumentCaptor<List<InventoryMovement>> captor = ArgumentCaptor.forClass(List.class);
+        verify(inventoryMovementRepository).saveAll(captor.capture());
+        InventoryMovement movement = captor.getValue().get(0);
+        assertEquals(InventoryMovementType.RESERVE, movement.getMovementType());
+        assertEquals(10, movement.getQuantity());
+        assertEquals(40, movement.getAvailableStockAfter());
+        assertEquals(15, movement.getReservedStockAfter());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void confirmWhenValidShouldRecordConfirmMovements() {
+        List<ConfirmInventoryCommand> commands = Collections.singletonList(
+                new ConfirmInventoryCommand(variantId, 3)
+        );
+
+        when(inventoryRepository.findAllByVariantIdInForUpdate(Collections.singletonList(variantId)))
+                .thenReturn(Collections.singletonList(inventory));
+
+        inventoryService.confirm(commands);
+
+        ArgumentCaptor<List<InventoryMovement>> captor = ArgumentCaptor.forClass(List.class);
+        verify(inventoryMovementRepository).saveAll(captor.capture());
+        InventoryMovement movement = captor.getValue().get(0);
+        assertEquals(InventoryMovementType.CONFIRM, movement.getMovementType());
+        assertEquals(3, movement.getQuantity());
+        assertEquals(50, movement.getAvailableStockAfter());
+        assertEquals(2, movement.getReservedStockAfter());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void releaseWhenValidShouldRecordReleaseMovements() {
+        List<ReleaseInventoryCommand> commands = Collections.singletonList(
+                new ReleaseInventoryCommand(variantId, 3)
+        );
+
+        when(inventoryRepository.findAllByVariantIdInForUpdate(Collections.singletonList(variantId)))
+                .thenReturn(Collections.singletonList(inventory));
+
+        inventoryService.release(commands);
+
+        ArgumentCaptor<List<InventoryMovement>> captor = ArgumentCaptor.forClass(List.class);
+        verify(inventoryMovementRepository).saveAll(captor.capture());
+        InventoryMovement movement = captor.getValue().get(0);
+        assertEquals(InventoryMovementType.RELEASE, movement.getMovementType());
+        assertEquals(3, movement.getQuantity());
+        assertEquals(53, movement.getAvailableStockAfter());
+        assertEquals(2, movement.getReservedStockAfter());
+    }
+
+    @Test
+    void updateAvailableStockShouldRecordSignedDeltaMovement() {
+        when(productService.findVariantLookupDataById(variantId)).thenReturn(Optional.of(variantLookup));
+        when(productService.findProductLookupDataById(productId)).thenReturn(Optional.of(productLookup));
+        when(shopService.findShopLookupDataById(shopId)).thenReturn(Optional.of(shopLookup));
+        when(inventoryRepository.findByVariantIdForUpdate(variantId)).thenReturn(Optional.of(inventory));
+        when(inventoryRepository.save(any(Inventory.class))).thenReturn(inventory);
+        when(inventoryMapper.toResponse(inventory)).thenReturn(inventoryResponse);
+
+        inventoryService.updateAvailableStock(variantId, 30, userId, Role.SELLER);
+
+        ArgumentCaptor<InventoryMovement> captor = ArgumentCaptor.forClass(InventoryMovement.class);
+        verify(inventoryMovementRepository).save(captor.capture());
+        InventoryMovement movement = captor.getValue();
+        assertEquals(InventoryMovementType.STOCK_UPDATE, movement.getMovementType());
+        assertEquals(-20, movement.getQuantity());
+        assertEquals(30, movement.getAvailableStockAfter());
     }
 }

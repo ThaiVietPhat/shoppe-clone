@@ -1,6 +1,8 @@
 package com.shopee.monolith.modules.inventory.mapper;
 
 import com.shopee.monolith.modules.inventory.entity.Inventory;
+import com.shopee.monolith.modules.inventory.entity.InventoryMovement;
+import com.shopee.monolith.modules.inventory.dto.response.InventoryMovementResponse;
 import com.shopee.monolith.modules.inventory.dto.response.InventoryResponse;
 import org.mapstruct.Mapper;
 
@@ -8,4 +10,6 @@ import org.mapstruct.Mapper;
 public interface InventoryMapper {
 
     InventoryResponse toResponse(Inventory inventory);
+
+    InventoryMovementResponse toMovementResponse(InventoryMovement movement);
 }

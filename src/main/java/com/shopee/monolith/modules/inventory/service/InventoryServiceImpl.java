@@ -2,13 +2,18 @@ package com.shopee.monolith.modules.inventory.service;
 
 import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
+import com.shopee.monolith.common.response.PagedResponse;
 import com.shopee.monolith.modules.inventory.dto.command.ConfirmInventoryCommand;
 import com.shopee.monolith.modules.inventory.dto.command.ReleaseInventoryCommand;
 import com.shopee.monolith.modules.inventory.dto.command.ReserveInventoryCommand;
 import com.shopee.monolith.modules.inventory.dto.internal.InventoryStockSummary;
+import com.shopee.monolith.modules.inventory.dto.response.InventoryMovementResponse;
 import com.shopee.monolith.modules.inventory.dto.response.InventoryResponse;
 import com.shopee.monolith.modules.inventory.entity.Inventory;
+import com.shopee.monolith.modules.inventory.entity.InventoryMovement;
+import com.shopee.monolith.modules.inventory.entity.InventoryMovementType;
 import com.shopee.monolith.modules.inventory.mapper.InventoryMapper;
+import com.shopee.monolith.modules.inventory.repository.InventoryMovementRepository;
 import com.shopee.monolith.modules.inventory.repository.InventoryRepository;
 import com.shopee.monolith.modules.product.dto.internal.ProductLookupData;
 import com.shopee.monolith.modules.product.dto.internal.VariantLookupData;
@@ -18,9 +23,12 @@ import com.shopee.monolith.modules.user.model.Role;
 import com.shopee.monolith.modules.user.service.ShopService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +45,7 @@ public class InventoryServiceImpl implements InventoryService {
     private static final String UNIQUE_VARIANT_CONSTRAINT = "inventories_variant_id_key";
 
     private final InventoryRepository inventoryRepository;
+    private final InventoryMovementRepository inventoryMovementRepository;
     private final InventoryMapper inventoryMapper;
     private final ProductService productService;
     private final ShopService shopService;
@@ -102,6 +111,7 @@ public class InventoryServiceImpl implements InventoryService {
                     .build();
 
             inventory = inventoryRepository.saveAndFlush(inventory);
+            recordMovement(inventory, InventoryMovementType.INITIAL, initialStock);
             return inventoryMapper.toResponse(inventory);
         } catch (DataIntegrityViolationException ex) {
             // Distinguish unique-constraint race (duplicate inventory) from FK violation (variant deleted mid-request)
@@ -125,8 +135,10 @@ public class InventoryServiceImpl implements InventoryService {
         Inventory inventory = inventoryRepository.findByVariantIdForUpdate(variantId)
                 .orElseThrow(() -> new AppException(ErrorCode.INVENTORY_NOT_FOUND));
 
+        int delta = availableStock - inventory.getAvailableStock();
         inventory.updateAvailableStock(availableStock);
         inventory = inventoryRepository.save(inventory);
+        recordMovement(inventory, InventoryMovementType.STOCK_UPDATE, delta);
         return inventoryMapper.toResponse(inventory);
     }
 
@@ -166,15 +178,18 @@ public class InventoryServiceImpl implements InventoryService {
         Map<UUID, Inventory> inventoryMap = inventories.stream()
                 .collect(Collectors.toMap(Inventory::getVariantId, Function.identity()));
 
+        List<InventoryMovement> movements = new ArrayList<>();
         for (ReserveInventoryCommand cmd : consolidated) {
             Inventory inventory = inventoryMap.get(cmd.variantId());
             if (inventory == null) {
                 throw new AppException(ErrorCode.INVENTORY_NOT_FOUND);
             }
             inventory.reserve(cmd.quantity());
+            movements.add(buildMovement(inventory, InventoryMovementType.RESERVE, cmd.quantity()));
         }
 
         inventoryRepository.saveAll(inventories);
+        inventoryMovementRepository.saveAll(movements);
     }
 
     @Override
@@ -211,15 +226,18 @@ public class InventoryServiceImpl implements InventoryService {
         Map<UUID, Inventory> inventoryMap = inventories.stream()
                 .collect(Collectors.toMap(Inventory::getVariantId, Function.identity()));
 
+        List<InventoryMovement> movements = new ArrayList<>();
         for (ConfirmInventoryCommand cmd : consolidated) {
             Inventory inventory = inventoryMap.get(cmd.variantId());
             if (inventory == null) {
                 throw new AppException(ErrorCode.INVENTORY_NOT_FOUND);
             }
             inventory.confirm(cmd.quantity());
+            movements.add(buildMovement(inventory, InventoryMovementType.CONFIRM, cmd.quantity()));
         }
 
         inventoryRepository.saveAll(inventories);
+        inventoryMovementRepository.saveAll(movements);
     }
 
     @Override
@@ -256,15 +274,18 @@ public class InventoryServiceImpl implements InventoryService {
         Map<UUID, Inventory> inventoryMap = inventories.stream()
                 .collect(Collectors.toMap(Inventory::getVariantId, Function.identity()));
 
+        List<InventoryMovement> movements = new ArrayList<>();
         for (ReleaseInventoryCommand cmd : consolidated) {
             Inventory inventory = inventoryMap.get(cmd.variantId());
             if (inventory == null) {
                 throw new AppException(ErrorCode.INVENTORY_NOT_FOUND);
             }
             inventory.release(cmd.quantity());
+            movements.add(buildMovement(inventory, InventoryMovementType.RELEASE, cmd.quantity()));
         }
 
         inventoryRepository.saveAll(inventories);
+        inventoryMovementRepository.saveAll(movements);
     }
 
     @Override
@@ -281,5 +302,31 @@ public class InventoryServiceImpl implements InventoryService {
                                 .reservedStock(inv.getReservedStock())
                                 .build()
                 ));
+    }
+
+    @Override
+    public PagedResponse<InventoryMovementResponse> listMovements(
+            UUID variantId, UUID currentUserId, Role currentRole, Pageable pageable) {
+        validateOwnership(variantId, currentUserId, currentRole);
+
+        Page<InventoryMovement> page =
+                inventoryMovementRepository.findAllByVariantIdOrderByCreatedAtDesc(variantId, pageable);
+        return PagedResponse.from(page, page.getContent().stream()
+                .map(inventoryMapper::toMovementResponse)
+                .toList());
+    }
+
+    private void recordMovement(Inventory inventory, InventoryMovementType type, int quantity) {
+        inventoryMovementRepository.save(buildMovement(inventory, type, quantity));
+    }
+
+    private InventoryMovement buildMovement(Inventory inventory, InventoryMovementType type, int quantity) {
+        return InventoryMovement.builder()
+                .variantId(inventory.getVariantId())
+                .movementType(type)
+                .quantity(quantity)
+                .availableStockAfter(inventory.getAvailableStock())
+                .reservedStockAfter(inventory.getReservedStock())
+                .build();
     }
 }

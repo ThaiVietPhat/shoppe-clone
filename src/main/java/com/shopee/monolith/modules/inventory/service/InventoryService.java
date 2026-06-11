@@ -3,9 +3,12 @@ package com.shopee.monolith.modules.inventory.service;
 import com.shopee.monolith.modules.inventory.dto.command.ConfirmInventoryCommand;
 import com.shopee.monolith.modules.inventory.dto.command.ReleaseInventoryCommand;
 import com.shopee.monolith.modules.inventory.dto.command.ReserveInventoryCommand;
+import com.shopee.monolith.common.response.PagedResponse;
 import com.shopee.monolith.modules.inventory.dto.internal.InventoryStockSummary;
+import com.shopee.monolith.modules.inventory.dto.response.InventoryMovementResponse;
 import com.shopee.monolith.modules.inventory.dto.response.InventoryResponse;
 import com.shopee.monolith.modules.user.model.Role;
+import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 import java.util.Map;
@@ -34,5 +37,12 @@ public interface InventoryService {
      * @return map of variantId → InventoryStockSummary; missing keys = inventory not found
      */
     Map<UUID, InventoryStockSummary> getStockSummariesByVariantIds(List<UUID> variantIds);
+
+    /**
+     * Paged audit ledger of stock movements for one variant, newest first.
+     * Ownership-checked: only the owning seller or an admin can read it.
+     */
+    PagedResponse<InventoryMovementResponse> listMovements(
+            UUID variantId, UUID currentUserId, Role currentRole, Pageable pageable);
 }
 

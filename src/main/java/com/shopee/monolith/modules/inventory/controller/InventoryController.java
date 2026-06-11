@@ -3,10 +3,12 @@ package com.shopee.monolith.modules.inventory.controller;
 import com.shopee.monolith.common.exception.AppException;
 import com.shopee.monolith.common.exception.ErrorCode;
 import com.shopee.monolith.common.response.ApiResponse;
+import com.shopee.monolith.common.response.PagedResponse;
 import com.shopee.monolith.common.response.SwaggerResponses;
 import com.shopee.monolith.modules.auth.dto.internal.AccessTokenClaims;
 import com.shopee.monolith.modules.inventory.dto.request.CreateInventoryRequest;
 import com.shopee.monolith.modules.inventory.dto.request.UpdateStockRequest;
+import com.shopee.monolith.modules.inventory.dto.response.InventoryMovementResponse;
 import com.shopee.monolith.modules.inventory.dto.response.InventoryResponse;
 import com.shopee.monolith.modules.inventory.dto.response.InventorySwaggerResponses;
 import com.shopee.monolith.modules.inventory.service.InventoryService;
@@ -18,6 +20,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,6 +28,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
@@ -34,6 +38,8 @@ import java.util.UUID;
 @Validated
 @Tag(name = "Inventory", description = "Seller and admin inventory management APIs")
 public class InventoryController {
+
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final InventoryService inventoryService;
 
@@ -151,5 +157,44 @@ public class InventoryController {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
         return ApiResponse.success(inventoryService.updateAvailableStock(variantId, request.availableStock(), claims.userId(), claims.role()));
+    }
+
+    @Operation(
+            summary = "List inventory movement ledger",
+            description = "Paged audit ledger of stock movements for one variant, newest first. "
+                    + "Only the owning seller or an admin can read it.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "Movement ledger returned."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "401",
+            description = "Authentication required.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "403",
+            description = "Shop owner or admin permission required.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "404",
+            description = "Variant not found.",
+            content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class))
+    )
+    @GetMapping("/api/inventories/variants/{variantId}/movements")
+    public ApiResponse<PagedResponse<InventoryMovementResponse>> listMovements(
+            @Parameter(description = "Product variant unique ID") @PathVariable UUID variantId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @AuthenticationPrincipal AccessTokenClaims claims) {
+        if (claims == null) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+        int cappedSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        return ApiResponse.success(inventoryService.listMovements(
+                variantId, claims.userId(), claims.role(), PageRequest.of(Math.max(page, 0), cappedSize)));
     }
 }

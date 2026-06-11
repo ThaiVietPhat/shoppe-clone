@@ -856,6 +856,14 @@ public class ProductServiceImpl implements ProductService {
                 .build();
     }
 
+    @Override
+    public Map<String, Long> countShopProductsByStatus(UUID shopId) {
+        return productRepository.countByShopIdGroupByStatus(shopId).stream()
+                .collect(Collectors.toMap(
+                        row -> ((ProductStatus) row[0]).name(),
+                        row -> (Long) row[1]));
+    }
+
     /**
      * Batch-loads category paths for a list of category IDs.
      * Returns a map of categoryId → materialized path string.

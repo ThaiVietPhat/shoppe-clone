@@ -60,6 +60,7 @@ public enum ErrorCode {
     // ==================== Order ====================
     ORDER_NOT_FOUND(404, "Order not found"),
     ORDER_CANNOT_BE_CANCELLED(409, "Order cannot be cancelled in its current state"),
+    ORDER_FULFILLMENT_INVALID_STATE(409, "Order cannot transition fulfillment state from its current state"),
     IDEMPOTENCY_KEY_MISSING(400, "Idempotency-Key header is required"),
     CHECKOUT_NOT_FOUND(404, "Checkout session not found"),
     IDEMPOTENCY_KEY_CONFLICT(409, "Idempotency key conflict: request payload mismatch"),

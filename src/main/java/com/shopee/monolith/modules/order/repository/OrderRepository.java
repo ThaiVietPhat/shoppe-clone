@@ -1,6 +1,7 @@
 package com.shopee.monolith.modules.order.repository;
 
 import com.shopee.monolith.modules.order.entity.Order;
+import com.shopee.monolith.modules.order.model.FulfillmentStatus;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -30,4 +31,26 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select o from Order o where o.id = :id")
     Optional<Order> findByIdForUpdate(@Param("id") UUID id);
+
+    // ==================== Seller-scoped queries ====================
+
+    Page<Order> findAllByShopIdOrderByCreatedAtDesc(UUID shopId, Pageable pageable);
+
+    Page<Order> findAllByShopIdAndFulfillmentStatusOrderByCreatedAtDesc(
+            UUID shopId, FulfillmentStatus fulfillmentStatus, Pageable pageable);
+
+    Optional<Order> findByIdAndShopId(UUID id, UUID shopId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select o from Order o where o.id = :id and o.shopId = :shopId")
+    Optional<Order> findByIdAndShopIdForUpdate(@Param("id") UUID id, @Param("shopId") UUID shopId);
+
+    List<Order> findTop5ByShopIdAndFulfillmentStatusOrderByCreatedAtDesc(
+            UUID shopId, FulfillmentStatus fulfillmentStatus);
+
+    @Query("select o.fulfillmentStatus, count(o) from Order o where o.shopId = :shopId group by o.fulfillmentStatus")
+    List<Object[]> countByShopIdGroupByFulfillmentStatus(@Param("shopId") UUID shopId);
+
+    @Query("select o.paymentStatus, count(o) from Order o where o.shopId = :shopId group by o.paymentStatus")
+    List<Object[]> countByShopIdGroupByPaymentStatus(@Param("shopId") UUID shopId);
 }

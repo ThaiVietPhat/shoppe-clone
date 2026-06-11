@@ -15,6 +15,7 @@ import com.shopee.monolith.modules.product.dto.response.ProductResponse;
 import com.shopee.monolith.modules.product.dto.response.ProductVariantResponse;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -89,4 +90,10 @@ public interface ProductService {
      * Used by SearchModule to revalidate and hydrate ES/pgvector search results.
      */
     List<ProductCardResponse> loadActiveProductCards(List<UUID> productIds);
+
+    /**
+     * Counts a shop's products grouped by listing status name.
+     * Used by the seller dashboard read model; cross-module-safe (no entity types exposed).
+     */
+    Map<String, Long> countShopProductsByStatus(UUID shopId);
 }

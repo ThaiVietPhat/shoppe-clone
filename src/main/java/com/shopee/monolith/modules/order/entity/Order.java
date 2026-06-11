@@ -1,6 +1,9 @@
 package com.shopee.monolith.modules.order.entity;
 
 import com.shopee.monolith.common.entity.BaseEntity;
+import com.shopee.monolith.common.exception.AppException;
+import com.shopee.monolith.common.exception.ErrorCode;
+import com.shopee.monolith.modules.order.model.FulfillmentStatus;
 import com.shopee.monolith.modules.order.model.OrderPaymentStatus;
 import com.shopee.monolith.modules.order.model.OrderStatus;
 import jakarta.persistence.Column;
@@ -85,6 +88,10 @@ public class Order extends BaseEntity {
     @lombok.Builder.Default
     private OrderPaymentStatus paymentStatus = OrderPaymentStatus.UNPAID;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "fulfillment_status", length = 30)
+    private FulfillmentStatus fulfillmentStatus;
+
     @Version
     @Column(name = "version", nullable = false)
     @lombok.Builder.Default
@@ -98,6 +105,24 @@ public class Order extends BaseEntity {
         this.status = OrderStatus.PAID;
         this.paymentStatus = OrderPaymentStatus.PAID;
         this.paymentMethod = method;
+        this.fulfillmentStatus = FulfillmentStatus.READY_TO_SHIP;
+    }
+
+    public void ship() {
+        if (this.paymentStatus != OrderPaymentStatus.PAID
+                || this.fulfillmentStatus != FulfillmentStatus.READY_TO_SHIP) {
+            throw new AppException(ErrorCode.ORDER_FULFILLMENT_INVALID_STATE);
+        }
+        this.fulfillmentStatus = FulfillmentStatus.SHIPPED;
+        this.status = OrderStatus.FULFILLED;
+    }
+
+    public void deliver() {
+        if (this.fulfillmentStatus != FulfillmentStatus.SHIPPED) {
+            throw new AppException(ErrorCode.ORDER_FULFILLMENT_INVALID_STATE);
+        }
+        this.fulfillmentStatus = FulfillmentStatus.DELIVERED;
+        this.status = OrderStatus.DELIVERED;
     }
 
     public void markPaymentExpired() {

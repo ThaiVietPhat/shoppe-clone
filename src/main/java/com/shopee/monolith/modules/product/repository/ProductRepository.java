@@ -51,4 +51,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
             @Param("status") ProductStatus status,
             @Param("keyword") String keyword,
             Pageable pageable);
+
+    @Query("select p.status, count(p) from Product p where p.shopId = :shopId group by p.status")
+    List<Object[]> countByShopIdGroupByStatus(@Param("shopId") UUID shopId);
 }
