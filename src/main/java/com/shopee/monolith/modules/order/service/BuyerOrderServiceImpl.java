@@ -8,11 +8,11 @@ import com.shopee.monolith.modules.inventory.service.InventoryService;
 import com.shopee.monolith.modules.order.dto.response.BuyerOrderDetailResponse;
 import com.shopee.monolith.modules.order.dto.response.BuyerOrderSummaryResponse;
 import com.shopee.monolith.modules.order.dto.response.BuyerOrderTimelineEvent;
+import com.shopee.monolith.modules.order.entity.CheckoutSession;
 import com.shopee.monolith.modules.order.entity.InventoryReservation;
 import com.shopee.monolith.modules.order.entity.Order;
 import com.shopee.monolith.modules.order.entity.OrderItem;
 import com.shopee.monolith.modules.order.mapper.BuyerOrderMapper;
-import com.shopee.monolith.modules.order.entity.CheckoutSession;
 import com.shopee.monolith.modules.order.model.CheckoutSessionStatus;
 import com.shopee.monolith.modules.order.model.InventoryReservationStatus;
 import com.shopee.monolith.modules.order.model.OrderPaymentStatus;
@@ -105,16 +105,28 @@ public class BuyerOrderServiceImpl implements BuyerOrderService {
     @Override
     @Transactional
     public void cancelOrder(UUID buyerId, UUID orderId) {
-        Order order = orderRepository.findByIdForUpdate(orderId)
-                .filter(o -> o.getBuyerId().equals(buyerId))
+        // Non-locking read: verify ownership and current state before acquiring locks
+        Order orderCheck = orderRepository.findByIdAndBuyerId(orderId, buyerId)
                 .orElseThrow(() -> new AppException(ErrorCode.ORDER_NOT_FOUND));
 
-        if (order.getStatus() != OrderStatus.PENDING_PAYMENT) {
+        if (orderCheck.getStatus() != OrderStatus.PENDING_PAYMENT) {
             throw new AppException(ErrorCode.ORDER_CANNOT_BE_CANCELLED);
         }
 
+        UUID sessionId = orderCheck.getCheckoutSessionId();
+
+        // Lock ordering: session → reservations (variantId ASC) → orders (id ASC)
+        // Matches settlement lock order to prevent deadlock
+        CheckoutSession session = checkoutSessionRepository.findByIdForUpdate(sessionId)
+                .orElseThrow(() -> new AppException(ErrorCode.ORDER_NOT_FOUND));
+
+        if (session.getStatus() != CheckoutSessionStatus.PENDING_PAYMENT) {
+            throw new AppException(ErrorCode.ORDER_CANNOT_BE_CANCELLED);
+        }
+
+        // Cancel entire session: prevents amount mismatch on partial cancel in multi-shop checkout
         List<InventoryReservation> reservations = inventoryReservationRepository
-                .findAllByOrderIdAndStatusForUpdate(orderId, InventoryReservationStatus.RESERVED.name());
+                .findAllByCheckoutSessionIdAndStatusForUpdate(sessionId, InventoryReservationStatus.RESERVED.name());
         if (!reservations.isEmpty()) {
             List<ReleaseInventoryCommand> commands = reservations.stream()
                     .collect(Collectors.groupingBy(InventoryReservation::getVariantId,
@@ -127,24 +139,16 @@ public class BuyerOrderServiceImpl implements BuyerOrderService {
             inventoryReservationRepository.saveAll(reservations);
         }
 
-        order.cancel();
-        orderRepository.save(order);
-        log.info("Buyer {} cancelled order {} and released {} reservations", buyerId, orderId, reservations.size());
+        List<Order> sessionOrders = orderRepository.findAllByCheckoutSessionIdForUpdate(sessionId);
+        sessionOrders.stream()
+                .filter(o -> o.getStatus() == OrderStatus.PENDING_PAYMENT)
+                .forEach(Order::cancel);
+        orderRepository.saveAll(sessionOrders);
 
-        cancelSessionIfAllOrdersCancelled(order.getCheckoutSessionId());
-    }
-
-    private void cancelSessionIfAllOrdersCancelled(UUID checkoutSessionId) {
-        List<Order> allOrders = orderRepository.findAllByCheckoutSessionIdOrderByIdAsc(checkoutSessionId);
-        boolean allCancelled = allOrders.stream().allMatch(o -> o.getStatus() == OrderStatus.CANCELLED);
-        if (allCancelled) {
-            CheckoutSession session = checkoutSessionRepository.findByIdForUpdate(checkoutSessionId).orElse(null);
-            if (session != null && session.getStatus() == CheckoutSessionStatus.PENDING_PAYMENT) {
-                session.cancel();
-                checkoutSessionRepository.save(session);
-                log.info("Checkout session {} cancelled because all orders are cancelled", checkoutSessionId);
-            }
-        }
+        session.cancel();
+        checkoutSessionRepository.save(session);
+        log.info("Buyer {} cancelled order {} — entire session {} cancelled, released {} reservations",
+                buyerId, orderId, sessionId, reservations.size());
     }
 
     private List<BuyerOrderTimelineEvent> buildTimeline(Order order) {
