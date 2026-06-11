@@ -80,13 +80,16 @@ public class BuyerOrderController {
     }
 
     @Operation(
-            summary = "Cancel a pending order",
-            description = "Cancels a PENDING_PAYMENT order and releases its reserved inventory atomically. "
-                    + "Orders in any other state cannot be cancelled.",
+            summary = "Cancel checkout session via any order in it",
+            description = "Cancels the entire checkout session that contains this order. "
+                    + "All PENDING_PAYMENT orders in the session are cancelled and all reserved inventory is released. "
+                    + "Any pending payment attempt for the session is expired so the VNPay redirect URL becomes invalid. "
+                    + "Only allowed while the session is in PENDING_PAYMENT state. "
+                    + "In a multi-shop checkout, cancelling one order cancels the whole session.",
             security = @SecurityRequirement(name = "bearerAuth")
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
-            responseCode = "200", description = "Order cancelled.")
+            responseCode = "200", description = "Checkout session and all its orders cancelled.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "401", description = "Authentication required.",
             content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class)))
@@ -94,7 +97,7 @@ public class BuyerOrderController {
             responseCode = "404", description = "Order not found or not owned by the caller.",
             content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class)))
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
-            responseCode = "409", description = "Order is not in a cancellable state.",
+            responseCode = "409", description = "Checkout session is not in a cancellable state (already paid, expired, or cancelled).",
             content = @Content(schema = @Schema(implementation = SwaggerResponses.ApiResponseVoid.class)))
     @PostMapping("/{orderId}/cancel")
     public ApiResponse<Void> cancelOrder(

@@ -11,7 +11,6 @@ import com.shopee.monolith.modules.order.dto.request.CheckoutRequest;
 import com.shopee.monolith.modules.order.dto.response.CheckoutResponse;
 import com.shopee.monolith.modules.order.entity.CheckoutSession;
 import com.shopee.monolith.modules.order.entity.Order;
-import com.shopee.monolith.modules.order.model.OrderStatus;
 import com.shopee.monolith.modules.order.model.CheckoutSessionStatus;
 import com.shopee.monolith.modules.order.model.InventoryReservationStatus;
 import com.shopee.monolith.modules.order.model.OrderPaymentStatus;
@@ -416,7 +415,11 @@ class PaymentFlowIT extends BasePostgresRedisIntegrationTest {
         // Buyer cancels order before payment completes
         buyerOrderService.cancelOrder(buyer.getId(), checkout.orderIds().get(0));
 
-        // Success webhook arrives after cancel
+        // After cancel, payment attempt must be EXPIRED so getPaymentStatus no longer returns PENDING + URL
+        attempt = paymentAttemptRepository.findById(attempt.getId()).orElseThrow();
+        assertEquals(PaymentAttemptStatus.EXPIRED, attempt.getStatus());
+
+        // Success webhook arrives after cancel (late success after EXPIRED → REQUIRES_RECONCILIATION)
         webhookService.processWebhook(signedWebhookParams(attempt, "00"));
 
         // Session must be CANCELLED (not COMPLETED)

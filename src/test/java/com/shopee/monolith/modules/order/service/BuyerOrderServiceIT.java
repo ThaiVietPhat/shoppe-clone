@@ -218,14 +218,21 @@ class BuyerOrderServiceIT extends BasePostgresRedisIntegrationTest {
     }
 
     @Test
-    void cancelOrderWhenPendingPaymentShouldReleaseInventory() {
+    void cancelOrderWhenPendingPaymentShouldCancelEntireSessionAndReleaseInventory() {
         CheckoutResponse checkout = checkout(2);
         UUID orderId = checkout.orderIds().get(0);
 
         buyerOrderService.cancelOrder(buyer.getId(), orderId);
 
+        // Order cancelled
         Order order = orderRepository.findById(orderId).orElseThrow();
         assertEquals(OrderStatus.CANCELLED, order.getStatus());
+
+        // Checkout session also cancelled (cancel entire session, not just one order)
+        var session = checkoutSessionRepository.findById(checkout.checkoutSessionId()).orElseThrow();
+        assertEquals(com.shopee.monolith.modules.order.model.CheckoutSessionStatus.CANCELLED, session.getStatus());
+
+        // All reservations released
         assertTrue(inventoryReservationRepository.findAll().stream()
                 .allMatch(r -> r.getStatus() == InventoryReservationStatus.RELEASED));
 

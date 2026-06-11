@@ -45,6 +45,7 @@ public class BuyerOrderServiceImpl implements BuyerOrderService {
     private final OrderItemRepository orderItemRepository;
     private final InventoryReservationRepository inventoryReservationRepository;
     private final CheckoutSessionRepository checkoutSessionRepository;
+    private final PaymentCancellationPort paymentCancellationPort;
     private final InventoryService inventoryService;
     private final ShopService shopService;
     private final BuyerOrderMapper buyerOrderMapper;
@@ -147,6 +148,10 @@ public class BuyerOrderServiceImpl implements BuyerOrderService {
 
         session.cancel();
         checkoutSessionRepository.save(session);
+
+        // Expire any pending payment attempts so getPaymentStatus no longer returns PENDING + redirect URL
+        paymentCancellationPort.expirePendingAttemptsForSession(sessionId);
+
         log.info("Buyer {} cancelled order {} — entire session {} cancelled, released {} reservations",
                 buyerId, orderId, sessionId, reservations.size());
     }
