@@ -133,14 +133,16 @@ public class PaymentServiceImpl implements PaymentService {
                 .paymentAttemptId(attempt.getId())
                 .status(attempt.getStatus().name())
                 .orderIds(session.orderIds())
-                .nextAction(resolveNextAction(attempt))
+                .nextAction(resolveNextAction(session, attempt))
                 .expiresAt(attempt.getExpiresAt())
                 .reconciliationReason(attempt.getReconciliationReason())
                 .build();
     }
 
-    private String resolveNextAction(PaymentAttempt attempt) {
-        if (attempt.getMethod() == PaymentMethod.VNPAY && attempt.getStatus() == PaymentAttemptStatus.PENDING) {
+    private String resolveNextAction(CheckoutSessionPaymentInfo session, PaymentAttempt attempt) {
+        if (attempt.getMethod() == PaymentMethod.VNPAY
+                && attempt.getStatus() == PaymentAttemptStatus.PENDING
+                && session.status() == CheckoutSessionStatus.PENDING_PAYMENT) {
             return paymentUrlBuilder.buildPaymentUrl(attempt);
         }
         return null;

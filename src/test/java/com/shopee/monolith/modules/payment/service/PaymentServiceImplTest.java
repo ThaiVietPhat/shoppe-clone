@@ -211,4 +211,46 @@ class PaymentServiceImplTest {
         assertEquals(PaymentAttemptStatus.REQUIRES_RECONCILIATION.name(), response.status());
         assertEquals("AMOUNT_MISMATCH", response.reconciliationReason());
     }
+
+    @Test
+    void getPaymentStatusWhenAttemptPendingButSessionTerminalShouldNotReturnNextAction() {
+        // Attempt is still PENDING (listener may not have fired yet) but session is already EXPIRED
+        PaymentAttempt attempt = attempt(PaymentMethod.VNPAY, PaymentAttemptStatus.PENDING);
+        CheckoutSessionPaymentInfo expiredSession = CheckoutSessionPaymentInfo.builder()
+                .checkoutSessionId(sessionId)
+                .buyerId(buyerId)
+                .status(CheckoutSessionStatus.EXPIRED)
+                .totalAmount(new BigDecimal("150000.00"))
+                .expiresAt(Instant.now().minusSeconds(60))
+                .orderIds(List.of(orderId))
+                .build();
+        when(checkoutSettlementService.findSessionPaymentInfo(sessionId)).thenReturn(Optional.of(expiredSession));
+        when(paymentAttemptRepository.findAllByCheckoutSessionIdOrderByCreatedAtDesc(sessionId))
+                .thenReturn(List.of(attempt));
+
+        PaymentStatusResponse response = paymentService.getPaymentStatus(sessionId, buyerId);
+
+        assertEquals(PaymentAttemptStatus.PENDING.name(), response.status());
+        assertNull(response.nextAction(), "nextAction must be null when session is no longer payable");
+    }
+
+    @Test
+    void getPaymentStatusWhenAttemptPendingButSessionCancelledShouldNotReturnNextAction() {
+        PaymentAttempt attempt = attempt(PaymentMethod.VNPAY, PaymentAttemptStatus.PENDING);
+        CheckoutSessionPaymentInfo cancelledSession = CheckoutSessionPaymentInfo.builder()
+                .checkoutSessionId(sessionId)
+                .buyerId(buyerId)
+                .status(CheckoutSessionStatus.CANCELLED)
+                .totalAmount(new BigDecimal("150000.00"))
+                .expiresAt(Instant.now().plusSeconds(900))
+                .orderIds(List.of(orderId))
+                .build();
+        when(checkoutSettlementService.findSessionPaymentInfo(sessionId)).thenReturn(Optional.of(cancelledSession));
+        when(paymentAttemptRepository.findAllByCheckoutSessionIdOrderByCreatedAtDesc(sessionId))
+                .thenReturn(List.of(attempt));
+
+        PaymentStatusResponse response = paymentService.getPaymentStatus(sessionId, buyerId);
+
+        assertNull(response.nextAction(), "nextAction must be null when session is cancelled");
+    }
 }
