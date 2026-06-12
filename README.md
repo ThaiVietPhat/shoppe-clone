@@ -348,8 +348,6 @@ The project follows the implementation guidance in [CLAUDE.md](CLAUDE.md). The h
 
 ## Project Documents
 
-- [DESIGN.md](DESIGN.md): architecture, ERD, module graph, checkout/payment/auth/event/security/observability design.
-- [CLAUDE.md](CLAUDE.md): agent workflow, coding standards, implementation checkpoints, completed task history.
 - [docker-compose.yml](docker-compose.yml): local PostgreSQL, Redis, Elasticsearch.
 - [scripts/demo-seed.sql](scripts/demo-seed.sql): deterministic demo data.
 - [scripts/demo-reset.sql](scripts/demo-reset.sql): demo data reset.
