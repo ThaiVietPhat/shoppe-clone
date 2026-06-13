@@ -54,7 +54,6 @@ Module boundaries are enforced by convention and tests:
 - Inventory and checkout use explicit lock ordering to avoid double-spend and deadlock-prone stock transitions.
 - Flyway owns schema changes; Hibernate runs with `ddl-auto: validate`.
 
-The detailed architecture, ERD, event contracts, lock strategy, security model, and roadmap history live in [DESIGN.md](DESIGN.md) and [CLAUDE.md](CLAUDE.md).
 
 ## Tech Stack
 
@@ -334,7 +333,6 @@ Health is public. Detailed metrics and Prometheus endpoints are protected by the
 
 ## Engineering Rules
 
-The project follows the implementation guidance in [CLAUDE.md](CLAUDE.md). The highest-value rules are:
 
 - Use constructor injection through Lombok `@RequiredArgsConstructor`.
 - Use MapStruct for DTO/entity mapping; avoid manual mapping blocks.
